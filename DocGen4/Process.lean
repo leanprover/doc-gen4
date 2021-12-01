@@ -25,30 +25,44 @@ structure OpaqueInfo extends Info where
   isUnsafe : Bool
   deriving Repr
 
+structure DefinitionInfo extends Info where
+  --value : Syntax
+  unsafeInformation : DefinitionSafety
+  hints : ReducibilityHints
+
+structure InductiveInfo extends Info where
+  numParams : Nat     -- Number of parameters
+  numIndices : Nat    -- Number of indices
+  all : List Name     -- List of all (including this one) inductive datatypes in the mutual declaration containing this one
+  ctors : List (Name × Syntax)   -- List of all constructors and their type for this inductive datatype
+  isRec : Bool        -- `true` Iff it is recursive
+  isUnsafe : Bool
+  isReflexive : Bool
+  isNested : Bool
+  deriving Repr
+
 inductive DocInfo where
 | axiomInfo (info : AxiomInfo) : DocInfo
 | theoremInfo (info : TheoremInfo) : DocInfo
 | opaqueInfo (info : OpaqueInfo) : DocInfo
-| definitionInfo : DocInfo
-| mutualInductiveInfo : DocInfo
-| inductiveInfo : DocInfo
+| definitionInfo (info : DefinitionInfo) : DocInfo
+| inductiveInfo (info : InductiveInfo) : DocInfo
 | structureInfo : DocInfo
 | classInfo : DocInfo
 | classInductiveInfo : DocInfo
-deriving Repr
 
 structure Module where
   name : Name
   doc : Option String
   members : Array DocInfo
-  deriving Inhabited, Repr
+  deriving Inhabited
 
 def prettyPrintTerm (expr : Expr) : MetaM Syntax :=
   delab Name.anonymous [] expr
 
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let env ← getEnv
-  let type := (←prettyPrintTerm v.type )
+  let type := (←prettyPrintTerm v.type)
   let doc := findDocString? env v.name
   return Info.mk v.name type doc
 
@@ -65,15 +79,34 @@ def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
   let value ← prettyPrintTerm v.value
   return OpaqueInfo.mk info value v.isUnsafe
 
+def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
+  let info ← Info.ofConstantVal v.toConstantVal
+  -- Elaborating the value yields weird exceptions
+  --let value ← prettyPrintTerm v.value
+  return DefinitionInfo.mk info v.safety v.hints
+
+def getConstructorType (ctor : Name) : MetaM Syntax := do
+  let env ← getEnv
+  match env.find? ctor with
+  | some (ConstantInfo.ctorInfo i) => ←prettyPrintTerm i.type
+  | _ => panic! s!"Constructor {ctor} was requested but does not exist"
+
+def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
+  let info ← Info.ofConstantVal v.toConstantVal
+  let env ← getEnv
+  let ctors ← List.mapM (λ name => do (name, ←getConstructorType name)) v.ctors
+  return InductiveInfo.mk info v.numParams v.numIndices v.all ctors v.isRec v.isUnsafe v.isReflexive v.isNested
+
 namespace DocInfo
 
 private def isBlackListed (declName : Name) : MetaM Bool := do
   let env ← getEnv
-  (declName.isInternal && !isPrivateName declName)
+  declName.isInternal
   <||> isAuxRecursor env declName
   <||> isNoConfusion env declName
   <||> isRec declName
   <||> isMatcher declName
+
 
 -- TODO: Figure out how to associate names etc. with where they actually came from module wise
 def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, info) => do
@@ -84,9 +117,12 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
   | ConstantInfo.thmInfo i => some $ theoremInfo (←TheoremInfo.ofTheoremVal i)
   | ConstantInfo.opaqueInfo i => some $ opaqueInfo (←OpaqueInfo.ofOpaqueVal i)
   -- TODO: Find a way to extract equations nicely
-  | ConstantInfo.defnInfo i => none
+  -- TODO: Instances are definitions as well (for example coeTrans), figure out:
+  -- - how we can know whether they are instances
+  -- - how we can access unnamed instances (they probably have internal names?, change the blacklist?)
+  | ConstantInfo.defnInfo i => some $ definitionInfo (←DefinitionInfo.ofDefinitionVal i)
   -- TODO: Differentiate between all the different types of inductives (structures, classes etc.)
-  | ConstantInfo.inductInfo i => none
+  | ConstantInfo.inductInfo i => some $ inductiveInfo (←InductiveInfo.ofInductiveVal i)
   -- we ignore these for now
   | ConstantInfo.ctorInfo i => none
   | ConstantInfo.recInfo i => none
@@ -98,6 +134,10 @@ def prettyPrint (i : DocInfo) : CoreM String := do
   | axiomInfo i => s!"axiom {i.name} : {←PrettyPrinter.formatTerm i.type}, doc string: {i.doc}"
   | theoremInfo i => s!"theorem {i.name} : {←PrettyPrinter.formatTerm i.type}, doc string: {i.doc}"
   | opaqueInfo i => s!"constant {i.name} : {←PrettyPrinter.formatTerm i.type}, doc string: {i.doc}"
+  | definitionInfo i => s!"def {i.name} : {←PrettyPrinter.formatTerm i.type}, doc string: {i.doc}"
+  | inductiveInfo i =>
+    let ctorString ← i.ctors.mapM (λ (name, type) => do s!"{name} : {←PrettyPrinter.formatTerm type}")
+    s!"inductive {i.name} : {←PrettyPrinter.formatTerm i.type}, ctors: {ctorString}, doc string: {i.doc}"
   | _ => ""
 
 end DocInfo
