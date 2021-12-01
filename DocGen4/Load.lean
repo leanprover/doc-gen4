@@ -14,10 +14,13 @@ def setSearchPath (path : List FilePath) : IO PUnit := do
 
 def load (imports : List Name) : IO (HashMap Name Module) := do
   let env ← importModules (List.map (Import.mk · false) imports) Options.empty
-  let doc ← Prod.fst <$> (Meta.MetaM.toIO (process) {} { env := env} {} {})
+  -- TODO parameterize maxHeartbeats
+  let doc ← Prod.fst <$> (Meta.MetaM.toIO (process) { maxHeartbeats := 100000000} { env := env} {} {})
   for (_, module) in doc.toList do
     let s ← Core.CoreM.toIO module.prettyPrint {} { env := env }
     IO.println s.fst
+  IO.println s!"Processed {List.foldl (λ a (_, b) => a + b.members.size) 0 doc.toList} declarations"
+  IO.println s!"Processed {doc.size} modules"
   return doc
 
 end DocGen4
