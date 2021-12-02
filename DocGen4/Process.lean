@@ -41,13 +41,19 @@ structure InductiveInfo extends Info where
   isNested : Bool
   deriving Repr
 
+structure StructureInfo extends Info where
+  fieldInfo : Array StructureFieldInfo
+  parents : Array Name
+  ctor : (Name × Syntax)
+  deriving Repr
+
 inductive DocInfo where
 | axiomInfo (info : AxiomInfo) : DocInfo
 | theoremInfo (info : TheoremInfo) : DocInfo
 | opaqueInfo (info : OpaqueInfo) : DocInfo
 | definitionInfo (info : DefinitionInfo) : DocInfo
 | inductiveInfo (info : InductiveInfo) : DocInfo
-| structureInfo : DocInfo
+| structureInfo (info : StructureInfo) : DocInfo
 | classInfo : DocInfo
 | classInductiveInfo : DocInfo
 
@@ -97,9 +103,19 @@ def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
   let ctors ← List.mapM (λ name => do (name, ←getConstructorType name)) v.ctors
   return InductiveInfo.mk info v.numParams v.numIndices v.all ctors v.isRec v.isUnsafe v.isReflexive v.isNested
 
+def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
+  let info ← Info.ofConstantVal v.toConstantVal
+  let env ← getEnv
+  let parents := getParentStructures env v.name
+  let ctor := getStructureCtor env v.name |>.name
+  let ctorType ← getConstructorType ctor
+  match getStructureInfo? env v.name with
+  | some i => return StructureInfo.mk info i.fieldInfo parents (ctor, ctorType)
+  | none => panic! s!"{v.name} is not a structure"
+
 namespace DocInfo
 
-private def isBlackListed (declName : Name) : MetaM Bool := do
+def isBlackListed (declName : Name) : MetaM Bool := do
   let env ← getEnv
   declName.isInternal
   <||> isAuxRecursor env declName
@@ -122,7 +138,11 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
   -- - how we can access unnamed instances (they probably have internal names?, change the blacklist?)
   | ConstantInfo.defnInfo i => some $ definitionInfo (←DefinitionInfo.ofDefinitionVal i)
   -- TODO: Differentiate between all the different types of inductives (structures, classes etc.)
-  | ConstantInfo.inductInfo i => some $ inductiveInfo (←InductiveInfo.ofInductiveVal i)
+  | ConstantInfo.inductInfo i =>
+    if isStructure (←getEnv) i.name then
+      some $ structureInfo (←StructureInfo.ofInductiveVal i)
+    else
+      some $ inductiveInfo (←InductiveInfo.ofInductiveVal i)
   -- we ignore these for now
   | ConstantInfo.ctorInfo i => none
   | ConstantInfo.recInfo i => none
@@ -138,6 +158,9 @@ def prettyPrint (i : DocInfo) : CoreM String := do
   | inductiveInfo i =>
     let ctorString ← i.ctors.mapM (λ (name, type) => do s!"{name} : {←PrettyPrinter.formatTerm type}")
     s!"inductive {i.name} : {←PrettyPrinter.formatTerm i.type}, ctors: {ctorString}, doc string: {i.doc}"
+  | structureInfo i =>
+    let ctorString ← s!"{i.ctor.fst} : {←PrettyPrinter.formatTerm i.ctor.snd}"
+    s!"structure {i.name} : {←PrettyPrinter.formatTerm i.type}, ctor: {ctorString}, doc string: {i.doc}"
   | _ => ""
 
 end DocInfo
