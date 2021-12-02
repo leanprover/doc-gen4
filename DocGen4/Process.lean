@@ -48,6 +48,9 @@ structure StructureInfo extends Info where
   ctor : (Name × Syntax)
   deriving Repr
 
+structure ClassInfo extends StructureInfo where
+  hasOutParam : Bool
+
 inductive DocInfo where
 | axiomInfo (info : AxiomInfo) : DocInfo
 | theoremInfo (info : TheoremInfo) : DocInfo
@@ -55,7 +58,7 @@ inductive DocInfo where
 | definitionInfo (info : DefinitionInfo) : DocInfo
 | inductiveInfo (info : InductiveInfo) : DocInfo
 | structureInfo (info : StructureInfo) : DocInfo
-| classInfo : DocInfo
+| classInfo (info : ClassInfo) : DocInfo
 | classInductiveInfo : DocInfo
 
 structure Module where
@@ -114,6 +117,10 @@ def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   | some i => return StructureInfo.mk info i.fieldInfo parents (ctor, ctorType)
   | none => panic! s!"{v.name} is not a structure"
 
+def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do
+  let sinfo ← StructureInfo.ofInductiveVal v
+  return ClassInfo.mk sinfo $ hasOutParams (←getEnv) v.name
+
 namespace DocInfo
 
 def isBlackListed (declName : Name) : MetaM Bool := do
@@ -159,8 +166,12 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
       some $ definitionInfo (←DefinitionInfo.ofDefinitionVal i)
   -- TODO: Differentiate between all the different types of inductives (structures, classes etc.)
   | ConstantInfo.inductInfo i =>
-    if isStructure (←getEnv) i.name then
-      some $ structureInfo (←StructureInfo.ofInductiveVal i)
+    let env ← getEnv
+    if isStructure env i.name then
+      if isClass env i.name then
+        some $ classInfo (←ClassInfo.ofInductiveVal i)
+      else
+        some $ structureInfo (←StructureInfo.ofInductiveVal i)
     else
       some $ inductiveInfo (←InductiveInfo.ofInductiveVal i)
   -- we ignore these for now
@@ -181,6 +192,9 @@ def prettyPrint (i : DocInfo) : CoreM String := do
   | structureInfo i =>
     let ctorString ← s!"{i.ctor.fst} : {←PrettyPrinter.formatTerm i.ctor.snd}"
     s!"structure {i.name} : {←PrettyPrinter.formatTerm i.type}, ctor: {ctorString}, doc string: {i.doc}"
+  | classInfo i =>
+    let ctorString ← s!"{i.ctor.fst} : {←PrettyPrinter.formatTerm i.ctor.snd}"
+    s!"class {i.name} : {←PrettyPrinter.formatTerm i.type}, ctor: {ctorString}, doc string: {i.doc}"
   | _ => ""
 
 end DocInfo
