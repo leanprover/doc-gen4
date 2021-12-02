@@ -42,6 +42,7 @@ structure InductiveInfo extends Info where
   deriving Repr
 
 structure StructureInfo extends Info where
+  -- TODO: Later on we probably also want the type of projection fns etc.
   fieldInfo : Array StructureFieldInfo
   parents : Array Name
   ctor : (Name × Syntax)
@@ -123,8 +124,22 @@ def isBlackListed (declName : Name) : MetaM Bool := do
   <||> isRec declName
   <||> isMatcher declName
 
+-- TODO: Is this actually the best way?
+def isProjFn (declName : Name) : MetaM Bool := do
+  let env ← getEnv
+  match declName with
+  | Name.str parent name _ =>
+    if isStructure env parent then
+      match getStructureInfo? env parent with
+      | some i =>
+        match i.fieldNames.find? (· == name) with
+        | some _ => true
+        | none => false
+      | none => panic! s!"{parent} is not a structure"
+    else
+      false
+  | _ => false
 
--- TODO: Figure out how to associate names etc. with where they actually came from module wise
 def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, info) => do
   if (←isBlackListed name) then
     return none
@@ -136,7 +151,12 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
   -- TODO: Instances are definitions as well (for example coeTrans), figure out:
   -- - how we can know whether they are instances
   -- - how we can access unnamed instances (they probably have internal names?, change the blacklist?)
-  | ConstantInfo.defnInfo i => some $ definitionInfo (←DefinitionInfo.ofDefinitionVal i)
+  -- TODO: Filter out projection fns
+  | ConstantInfo.defnInfo i =>
+    if (←isProjFn i.name) then
+      none
+    else
+      some $ definitionInfo (←DefinitionInfo.ofDefinitionVal i)
   -- TODO: Differentiate between all the different types of inductives (structures, classes etc.)
   | ConstantInfo.inductInfo i =>
     if isStructure (←getEnv) i.name then
