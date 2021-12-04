@@ -3,7 +3,6 @@ import Lean.PrettyPrinter
 import Std.Data.HashMap
 import Lean.Meta.SynthInstance
 
-
 namespace DocGen4
 
 open Lean Meta PrettyPrinter Std
@@ -44,9 +43,13 @@ structure InductiveInfo extends Info where
   isNested : Bool
   deriving Repr
 
+structure FieldInfo extends StructureFieldInfo where
+  type : Syntax
+  deriving Repr
+
 structure StructureInfo extends Info where
   -- TODO: Later on we probably also want the type of projection fns etc.
-  fieldInfo : Array StructureFieldInfo
+  fieldInfo : Array FieldInfo
   parents : Array Name
   ctor : (Name × Syntax)
   deriving Repr
@@ -115,6 +118,19 @@ def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
   let ctors ← v.ctors.mapM (λ name => do (name, ←getConstructorType name))
   return InductiveInfo.mk info v.numParams v.numIndices v.all ctors v.isRec v.isUnsafe v.isReflexive v.isNested
 
+def getFieldTypeAux (type : Expr) (vars : List Name) : (Expr × List Name) :=
+  match type with
+  | Expr.forallE `self _ b .. => (b, (`self :: vars))
+  | Expr.forallE n _ b .. => getFieldTypeAux b (n :: vars)
+  | _ => (type, vars)
+
+-- TODO: Fill universes
+def getFieldType (projFn : Name) : MetaM Expr := do
+  let fn ← mkConstWithFreshMVarLevels projFn
+  let type ← inferType fn
+  let (type, vars) := getFieldTypeAux type []
+  type.instantiate $ vars.toArray.map mkConst
+
 def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let env ← getEnv
@@ -122,7 +138,11 @@ def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   let ctor := getStructureCtor env v.name |>.name
   let ctorType ← getConstructorType ctor
   match getStructureInfo? env v.name with
-  | some i => return StructureInfo.mk info i.fieldInfo parents (ctor, ctorType)
+  | some i =>
+    let fieldInfo ← i.fieldInfo.mapM (λ info => do
+      let type ← getFieldType info.projFn
+      FieldInfo.mk info (←prettyPrintTerm type))
+    return StructureInfo.mk info fieldInfo parents (ctor, ctorType)
   | none => panic! s!"{v.name} is not a structure"
 
 def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do
@@ -206,11 +226,12 @@ def prettyPrint (i : DocInfo) : CoreM String := do
     s!"inductive {i.name} : {←PrettyPrinter.formatTerm i.type}, ctors: {ctorString}, doc string: {i.doc}"
   | structureInfo i =>
     let ctorString ← s!"{i.ctor.fst} : {←PrettyPrinter.formatTerm i.ctor.snd}"
-    s!"structure {i.name} : {←PrettyPrinter.formatTerm i.type}, ctor: {ctorString}, doc string: {i.doc}"
+    let fieldString ← i.fieldInfo.mapM (λ f => do s!"{f.fieldName} : {←PrettyPrinter.formatTerm f.type}")
+    s!"structure {i.name} : {←PrettyPrinter.formatTerm i.type}, ctor: {ctorString}, fields : {fieldString}, doc string: {i.doc}"
   | classInfo i =>
     let instanceString ← i.instances.mapM (λ i => do s!"{←PrettyPrinter.formatTerm i}")
-    s!"class {i.name} : {←PrettyPrinter.formatTerm i.type}, instances : {instanceString}, doc string: {i.doc}"
-  | _ => ""
+    let fieldString ← i.fieldInfo.mapM (λ f => do s!"{f.fieldName} : {←PrettyPrinter.formatTerm f.type}")
+    s!"class {i.name} : {←PrettyPrinter.formatTerm i.type}, fields: {fieldString}, instances : {instanceString}, doc string: {i.doc}"
 
 end DocInfo
 
