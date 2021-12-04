@@ -64,7 +64,6 @@ inductive DocInfo where
 | inductiveInfo (info : InductiveInfo) : DocInfo
 | structureInfo (info : StructureInfo) : DocInfo
 | classInfo (info : ClassInfo) : DocInfo
-| classInductiveInfo : DocInfo
 
 structure Module where
   name : Name
