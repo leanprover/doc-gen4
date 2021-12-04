@@ -223,11 +223,11 @@ def prettyPrint (i : DocInfo) : CoreM String := do
   | structureInfo i =>
     let ctorString ← s!"{i.ctor.fst} : {←PrettyPrinter.formatTerm i.ctor.snd}"
     let fieldString ← i.fieldInfo.mapM (λ f => do s!"{f.fieldName} : {←PrettyPrinter.formatTerm f.type}")
-    s!"structure {i.name} : {←PrettyPrinter.formatTerm i.type}, ctor: {ctorString}, fields : {fieldString}, doc string: {i.doc}"
+    s!"structure {i.name} : {←PrettyPrinter.formatTerm i.type} extends {i.parents}, ctor: {ctorString}, fields : {fieldString}, doc string: {i.doc}"
   | classInfo i =>
     let instanceString ← i.instances.mapM (λ i => do s!"{←PrettyPrinter.formatTerm i}")
     let fieldString ← i.fieldInfo.mapM (λ f => do s!"{f.fieldName} : {←PrettyPrinter.formatTerm f.type}")
-    s!"class {i.name} : {←PrettyPrinter.formatTerm i.type}, fields: {fieldString}, instances : {instanceString}, doc string: {i.doc}"
+    s!"class {i.name} : {←PrettyPrinter.formatTerm i.type} extends {i.parents}, fields: {fieldString}, instances : {instanceString}, doc string: {i.doc}"
 
 end DocInfo
 
