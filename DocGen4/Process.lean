@@ -72,8 +72,9 @@ structure Module where
   members : Array DocInfo
   deriving Inhabited
 
-def prettyPrintTerm (expr : Expr) : MetaM Syntax :=
-  delab Name.anonymous [] expr
+def prettyPrintTerm (expr : Expr) : MetaM Syntax := do
+  let term ← delab Name.anonymous [] expr
+  parenthesizeTerm term
 
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let env ← getEnv
