@@ -48,7 +48,6 @@ structure FieldInfo extends StructureFieldInfo where
   deriving Repr
 
 structure StructureInfo extends Info where
-  -- TODO: Later on we probably also want the type of projection fns etc.
   fieldInfo : Array FieldInfo
   parents : Array Name
   ctor : (Name × Syntax)
@@ -75,6 +74,7 @@ structure Module where
   deriving Inhabited
 
 def prettyPrintTerm (expr : Expr) : MetaM Syntax := do
+  let ((expr, _), _) ← Elab.Term.TermElabM.run $ Elab.Term.levelMVarToParam (←instantiateMVars expr)
   let term ← delab Name.anonymous [] expr
   parenthesizeTerm term
 
@@ -124,7 +124,6 @@ def getFieldTypeAux (type : Expr) (vars : List Name) : (Expr × List Name) :=
   | Expr.forallE n _ b .. => getFieldTypeAux b (n :: vars)
   | _ => (type, vars)
 
--- TODO: Fill universes
 def getFieldType (projFn : Name) : MetaM Expr := do
   let fn ← mkConstWithFreshMVarLevels projFn
   let type ← inferType fn
@@ -187,8 +186,6 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
   | ConstantInfo.thmInfo i => some $ theoremInfo (←TheoremInfo.ofTheoremVal i)
   | ConstantInfo.opaqueInfo i => some $ opaqueInfo (←OpaqueInfo.ofOpaqueVal i)
   -- TODO: Find a way to extract equations nicely
-  -- TODO: Instances are definitions as well (for example coeTrans), figure out:
-  -- - how we can know whether they are instances
   | ConstantInfo.defnInfo i =>
     if ← (isProjFn i.name) then
       none
@@ -212,7 +209,6 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
   | ConstantInfo.ctorInfo i => none
   | ConstantInfo.recInfo i => none
   | ConstantInfo.quotInfo i => none
-
 
 def prettyPrint (i : DocInfo) : CoreM String := do
   match i with
