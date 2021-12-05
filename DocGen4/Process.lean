@@ -17,6 +17,7 @@ def NameInfo.prettyPrint (i : NameInfo) : CoreM String := do
 
 structure Info extends NameInfo where
   doc : Option String
+  declarationRange : DeclarationRange
   deriving Repr
 
 structure AxiomInfo extends Info where
@@ -90,7 +91,10 @@ def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let env ← getEnv
   let type ← prettyPrintTerm v.type
   let doc := findDocString? env v.name
-  return Info.mk ⟨v.name, type⟩ doc
+  match ←findDeclarationRanges? v.name with
+  -- TODO: Maybe selection range is more relevant? Figure this out in the future
+  | some range => return Info.mk ⟨v.name, type⟩ doc range.range
+  | none => panic! s!"{v.name} is a declaration without position"
 
 def AxiomInfo.ofAxiomVal (v : AxiomVal) : MetaM AxiomInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
@@ -167,12 +171,16 @@ def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do
 namespace DocInfo
 
 def isBlackListed (declName : Name) : MetaM Bool := do
-  let env ← getEnv
-  declName.isInternal
-  <||> isAuxRecursor env declName
-  <||> isNoConfusion env declName
-  <||> isRec declName
-  <||> isMatcher declName
+  match ←findDeclarationRanges? declName with
+  | some _ =>
+    let env ← getEnv
+    declName.isInternal
+    <||> isAuxRecursor env declName
+    <||> isNoConfusion env declName
+    <||> isRec declName
+    <||> isMatcher declName
+  -- TODO: Evaluate whether filtering out declarations without range is sensible
+  | none => true
 
 -- TODO: Is this actually the best way?
 def isProjFn (declName : Name) : MetaM Bool := do
