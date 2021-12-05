@@ -7,9 +7,15 @@ namespace DocGen4
 
 open Lean Meta PrettyPrinter Std
 
-structure Info where
-  name : Name
+structure NameInfo where
+  name  : Name
   type : Syntax
+  deriving Repr
+
+def NameInfo.prettyPrint (i : NameInfo) : CoreM String := do
+  s!"{i.name} : {←PrettyPrinter.formatTerm i.type}"
+
+structure Info extends NameInfo where
   doc : Option String
   deriving Repr
 
@@ -36,26 +42,28 @@ structure InductiveInfo extends Info where
   numParams : Nat     -- Number of parameters
   numIndices : Nat    -- Number of indices
   all : List Name     -- List of all (including this one) inductive datatypes in the mutual declaration containing this one
-  ctors : List (Name × Syntax)   -- List of all constructors and their type for this inductive datatype
+  ctors : List NameInfo   -- List of all constructors and their type for this inductive datatype
   isRec : Bool        -- `true` Iff it is recursive
   isUnsafe : Bool
   isReflexive : Bool
   isNested : Bool
   deriving Repr
 
-structure FieldInfo extends StructureFieldInfo where
-  type : Syntax
+structure FieldInfo extends NameInfo where
+  projFn : Name
+  subobject? : Option Name
   deriving Repr
 
 structure StructureInfo extends Info where
   fieldInfo : Array FieldInfo
   parents : Array Name
-  ctor : (Name × Syntax)
+  ctor : NameInfo
   deriving Repr
 
 structure ClassInfo extends StructureInfo where
   hasOutParam : Bool
   instances : Array Syntax
+  deriving Repr
 
 inductive DocInfo where
 | axiomInfo (info : AxiomInfo) : DocInfo
@@ -82,7 +90,7 @@ def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let env ← getEnv
   let type ← prettyPrintTerm v.type
   let doc := findDocString? env v.name
-  return Info.mk v.name type doc
+  return Info.mk ⟨v.name, type⟩ doc
 
 def AxiomInfo.ofAxiomVal (v : AxiomVal) : MetaM AxiomInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
@@ -112,10 +120,11 @@ def getConstructorType (ctor : Name) : MetaM Syntax := do
   | some (ConstantInfo.ctorInfo i) => ←prettyPrintTerm i.type
   | _ => panic! s!"Constructor {ctor} was requested but does not exist"
 
+-- TODO: Obtain parameters that come after the inductive Name
 def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let env ← getEnv
-  let ctors ← v.ctors.mapM (λ name => do (name, ←getConstructorType name))
+  let ctors ← v.ctors.mapM (λ name => do NameInfo.mk name (←getConstructorType name))
   return InductiveInfo.mk info v.numParams v.numIndices v.all ctors v.isRec v.isUnsafe v.isReflexive v.isNested
 
 def getFieldTypeAux (type : Expr) (vars : List Name) : (Expr × List Name) :=
@@ -130,6 +139,11 @@ def getFieldType (projFn : Name) : MetaM Expr := do
   let (type, vars) := getFieldTypeAux type []
   type.instantiate $ vars.toArray.map mkConst
 
+def FieldInfo.ofStructureFieldInfo (i : StructureFieldInfo) : MetaM FieldInfo := do
+  let type ← getFieldType i.projFn
+  let ni := NameInfo.mk i.fieldName (←prettyPrintTerm type)
+  FieldInfo.mk ni i.projFn i.subobject?
+
 def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let env ← getEnv
@@ -138,10 +152,8 @@ def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   let ctorType ← getConstructorType ctor
   match getStructureInfo? env v.name with
   | some i =>
-    let fieldInfo ← i.fieldInfo.mapM (λ info => do
-      let type ← getFieldType info.projFn
-      FieldInfo.mk info (←prettyPrintTerm type))
-    return StructureInfo.mk info fieldInfo parents (ctor, ctorType)
+    let fieldInfos ← i.fieldInfo.mapM FieldInfo.ofStructureFieldInfo
+    return StructureInfo.mk info fieldInfos parents ⟨ctor, ctorType⟩
   | none => panic! s!"{v.name} is not a structure"
 
 def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do
@@ -212,22 +224,22 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
 
 def prettyPrint (i : DocInfo) : CoreM String := do
   match i with
-  | axiomInfo i => s!"axiom {i.name} : {←PrettyPrinter.formatTerm i.type}, doc string: {i.doc}"
-  | theoremInfo i => s!"theorem {i.name} : {←PrettyPrinter.formatTerm i.type}, doc string: {i.doc}"
-  | opaqueInfo i => s!"constant {i.name} : {←PrettyPrinter.formatTerm i.type}, doc string: {i.doc}"
-  | definitionInfo i => s!"def {i.name} : {←PrettyPrinter.formatTerm i.type}, doc string: {i.doc}"
-  | instanceInfo i => s!"instance {i.name} : {←PrettyPrinter.formatTerm i.type}, doc string: {i.doc}"
+  | axiomInfo i => s!"axiom {←i.toNameInfo.prettyPrint}, doc string: {i.doc}"
+  | theoremInfo i => s!"theorem {←i.toNameInfo.prettyPrint}, doc string: {i.doc}"
+  | opaqueInfo i => s!"constant {←i.toNameInfo.prettyPrint}, doc string: {i.doc}"
+  | definitionInfo i => s!"def {←i.toNameInfo.prettyPrint}, doc string: {i.doc}"
+  | instanceInfo i => s!"instance {←i.toNameInfo.prettyPrint}, doc string: {i.doc}"
   | inductiveInfo i =>
-    let ctorString ← i.ctors.mapM (λ (name, type) => do s!"{name} : {←PrettyPrinter.formatTerm type}")
-    s!"inductive {i.name} : {←PrettyPrinter.formatTerm i.type}, ctors: {ctorString}, doc string: {i.doc}"
+    let ctorString ← i.ctors.mapM NameInfo.prettyPrint
+    s!"inductive {←i.toNameInfo.prettyPrint}, ctors: {ctorString}, doc string: {i.doc}"
   | structureInfo i =>
-    let ctorString ← s!"{i.ctor.fst} : {←PrettyPrinter.formatTerm i.ctor.snd}"
-    let fieldString ← i.fieldInfo.mapM (λ f => do s!"{f.fieldName} : {←PrettyPrinter.formatTerm f.type}")
-    s!"structure {i.name} : {←PrettyPrinter.formatTerm i.type} extends {i.parents}, ctor: {ctorString}, fields : {fieldString}, doc string: {i.doc}"
+    let ctorString ← i.ctor.prettyPrint
+    let fieldString ← i.fieldInfo.mapM (λ f => do s!"{f.name} : {←PrettyPrinter.formatTerm f.type}")
+    s!"structure {←i.toNameInfo.prettyPrint} extends {i.parents}, ctor: {ctorString}, fields : {fieldString}, doc string: {i.doc}"
   | classInfo i =>
-    let instanceString ← i.instances.mapM (λ i => do s!"{←PrettyPrinter.formatTerm i}")
-    let fieldString ← i.fieldInfo.mapM (λ f => do s!"{f.fieldName} : {←PrettyPrinter.formatTerm f.type}")
-    s!"class {i.name} : {←PrettyPrinter.formatTerm i.type} extends {i.parents}, fields: {fieldString}, instances : {instanceString}, doc string: {i.doc}"
+    let instanceString ← i.instances.mapM PrettyPrinter.formatTerm
+    let fieldString ← i.fieldInfo.mapM (NameInfo.prettyPrint ∘ FieldInfo.toNameInfo)
+    s!"class {←i.toNameInfo.prettyPrint} extends {i.parents}, fields: {fieldString}, instances : {instanceString}, doc string: {i.doc}"
 
 end DocInfo
 
