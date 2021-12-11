@@ -96,7 +96,7 @@ def prettyPrintTerm (expr : Expr) : MetaM Syntax := do
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let env ← getEnv
   let type ← prettyPrintTerm v.type
-  let doc := findDocString? env v.name
+  let doc ← findDocString? env v.name
   match ←findDeclarationRanges? v.name with
   -- TODO: Maybe selection range is more relevant? Figure this out in the future
   | some range => return Info.mk ⟨v.name, type⟩ doc range.range
