@@ -52,7 +52,7 @@ open Parser PrettyPrinter
 declare_syntax_cat jsxElement
 declare_syntax_cat jsxChild
 
-def jsxAttrVal : Parser := strLit <|> group ("{" >> termParser >> "}")
+def jsxAttrVal : Parser := strLit <|> group ("{" >> termParser >> "}") <|> ("[" >> termParser >> "]")
 def jsxAttr : Parser := ident >> "=" >> jsxAttrVal
 
 -- JSXTextCharacter : SourceCharacter but not one of {, <, > or }
@@ -60,7 +60,7 @@ def jsxText : Parser :=
   withAntiquot (mkAntiquot "jsxText" `jsxText) {
     fn := fun c s =>
       let startPos := s.pos
-      let s := takeWhile1Fn (not ∘ "{<>}$".contains) "expected JSX text" c s
+      let s := takeWhile1Fn (not ∘ "[{<>}]$".contains) "expected JSX text" c s
       mkNodeToken `jsxText startPos c s }
 
 @[combinatorFormatter DocGen4.Jsx.jsxText] def jsxText.formatter : Formatter := pure ()
@@ -71,6 +71,7 @@ scoped syntax "<" ident jsxAttr* ">" jsxChild* "</" ident ">" : jsxElement
 
 scoped syntax jsxText      : jsxChild
 scoped syntax "{" term "}" : jsxChild
+scoped syntax "[" term "]" : jsxChild
 scoped syntax jsxElement   : jsxChild
 
 scoped syntax:max jsxElement : term
@@ -91,13 +92,14 @@ macro_rules
         | `(jsxAttrVal| { $t:term }) => t
         | _ => unreachable!
       let cs ← cs.mapM fun
-        | `(jsxChild|$t:jsxText)    => `(Html.text $(quote t[0].getAtomVal!))
+        | `(jsxChild|$t:jsxText)    => `(#[Html.text $(quote t[0].getAtomVal!)])
         -- TODO(WN): elab as list of children if type is `t Html` where `Foldable t`
-        | `(jsxChild|{$t})          => t
-        | `(jsxChild|$e:jsxElement) => `($e:jsxElement)
+        | `(jsxChild|{$t})          => `(#[$t])
+        | `(jsxChild|[$t])          => `($t)
+        | `(jsxChild|$e:jsxElement) => `(#[$e:jsxElement])
         | _                         => unreachable!
       let tag := toString n.getId
-      `(Html.element $(quote tag) #[ $[($ns, $vs)],* ] #[ $[$cs],* ])
+      `(Html.element $(quote tag) #[ $[($ns, $vs)],* ] (Array.foldl Array.append #[] #[ $[$cs],* ]))
     else Macro.throwError ("expected </" ++ toString n.getId ++ ">")
 
 end Jsx
