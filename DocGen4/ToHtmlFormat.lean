@@ -33,7 +33,6 @@ def attributesToString (attrs : Array (String × String)) :String :=
 
 -- TODO: Termination proof
 partial def toStringAux : Html → String
-| element tag attrs #[] => s!"<{tag}{attributesToString attrs}/>\n"
 | element tag attrs #[text s] => s!"<{tag}{attributesToString attrs}>{s}</{tag}>\n"
 | element tag attrs #[child] => s!"<{tag}{attributesToString attrs}>\n{child.toStringAux}</{tag}>\n"
 | element tag attrs children => s!"<{tag}{attributesToString attrs}>\n{children.foldl (· ++ toStringAux ·) ""}</{tag}>\n"
