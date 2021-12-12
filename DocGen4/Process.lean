@@ -9,6 +9,8 @@ import Lean.PrettyPrinter
 import Std.Data.HashMap
 import Lean.Meta.SynthInstance
 
+import DocGen4.Hierarchy
+
 namespace DocGen4
 
 open Lean Meta PrettyPrinter Std
@@ -221,7 +223,6 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
         some $ instanceInfo info
       else
         some $ definitionInfo info
-  -- TODO: Differentiate between all the different types of inductives (structures, classes etc.)
   | ConstantInfo.inductInfo i =>
     let env ← getEnv
     if isStructure env i.name then
@@ -265,7 +266,12 @@ def prettyPrint (m : Module) : CoreM String := do
 
 end Module
 
-def process : MetaM (HashMap Name Module) := do
+structure AnalyzerResult where
+  modules : HashMap Name Module
+  hierarchy : Hierarchy
+  deriving Inhabited
+
+def process : MetaM AnalyzerResult := do
   let env ← getEnv
   let mut res := mkHashMap env.header.moduleNames.size
   for module in env.header.moduleNames do
@@ -289,6 +295,6 @@ def process : MetaM (HashMap Name Module) := do
         res := res.insert moduleName {module with members := module.members.push dinfo}
       | none => panic! "impossible"
     | none => ()
-  return res
+  return { modules := res, hierarchy := Hierarchy.fromArray env.header.moduleNames }
 
 end DocGen4
