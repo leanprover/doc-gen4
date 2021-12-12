@@ -26,9 +26,10 @@ def getResult : HtmlM AnalyzerResult := do (←read).result
 def templateExtends {α β : Type} (base : α → HtmlM β) (new : HtmlM α) : HtmlM β :=
   new >>= base
 
-def nameToPath (n : Name) : String := do
-  let parts := n.components.map Name.toString
-  return (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+def nameToPath (n : Name) : String :=
+    (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+  where
+    parts := n.components.map Name.toString
 
 partial def moduleListAux (h : Hierarchy) : HtmlM Html := do
   if h.getChildren.toList.length == 0 then

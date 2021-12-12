@@ -51,7 +51,7 @@ def getName : Hierarchy → Name
 def getChildren : Hierarchy → HierarchyMap
 | node _ c => c
 
-partial def insert! (h : Hierarchy) (n : Name) : Hierarchy := do
+partial def insert! (h : Hierarchy) (n : Name) : Hierarchy := Id.run $ do
   let hn := h.getName
   let mut cs := h.getChildren
   if getDepth hn ≥ getDepth n then
