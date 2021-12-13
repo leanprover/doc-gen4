@@ -13,6 +13,7 @@ namespace DocGen4
 
 open Lean Std
 open scoped DocGen4.Jsx
+open IO System
 
 structure SiteContext where
   root : String
@@ -26,22 +27,27 @@ def getResult : HtmlM AnalyzerResult := do (←read).result
 def templateExtends {α β : Type} (base : α → HtmlM β) (new : HtmlM α) : HtmlM β :=
   new >>= base
 
-def nameToPath (n : Name) : String :=
+def nameToUrl (n : Name) : String :=
     (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
   where
     parts := n.components.map Name.toString
 
+def nameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
+    basePath / parts.foldl (λ acc p => acc / FilePath.mk p) (FilePath.mk ".")
+  where
+    parts := n.components.dropLast.map Name.toString
+
 partial def moduleListAux (h : Hierarchy) : HtmlM Html := do
   if h.getChildren.toList.length == 0 then
     <div «class»="nav_link visible">
-      <a href={s!"{←getRoot}{nameToPath h.getName}"}>{h.getName.toString}</a>
+      <a href={s!"{←getRoot}{nameToUrl h.getName}"}>{h.getName.toString}</a>
     </div>
   else
     let children := Array.mk (h.getChildren.toList.map Prod.snd)
     -- TODO: Is having no children really the correct criterium for a clickable module?
     let (dirs, files) := children.partition (λ c => c.getChildren.toList.length != 0)
     let nodes := (←(dirs.mapM moduleListAux)) ++ (←(files.mapM moduleListAux))
-    return <details «class»="nav_sect" «data-path»={←nameToPath h.getName}>
+    return <details «class»="nav_sect" «data-path»={←nameToUrl h.getName}>
       <summary>{h.getName.toString}</summary>
       [nodes]
     </details>  
@@ -107,6 +113,13 @@ def baseHtml (title : String) (site : Html) : HtmlM Html := do
     </body>
   </html>
 
+def notFound : HtmlM Html := do templateExtends (baseHtml "404") $
+  <main>
+    <h1>404 Not Found</h1>
+    <p> Unfortunately, the page you were looking for is no longer here. </p>
+    <div id="howabout"></div>
+  </main>
+
 def index : HtmlM Html := do templateExtends (baseHtml "Index") $
   <main>
     <a id="top"></a>
@@ -114,18 +127,28 @@ def index : HtmlM Html := do templateExtends (baseHtml "Index") $
     What is up?
   </main>
 
-open IO System
-
 def styleCss : String := include_str "./static/style.css"
+
+def moduleToHtml (module : Module) : HtmlM Html := do templateExtends (baseHtml module.name.toString) $
+  <main>
+    <h1>This is the page of {module.name.toString}</h1>
+  </main>
 
 def htmlOutput (result : AnalyzerResult) : IO Unit := do
   -- TODO: parameterize this
   let config := { root := "/", result := result }
   let basePath := FilePath.mk "./build/doc/"
   let indexHtml := ReaderT.run index config 
+  let notFoundHtml := ReaderT.run notFound config
   FS.createDirAll basePath
   FS.writeFile (basePath / "index.html") indexHtml.toString
   FS.writeFile (basePath / "style.css") styleCss
+  FS.writeFile (basePath / "404.html") notFoundHtml.toString
+  for (module, content) in result.modules.toArray do
+    let moduleHtml := ReaderT.run (moduleToHtml content) config
+    let path := basePath / (nameToUrl module)
+    FS.createDirAll $ nameToDirectory basePath module
+    FS.writeFile path moduleHtml.toString
 
 end DocGen4
 
