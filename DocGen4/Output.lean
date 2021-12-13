@@ -18,11 +18,15 @@ open IO System
 structure SiteContext where
   root : String
   result : AnalyzerResult
+  currentName : Option Name
+
+def setCurrentName (name : Name) (ctx : SiteContext) := {ctx with currentName := some name}
 
 abbrev HtmlM := Reader SiteContext
 
 def getRoot : HtmlM String := do (←read).root
 def getResult : HtmlM AnalyzerResult := do (←read).result
+def getCurrentName : HtmlM (Option Name) := do (←read).currentName
 
 def templateExtends {α β : Type} (base : α → HtmlM β) (new : HtmlM α) : HtmlM β :=
   new >>= base
@@ -38,19 +42,32 @@ def nameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
     parts := n.components.dropLast.map Name.toString
 
 def moduleListFile (file : Name) : HtmlM Html := do
-  <div «class»="nav_link">
-    <a href={s!"{←getRoot}{nameToUrl file}"}>{file.toString}</a>
-  </div>
+  let attributes := match ←getCurrentName with
+  | some name =>
+    if file == name then
+      #[("class", "nav_link"), ("visible", "")]
+    else
+      #[("class", "nav_link")]
+  | none => #[("class", "nav_link")]
+  let nodes := #[<a href={s!"{←getRoot}{nameToUrl file}"}>{file.toString}</a>]
+  return Html.element "div" attributes nodes
 
 partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
   let children := Array.mk (h.getChildren.toList.map Prod.snd)
   let dirs := children.filter (λ c => c.getChildren.toList.length != 0)
   let files := children.filter Hierarchy.isFile |>.map Hierarchy.getName
-  return <details «class»="nav_sect" «data-path»={nameToUrl h.getName}>
-    <summary>{h.getName.toString}</summary>
-    [(←(dirs.mapM moduleListDir))]
-    [(←(files.mapM moduleListFile))]
-  </details>
+  let dirNodes ← (dirs.mapM moduleListDir)
+  let fileNodes ← (files.mapM moduleListFile)
+  let attributes := match ←getCurrentName with
+  | some name =>
+    if h.getName.isPrefixOf name then
+      #[("class", "nav_sect"), ("data-path", nameToUrl h.getName), ("open", "")]
+    else
+      #[("class", "nav_sect"), ("data-path", nameToUrl h.getName)]
+  | none =>
+      #[("class", "nav_sect"), ("data-path", nameToUrl h.getName)]
+  let nodes := #[<summary>{h.getName.toString}</summary>] ++ dirNodes ++ fileNodes
+  return Html.element "details" attributes nodes
 
 def moduleList : HtmlM (Array Html) := do
   let hierarchy := (←getResult).hierarchy
@@ -129,14 +146,15 @@ def index : HtmlM Html := do templateExtends (baseHtml "Index") $
 
 def styleCss : String := include_str "./static/style.css"
 
-def moduleToHtml (module : Module) : HtmlM Html := do templateExtends (baseHtml module.name.toString) $
-  <main>
-    <h1>This is the page of {module.name.toString}</h1>
-  </main>
+def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
+  templateExtends (baseHtml module.name.toString) $
+    <main>
+      <h1>This is the page of {module.name.toString}</h1>
+    </main>
 
 def htmlOutput (result : AnalyzerResult) : IO Unit := do
   -- TODO: parameterize this
-  let config := { root := "/", result := result }
+  let config := { root := "/", result := result, currentName := none}
   let basePath := FilePath.mk "./build/doc/"
   let indexHtml := ReaderT.run index config 
   let notFoundHtml := ReaderT.run notFound config
