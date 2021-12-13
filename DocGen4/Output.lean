@@ -125,8 +125,14 @@ def baseHtml (title : String) (site : Html) : HtmlM Html := do
     {site}
     
     {←navbar}
-    -- TODO Add the js stuff
 
+    -- Lean in JS in HTML in Lean...very meta
+    <script>
+      siteRoot = "{←getRoot}";
+    </script>
+
+    -- TODO Add more js stuff
+    <script src={s!"{←getRoot}nav.js"}></script>
     </body>
   </html>
 
@@ -145,6 +151,7 @@ def index : HtmlM Html := do templateExtends (baseHtml "Index") $
   </main>
 
 def styleCss : String := include_str "./static/style.css"
+def navJs : String := include_str "./static/nav.js"
 
 def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
   templateExtends (baseHtml module.name.toString) $
@@ -162,6 +169,7 @@ def htmlOutput (result : AnalyzerResult) : IO Unit := do
   FS.writeFile (basePath / "index.html") indexHtml.toString
   FS.writeFile (basePath / "style.css") styleCss
   FS.writeFile (basePath / "404.html") notFoundHtml.toString
+  FS.writeFile (basePath / "nav.js") navJs
   for (module, content) in result.modules.toArray do
     let moduleHtml := ReaderT.run (moduleToHtml content) config
     let path := basePath / (nameToUrl module)
