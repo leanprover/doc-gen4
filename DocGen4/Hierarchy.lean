@@ -21,9 +21,9 @@ def getNLevels (name : Name) (levels: Nat) : Name :=
     components := name.components'
 
 inductive Hierarchy where
-| node : Name → RBNode Name (λ _ => Hierarchy) → Hierarchy
+| node (name : Name) (isFile : Bool) (children : RBNode Name (λ _ => Hierarchy)) : Hierarchy
 
-instance : Inhabited Hierarchy := ⟨Hierarchy.node Name.anonymous RBNode.leaf⟩
+instance : Inhabited Hierarchy := ⟨Hierarchy.node Name.anonymous false RBNode.leaf⟩
 
 abbrev HierarchyMap := RBNode Name (λ _ => Hierarchy)
 
@@ -43,35 +43,45 @@ end HierarchyMap
 
 namespace Hierarchy
 
-def empty (n : Name) : Hierarchy := node n RBNode.leaf
+def empty (n : Name) (isFile : Bool) : Hierarchy :=
+  node n isFile RBNode.leaf
 
 def getName : Hierarchy → Name
-| node n _ => n
+| node n _ _ => n
 
 def getChildren : Hierarchy → HierarchyMap
-| node _ c => c
+| node _ _ c => c
+
+def isFile : Hierarchy → Bool
+| node _ f _ => f
 
 partial def insert! (h : Hierarchy) (n : Name) : Hierarchy := Id.run $ do
   let hn := h.getName
   let mut cs := h.getChildren
-  if getDepth hn ≥ getDepth n then
-    panic! "Invalid insert"
-  else if getDepth hn + 1 == getDepth n then
+
+  assert! getDepth hn ≤ getDepth n
+
+  if getDepth hn + 1 == getDepth n then
     match cs.find Name.cmp n with
     | none =>
-      node hn (cs.insert Name.cmp n $ empty n)
-    | some _ => h
+      node hn h.isFile (cs.insert Name.cmp n $ empty n true)
+    | some (node _ true _) => h
+    | some hierarchy@(node _ false ccs) =>
+        cs := cs.erase Name.cmp n
+        node hn h.isFile (cs.insert Name.cmp n $ node n true ccs)
   else
     let leveledName := getNLevels n (getDepth hn + 1)
     match cs.find Name.cmp leveledName with
     | some nextLevel =>
       cs := cs.erase Name.cmp leveledName
-      node hn $ cs.insert Name.cmp leveledName (nextLevel.insert! n)
+      -- BUG?
+      node hn h.isFile $ cs.insert Name.cmp leveledName (nextLevel.insert! n)
     | none =>
-      let child := (insert! (empty leveledName) n)
-      node hn $ cs.insert Name.cmp leveledName child
+      let child := (insert! (empty leveledName false) n)
+      node hn h.isFile $ cs.insert Name.cmp leveledName child
 
-partial def fromArray (names : Array Name) : Hierarchy := names.foldl insert! (empty anonymous)
+partial def fromArray (names : Array Name) : Hierarchy :=
+  names.foldl insert! (empty anonymous false)
 
 end Hierarchy
 end DocGen4

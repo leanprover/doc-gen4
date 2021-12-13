@@ -37,27 +37,27 @@ def nameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
   where
     parts := n.components.dropLast.map Name.toString
 
-partial def moduleListAux (h : Hierarchy) : HtmlM Html := do
-  if h.getChildren.toList.length == 0 then
-    <div «class»="nav_link visible">
-      <a href={s!"{←getRoot}{nameToUrl h.getName}"}>{h.getName.toString}</a>
-    </div>
-  else
-    let children := Array.mk (h.getChildren.toList.map Prod.snd)
-    -- TODO: Is having no children really the correct criterium for a clickable module?
-    let (dirs, files) := children.partition (λ c => c.getChildren.toList.length != 0)
-    let nodes := (←(dirs.mapM moduleListAux)) ++ (←(files.mapM moduleListAux))
-    return <details «class»="nav_sect" «data-path»={←nameToUrl h.getName}>
-      <summary>{h.getName.toString}</summary>
-      [nodes]
-    </details>  
+def moduleListFile (file : Name) : HtmlM Html := do
+  <div «class»="nav_link">
+    <a href={s!"{←getRoot}{nameToUrl file}"}>{file.toString}</a>
+  </div>
+
+partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
+  let children := Array.mk (h.getChildren.toList.map Prod.snd)
+  let dirs := children.filter (λ c => c.getChildren.toList.length != 0)
+  let files := children.filter Hierarchy.isFile |>.map Hierarchy.getName
+  return <details «class»="nav_sect" «data-path»={nameToUrl h.getName}>
+    <summary>{h.getName.toString}</summary>
+    [(←(dirs.mapM moduleListDir))]
+    [(←(files.mapM moduleListFile))]
+  </details>
 
 def moduleList : HtmlM (Array Html) := do
   let hierarchy := (←getResult).hierarchy
   let mut list := Array.empty
   for (n, cs) in hierarchy.getChildren do
     list := list.push <h4>{n.toString}</h4>
-    list := list.push $ ←moduleListAux cs
+    list := list.push $ ←moduleListDir cs
   list
 
 def navbar : HtmlM Html := do
