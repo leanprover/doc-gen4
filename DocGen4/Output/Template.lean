@@ -45,7 +45,7 @@ def baseHtml (title : String) (site : Html) : HtmlM Html := do
 
     -- Lean in JS in HTML in Lean...very meta
     <script>
-      siteRoot = "{←getRoot}";
+      siteRoot = {←getRoot};
     </script>
 
     -- TODO Add more js stuff
