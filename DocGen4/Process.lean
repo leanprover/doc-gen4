@@ -256,6 +256,26 @@ def prettyPrint (i : DocInfo) : CoreM String := do
     let fieldString ← i.fieldInfo.mapM (NameInfo.prettyPrint ∘ FieldInfo.toNameInfo)
     s!"class {←i.toNameInfo.prettyPrint} extends {i.parents}, fields: {fieldString}, instances : {instanceString}, doc string: {i.doc}"
 
+def getName : DocInfo → Name
+| axiomInfo i => i.name
+| theoremInfo i => i.name
+| opaqueInfo i => i.name
+| definitionInfo i => i.name
+| instanceInfo i => i.name
+| inductiveInfo i => i.name
+| structureInfo i => i.name
+| classInfo i => i.name
+
+def getKind : DocInfo → String
+| axiomInfo _ => "axiom"
+| theoremInfo _ => "theorem"
+| opaqueInfo _ => "constant"
+| definitionInfo _ => "def"
+| instanceInfo _ => "instance" -- TODO: This doesnt exist in CSS yet
+| inductiveInfo _ => "inductive"
+| structureInfo _ => "structure"
+| classInfo _ => "class" -- TODO: This is handled as structure right now
+
 end DocInfo
 
 namespace Module
