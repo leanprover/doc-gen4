@@ -21,7 +21,7 @@ def moduleListFile (file : Name) : HtmlM Html := do
     else
       #[("class", "nav_link")]
   | none => #[("class", "nav_link")]
-  let nodes := #[<a href={s!"{←getRoot}{nameToUrl file}"}>{file.toString}</a>]
+  let nodes := #[<a href={s!"{←getRoot}{moduleNameToUrl file}"}>{file.toString}</a>]
   return Html.element "div" attributes nodes
 
 partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
@@ -33,11 +33,11 @@ partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
   let attributes := match ←getCurrentName with
   | some name =>
     if h.getName.isPrefixOf name then
-      #[("class", "nav_sect"), ("data-path", nameToUrl h.getName), ("open", "")]
+      #[("class", "nav_sect"), ("data-path", moduleNameToUrl h.getName), ("open", "")]
     else
-      #[("class", "nav_sect"), ("data-path", nameToUrl h.getName)]
+      #[("class", "nav_sect"), ("data-path", moduleNameToUrl h.getName)]
   | none =>
-      #[("class", "nav_sect"), ("data-path", nameToUrl h.getName)]
+      #[("class", "nav_sect"), ("data-path", moduleNameToUrl h.getName)]
   let nodes := #[<summary>{h.getName.toString}</summary>] ++ dirNodes ++ fileNodes
   return Html.element "details" attributes nodes
 

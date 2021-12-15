@@ -28,12 +28,18 @@ def getCurrentName : HtmlM (Option Name) := do (←read).currentName
 def templateExtends {α β : Type} (base : α → HtmlM β) (new : HtmlM α) : HtmlM β :=
   new >>= base
 
-def nameToUrl (n : Name) : String :=
+-- TODO: Change this to HtmlM and auto add the root URl
+def moduleNameToUrl (n : Name) : String :=
     (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
   where
     parts := n.components.map Name.toString
 
-def nameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
+def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
+    FilePath.withExtension (basePath / parts.foldl (· / ·) (FilePath.mk ".")) "html"
+  where
+    parts := n.components.map Name.toString
+
+def moduleNameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
     basePath / parts.foldl (· / ·) (FilePath.mk ".")
   where
     parts := n.components.dropLast.map Name.toString

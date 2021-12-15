@@ -27,8 +27,8 @@ def htmlOutput (result : AnalyzerResult) : IO Unit := do
   FS.writeFile (basePath / "nav.js") navJs
   for (module, content) in result.modules.toArray do
     let moduleHtml := ReaderT.run (moduleToHtml content) config
-    let path := basePath / (nameToUrl module)
-    FS.createDirAll $ nameToDirectory basePath module
+    let path := moduleNameToFile basePath module
+    FS.createDirAll $ moduleNameToDirectory basePath module
     FS.writeFile path moduleHtml.toString
 
 end DocGen4
