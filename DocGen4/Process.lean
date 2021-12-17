@@ -86,6 +86,7 @@ structure Module where
 def prettyPrintTerm (expr : Expr) : MetaM InfoSyntax := do
   let ((expr, _), _) ← Elab.Term.TermElabM.run $ Elab.Term.levelMVarToParam (←instantiateMVars expr)
   let (stx, info) ← delabCore Name.anonymous [] expr
+  let stx := sanitizeSyntax stx |>.run' { options := ←getOptions }
   (←parenthesizeTerm stx, info)
 
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
