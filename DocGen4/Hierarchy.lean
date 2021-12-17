@@ -10,11 +10,6 @@ namespace DocGen4
 
 open Lean Std Name
 
-def getDepth : Name → Nat
-| Name.anonymous => 0
-| Name.str p _ _ => getDepth p + 1
-| Name.num p _ _ => getDepth p + 1
-
 def getNLevels (name : Name) (levels: Nat) : Name :=
     (components.drop (components.length - levels)).reverse.foldl (· ++ ·) Name.anonymous
   where
@@ -59,9 +54,9 @@ partial def insert! (h : Hierarchy) (n : Name) : Hierarchy := Id.run $ do
   let hn := h.getName
   let mut cs := h.getChildren
 
-  assert! getDepth hn ≤ getDepth n
+  assert! getNumParts hn ≤ getNumParts n
 
-  if getDepth hn + 1 == getDepth n then
+  if getNumParts hn + 1 == getNumParts n then
     match cs.find Name.cmp n with
     | none =>
       node hn h.isFile (cs.insert Name.cmp n $ empty n true)
@@ -70,7 +65,7 @@ partial def insert! (h : Hierarchy) (n : Name) : Hierarchy := Id.run $ do
         cs := cs.erase Name.cmp n
         node hn h.isFile (cs.insert Name.cmp n $ node n true ccs)
   else
-    let leveledName := getNLevels n (getDepth hn + 1)
+    let leveledName := getNLevels n (getNumParts hn + 1)
     match cs.find Name.cmp leveledName with
     | some nextLevel =>
       cs := cs.erase Name.cmp leveledName
