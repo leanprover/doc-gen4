@@ -19,7 +19,8 @@ structure SiteContext where
 
 def setCurrentName (name : Name) (ctx : SiteContext) := {ctx with currentName := some name}
 
-abbrev HtmlM := Reader SiteContext
+abbrev HtmlT := ReaderT SiteContext
+abbrev HtmlM := HtmlT Id
 
 def getRoot : HtmlM String := do (←read).root
 def getResult : HtmlM AnalyzerResult := do (←read).result
