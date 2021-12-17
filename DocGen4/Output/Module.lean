@@ -3,6 +3,9 @@ Copyright (c) 2021 Henrik Böving. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
+import Lean
+import Lean.PrettyPrinter
+
 import DocGen4.ToHtmlFormat
 import DocGen4.Output.Template
 
@@ -10,8 +13,21 @@ namespace DocGen4
 namespace Output
 
 open scoped DocGen4.Jsx
+open Lean PrettyPrinter
 
--- TODO: This is a mix of decl.j2 and decl_header.j2, there is tons of stuff still missing
+def docInfoHeader (doc : DocInfo) : HtmlM Html := do
+  let mut nodes := #[]
+  -- TODO: noncomputable, partial
+  -- TODO: Support all the kinds in CSS
+  nodes := nodes.push <span «class»="decl_kind">{doc.getKind}</span>
+  -- TODO: HTMLify the name etc.
+  nodes := nodes.push <span «class»="name">doc.getName.toString</span>
+  -- TODO: Figure out how we can get explicit, implicit and TC args and put them here
+  nodes := nodes.push <span «class»="decl_args">:</span>
+  nodes := nodes.push <div «class»="decl_type"><span «class»="fn">Type!!!</span></div>
+  -- TODO: The final type of the declaration
+  return <div «class»="decl_header"> [nodes] </div>
+
 def docInfoToHtml (doc : DocInfo) : HtmlM Html := do
   <div «class»="decl" id={doc.getName.toString}>
     <div «class»={doc.getKind}>
@@ -20,11 +36,7 @@ def docInfoToHtml (doc : DocInfo) : HtmlM Html := do
         <a href="https://github.com">source</a>
       </div>
       -- TODO: Attributes
-      -- TODO: Noncomputable, partial etc.
-      <span «class»="decl_kind">{doc.getKind}</span>
-      -- TODO: HTMLify the name etc.
-      {doc.getName.toString}
-      -- TODO: args
+      {←docInfoHeader doc}
       -- TODO: The actual type information we are here for
     </div>
   </div>

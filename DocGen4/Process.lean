@@ -15,33 +15,30 @@ namespace DocGen4
 
 open Lean Meta PrettyPrinter Std
 
+abbrev InfoSyntax := (Syntax × RBMap Delaborator.Pos Elab.Info compare)
+
 structure NameInfo where
   name  : Name
-  type : Syntax
-  deriving Repr
+  type : InfoSyntax
 
 def NameInfo.prettyPrint (i : NameInfo) : CoreM String := do
-  s!"{i.name} : {←PrettyPrinter.formatTerm i.type}"
+  s!"{i.name} : {←PrettyPrinter.formatTerm i.type.fst}"
 
 structure Info extends NameInfo where
   doc : Option String
   declarationRange : DeclarationRange
-  deriving Repr
 
 structure AxiomInfo extends Info where
   isUnsafe : Bool
-  deriving Repr
 
-structure TheoremInfo extends Info where
-  deriving Repr
+structure TheoremInfo extends Info
 
 structure OpaqueInfo extends Info where
-  value : Syntax
+  value : InfoSyntax
   isUnsafe : Bool
-  deriving Repr
 
 structure DefinitionInfo extends Info where
-  --value : Syntax
+  --value : InfoSyntax
   unsafeInformation : DefinitionSafety
   hints : ReducibilityHints
 
@@ -56,23 +53,19 @@ structure InductiveInfo extends Info where
   isUnsafe : Bool
   isReflexive : Bool
   isNested : Bool
-  deriving Repr
 
 structure FieldInfo extends NameInfo where
   projFn : Name
   subobject? : Option Name
-  deriving Repr
 
 structure StructureInfo extends Info where
   fieldInfo : Array FieldInfo
   parents : Array Name
   ctor : NameInfo
-  deriving Repr
 
 structure ClassInfo extends StructureInfo where
   hasOutParam : Bool
-  instances : Array Syntax
-  deriving Repr
+  instances : Array InfoSyntax
 
 inductive DocInfo where
 | axiomInfo (info : AxiomInfo) : DocInfo
@@ -90,18 +83,18 @@ structure Module where
   members : Array DocInfo
   deriving Inhabited
 
-def prettyPrintTerm (expr : Expr) : MetaM Syntax := do
+def prettyPrintTerm (expr : Expr) : MetaM InfoSyntax := do
   let ((expr, _), _) ← Elab.Term.TermElabM.run $ Elab.Term.levelMVarToParam (←instantiateMVars expr)
-  let term ← delab Name.anonymous [] expr
-  parenthesizeTerm term
+  let (stx, info) ← delabCore Name.anonymous [] expr
+  (←parenthesizeTerm stx, info)
 
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let env ← getEnv
-  let type ← prettyPrintTerm v.type
+  let t ← prettyPrintTerm v.type
   let doc ← findDocString? env v.name
   match ←findDeclarationRanges? v.name with
   -- TODO: Maybe selection range is more relevant? Figure this out in the future
-  | some range => return Info.mk ⟨v.name, type⟩ doc range.range
+  | some range => return Info.mk ⟨v.name, t⟩ doc range.range
   | none => panic! s!"{v.name} is a declaration without position"
 
 def AxiomInfo.ofAxiomVal (v : AxiomVal) : MetaM AxiomInfo := do
@@ -114,8 +107,8 @@ def TheoremInfo.ofTheoremVal (v : TheoremVal) : MetaM TheoremInfo := do
 
 def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
-  let value ← prettyPrintTerm v.value
-  return OpaqueInfo.mk info value v.isUnsafe
+  let t ← prettyPrintTerm v.value
+  return OpaqueInfo.mk info t v.isUnsafe
 
 def isInstance (declName : Name) : MetaM Bool := do
   (instanceExtension.getState (←getEnv)).instanceNames.contains declName
@@ -126,7 +119,7 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo :=
   --let value ← prettyPrintTerm v.value
   return DefinitionInfo.mk info v.safety v.hints
 
-def getConstructorType (ctor : Name) : MetaM Syntax := do
+def getConstructorType (ctor : Name) : MetaM InfoSyntax := do
   let env ← getEnv
   match env.find? ctor with
   | some (ConstantInfo.ctorInfo i) => ←prettyPrintTerm i.type
@@ -249,10 +242,10 @@ def prettyPrint (i : DocInfo) : CoreM String := do
     s!"inductive {←i.toNameInfo.prettyPrint}, ctors: {ctorString}, doc string: {i.doc}"
   | structureInfo i =>
     let ctorString ← i.ctor.prettyPrint
-    let fieldString ← i.fieldInfo.mapM (λ f => do s!"{f.name} : {←PrettyPrinter.formatTerm f.type}")
+    let fieldString ← i.fieldInfo.mapM (λ f => do s!"{f.name} : {←PrettyPrinter.formatTerm f.type.fst}")
     s!"structure {←i.toNameInfo.prettyPrint} extends {i.parents}, ctor: {ctorString}, fields : {fieldString}, doc string: {i.doc}"
   | classInfo i =>
-    let instanceString ← i.instances.mapM PrettyPrinter.formatTerm
+    let instanceString ← i.instances.mapM (PrettyPrinter.formatTerm ∘ Prod.fst)
     let fieldString ← i.fieldInfo.mapM (NameInfo.prettyPrint ∘ FieldInfo.toNameInfo)
     s!"class {←i.toNameInfo.prettyPrint} extends {i.parents}, fields: {fieldString}, instances : {instanceString}, doc string: {i.doc}"
 
@@ -275,6 +268,16 @@ def getKind : DocInfo → String
 | inductiveInfo _ => "inductive"
 | structureInfo _ => "structure"
 | classInfo _ => "class" -- TODO: This is handled as structure right now
+
+def getType : DocInfo → InfoSyntax
+| axiomInfo i => i.type
+| theoremInfo i => i.type
+| opaqueInfo i => i.type
+| definitionInfo i => i.type
+| instanceInfo i => i.type
+| inductiveInfo i => i.type
+| structureInfo i => i.type
+| classInfo i => i.type
 
 end DocInfo
 
