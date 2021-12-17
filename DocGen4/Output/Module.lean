@@ -15,13 +15,23 @@ namespace Output
 open scoped DocGen4.Jsx
 open Lean PrettyPrinter
 
+def declNameToLink (name : Name) : HtmlM String := do
+  let res ← getResult
+  let module := res.moduleNames[res.name2ModIdx.find! name]
+  (←moduleNameToLink module) ++ "#" ++ name.toString
+
 def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
   -- TODO: noncomputable, partial
   -- TODO: Support all the kinds in CSS
   nodes := nodes.push <span «class»="decl_kind">{doc.getKind}</span>
-  -- TODO: HTMLify the name etc.
-  nodes := nodes.push <span «class»="name">doc.getName.toString</span>
+  nodes := nodes.push
+    <span «class»="decl_name">
+      <a «class»="break_within" href={←declNameToLink doc.getName}>
+        -- TODO: HTMLify the name
+        {doc.getName.toString}
+      </a>
+    </span>
   -- TODO: Figure out how we can get explicit, implicit and TC args and put them here
   nodes := nodes.push <span «class»="decl_args">:</span>
   nodes := nodes.push <div «class»="decl_type"><span «class»="fn">Type!!!</span></div>

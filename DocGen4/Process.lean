@@ -290,7 +290,9 @@ def prettyPrint (m : Module) : CoreM String := do
 end Module
 
 structure AnalyzerResult where
-  modules : HashMap Name Module
+  name2ModIdx : HashMap Name ModuleIdx
+  moduleNames : Array Name
+  moduleInfo : HashMap Name Module
   hierarchy : Hierarchy
   deriving Inhabited
 
@@ -318,6 +320,11 @@ def process : MetaM AnalyzerResult := do
         res := res.insert moduleName {module with members := module.members.push dinfo}
       | none => panic! "impossible"
     | none => ()
-  return { modules := res, hierarchy := Hierarchy.fromArray env.header.moduleNames }
+  return {
+    name2ModIdx := env.const2ModIdx,
+    moduleNames := env.header.moduleNames,
+    moduleInfo := res,
+    hierarchy := Hierarchy.fromArray env.header.moduleNames
+  }
 
 end DocGen4

@@ -25,7 +25,7 @@ def htmlOutput (result : AnalyzerResult) : IO Unit := do
   FS.writeFile (basePath / "style.css") styleCss
   FS.writeFile (basePath / "404.html") notFoundHtml.toString
   FS.writeFile (basePath / "nav.js") navJs
-  for (module, content) in result.modules.toArray do
+  for (module, content) in result.moduleInfo.toArray do
     let moduleHtml := ReaderT.run (moduleToHtml content) config
     let path := moduleNameToFile basePath module
     FS.createDirAll $ moduleNameToDirectory basePath module

@@ -30,10 +30,9 @@ def templateExtends {α β : Type} (base : α → HtmlM β) (new : HtmlM α) : H
   new >>= base
 
 -- TODO: Change this to HtmlM and auto add the root URl
-def moduleNameToUrl (n : Name) : String :=
-    (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
-  where
-    parts := n.components.map Name.toString
+def moduleNameToLink (n : Name) : HtmlM String := do
+  let parts := n.components.map Name.toString
+  (←getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
     FilePath.withExtension (basePath / parts.foldl (· / ·) (FilePath.mk ".")) "html"
