@@ -52,7 +52,7 @@ open Parser PrettyPrinter
 declare_syntax_cat jsxElement
 declare_syntax_cat jsxChild
 
-def jsxAttrVal : Parser := strLit <|> group ("{" >> termParser >> "}") <|> ("[" >> termParser >> "]")
+def jsxAttrVal : Parser := strLit <|> group ("{" >> termParser >> "}")
 def jsxAttr : Parser := ident >> "=" >> jsxAttrVal
 
 -- JSXTextCharacter : SourceCharacter but not one of {, <, > or }
