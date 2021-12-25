@@ -49,6 +49,24 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
          #[Html.element "span" true #[("class", "fn")] (←infoFormatToHtml t)]
     | _ => #[Html.element "span" true #[("class", "fn")] (←infoFormatToHtml t)]
 
+def argToHtml (arg : Arg) : HtmlM Html := do
+  let (l, r, implicit) := match arg.binderInfo with
+  | BinderInfo.default => ("(", ")", false)
+  | BinderInfo.implicit => ("{", "}", true)
+  | BinderInfo.strictImplicit => ("⦃", "⦄", true)
+  | BinderInfo.instImplicit => ("[", "]", true)
+  -- TODO: Can this ever be reached here? What does it mean?
+  | BinderInfo.auxDecl => unreachable!
+  let mut nodes := #[Html.text s!"{l}{arg.name.toString} : "]
+  nodes := nodes.append (←infoFormatToHtml arg.type)
+  nodes := nodes.push r
+  let inner := Html.element "span" true #[("class", "fn")] nodes
+  let html := Html.element "span" false #[("class", "decl_args")] #[inner]
+  if implicit then
+    <span «class»="impl_arg">{html}</span>
+  else
+    html
+
 def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
   -- TODO: noncomputable, partial
@@ -61,7 +79,8 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
         {doc.getName.toString}
       </a>
     </span>
-  -- TODO: Figure out how we can get explicit, implicit and TC args and put them here
+  for arg in doc.getArgs do
+    nodes := nodes.push (←argToHtml arg)
   nodes := nodes.push <span «class»="decl_args">:</span>
   nodes := nodes.push $ Html.element "div" true #[("class", "decl_type")] (←infoFormatToHtml doc.getType)
   -- TODO: The final type of the declaration

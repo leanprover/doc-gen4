@@ -20,7 +20,13 @@ structure NameInfo where
   type : CodeWithInfos
   deriving Inhabited
 
+structure Arg where
+  name : Name
+  type : CodeWithInfos
+  binderInfo : BinderInfo
+
 structure Info extends NameInfo where
+  args : Array Arg
   doc : Option String
   declarationRange : DeclarationRange
   deriving Inhabited
@@ -89,6 +95,20 @@ structure Module where
   members : Array DocInfo
   deriving Inhabited
 
+partial def typeToArgsType (e : Expr) : (Array (Name × Expr × BinderInfo) × Expr) :=
+  match e.consumeMData with
+  | Expr.lam name type body data =>
+    let name := name.eraseMacroScopes
+    let arg := (name, type, data.binderInfo)
+    let (args, final) := typeToArgsType (Expr.instantiate1 body (mkFVar ⟨name⟩))
+    (#[arg] ++ args, final)
+  | Expr.forallE name type body data =>
+    let name := name.eraseMacroScopes
+    let arg := (name, type, data.binderInfo)
+    let (args, final) := typeToArgsType (Expr.instantiate1 body (mkFVar ⟨name⟩))
+    (#[arg] ++ args, final)
+  | _ => (#[], e)
+
 def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
   let (fmt, infos) ← formatInfos expr
   let tt := TaggedText.prettyTagged fmt
@@ -104,11 +124,13 @@ def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
 
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let env ← getEnv
-  let t ← prettyPrintTerm v.type
+  let (args, type) := typeToArgsType v.type
+  let type ← prettyPrintTerm type
+  let args ← args.mapM (λ (n, e, b) => do Arg.mk n (←prettyPrintTerm e) b)
   let doc ← findDocString? env v.name
   match ←findDeclarationRanges? v.name with
   -- TODO: Maybe selection range is more relevant? Figure this out in the future
-  | some range => return Info.mk ⟨v.name, t⟩ doc range.range
+  | some range => return Info.mk ⟨v.name, type⟩ args doc range.range
   | none => panic! s!"{v.name} is a declaration without position"
 
 def AxiomInfo.ofAxiomVal (v : AxiomVal) : MetaM AxiomInfo := do
@@ -273,6 +295,16 @@ def getType : DocInfo → CodeWithInfos
 | inductiveInfo i => i.type
 | structureInfo i => i.type
 | classInfo i => i.type
+
+def getArgs : DocInfo → Array Arg
+| axiomInfo i => i.args
+| theoremInfo i => i.args
+| opaqueInfo i => i.args
+| definitionInfo i => i.args
+| instanceInfo i => i.args
+| inductiveInfo i => i.args
+| structureInfo i => i.args
+| classInfo i => i.args
 
 end DocInfo
 
