@@ -18,8 +18,8 @@ open Lean
 
 inductive Html where
   -- TODO(WN): it's nameless for shorter JSON; re-add names when we have deriving strategies for From/ToJson
-  -- element (tag : String) (attrs : Array HtmlAttribute) (children : Array Html)
-  | element : String → Array (String × String) → Array Html → Html
+  -- element (tag : String) (flatten : Bool) (attrs : Array HtmlAttribute) (children : Array Html)
+  | element : String → Bool → Array (String × String) → Array Html → Html
   | text : String → Html
   deriving Repr, BEq, Inhabited, FromJson, ToJson
 
@@ -33,9 +33,10 @@ def attributesToString (attrs : Array (String × String)) :String :=
 
 -- TODO: Termination proof
 partial def toStringAux : Html → String
-| element tag attrs #[text s] => s!"<{tag}{attributesToString attrs}>{s}</{tag}>\n"
-| element tag attrs #[child] => s!"<{tag}{attributesToString attrs}>\n{child.toStringAux}</{tag}>\n"
-| element tag attrs children => s!"<{tag}{attributesToString attrs}>\n{children.foldl (· ++ toStringAux ·) ""}</{tag}>\n"
+| element tag false attrs #[text s] => s!"<{tag}{attributesToString attrs}>{s}</{tag}>\n"
+| element tag false attrs #[child] => s!"<{tag}{attributesToString attrs}>\n{child.toStringAux}</{tag}>\n"
+| element tag false attrs children => s!"<{tag}{attributesToString attrs}>\n{children.foldl (· ++ toStringAux ·) ""}</{tag}>\n"
+| element tag true attrs children => s!"<{tag}{attributesToString attrs}>{children.foldl (· ++ toStringAux ·) ""}</{tag}>"
 | text s => s
 
 def toString (html : Html) : String :=
@@ -83,7 +84,7 @@ macro_rules
       | `(jsxAttrVal| $s:strLit) => s
       | `(jsxAttrVal| { $t:term }) => t
       | _ => unreachable!
-    `(Html.element $(quote <| toString n.getId) #[ $[($ns, $vs)],* ] #[])
+    `(Html.element $(quote <| toString n.getId) false #[ $[($ns, $vs)],* ] #[])
   | `(<$n $[$ns = $vs]* >$cs*</$m>) =>
     if n.getId == m.getId then do
       let ns := ns.map (quote <| toString ·.getId)
@@ -99,7 +100,7 @@ macro_rules
         | `(jsxChild|$e:jsxElement) => `(#[$e:jsxElement])
         | _                         => unreachable!
       let tag := toString n.getId
-      `(Html.element $(quote tag) #[ $[($ns, $vs)],* ] (Array.foldl Array.append #[] #[ $[$cs],* ]))
+      `(Html.element $(quote tag) false #[ $[($ns, $vs)],* ] (Array.foldl Array.append #[] #[ $[$cs],* ]))
     else Macro.throwError ("expected </" ++ toString n.getId ++ ">")
 
 end Jsx

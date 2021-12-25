@@ -22,7 +22,7 @@ def moduleListFile (file : Name) : HtmlM Html := do
       #[("class", "nav_link")]
   | none => #[("class", "nav_link")]
   let nodes := #[<a href={s!"{←moduleNameToLink file}"}>{file.toString}</a>]
-  return Html.element "div" attributes nodes
+  return Html.element "div" false attributes nodes
 
 partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
   let children := Array.mk (h.getChildren.toList.map Prod.snd)
@@ -40,7 +40,7 @@ partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
   | none =>
       #[("class", "nav_sect"), ("data-path", moduleLink)]
   let nodes := #[<summary>{h.getName.toString}</summary>] ++ dirNodes ++ fileNodes
-  return Html.element "details" attributes nodes
+  return Html.element "details" false attributes nodes
 
 def moduleList : HtmlM (Array Html) := do
   let hierarchy := (←getResult).hierarchy
