@@ -46,7 +46,6 @@ def load (imports : List Name) : IO AnalyzerResult := do
   let env ← importModules (List.map (Import.mk · false) imports) Options.empty
   -- TODO parameterize maxHeartbeats
   IO.println "Processing modules"
-  let res ← Prod.fst <$> (Meta.MetaM.toIO process { maxHeartbeats := 100000000} { env := env} {} {})
-  return res
+  Prod.fst <$> (Meta.MetaM.toIO process { maxHeartbeats := 100000000, options := ⟨[(`pp.tagAppFns, true)]⟩ } { env := env} {} {})
 
 end DocGen4

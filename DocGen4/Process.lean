@@ -13,34 +13,35 @@ import DocGen4.Hierarchy
 
 namespace DocGen4
 
-open Lean Meta PrettyPrinter Std
-
-abbrev InfoFormat := (Format × RBMap Delaborator.Pos Elab.Info compare)
+open Lean Meta PrettyPrinter Std Widget
 
 structure NameInfo where
   name  : Name
-  type : InfoFormat
-
-def NameInfo.prettyPrint (i : NameInfo) : String :=
-  s!"{i.name} : {i.type.fst}"
+  type : CodeWithInfos
+  deriving Inhabited
 
 structure Info extends NameInfo where
   doc : Option String
   declarationRange : DeclarationRange
+  deriving Inhabited
 
 structure AxiomInfo extends Info where
   isUnsafe : Bool
+  deriving Inhabited
 
 structure TheoremInfo extends Info
+  deriving Inhabited
 
 structure OpaqueInfo extends Info where
-  value : InfoFormat
+  value : CodeWithInfos
   isUnsafe : Bool
+  deriving Inhabited
 
 structure DefinitionInfo extends Info where
-  --value : InfoFormat
+  --value : CodeWithInfos
   unsafeInformation : DefinitionSafety
   hints : ReducibilityHints
+  deriving Inhabited
 
 abbrev InstanceInfo := DefinitionInfo
 
@@ -53,19 +54,23 @@ structure InductiveInfo extends Info where
   isUnsafe : Bool
   isReflexive : Bool
   isNested : Bool
+  deriving Inhabited
 
 structure FieldInfo extends NameInfo where
   projFn : Name
   subobject? : Option Name
+  deriving Inhabited
 
 structure StructureInfo extends Info where
   fieldInfo : Array FieldInfo
   parents : Array Name
   ctor : NameInfo
+  deriving Inhabited
 
 structure ClassInfo extends StructureInfo where
   hasOutParam : Bool
-  instances : Array InfoFormat
+  instances : Array CodeWithInfos
+  deriving Inhabited
 
 inductive DocInfo where
 | axiomInfo (info : AxiomInfo) : DocInfo
@@ -76,6 +81,7 @@ inductive DocInfo where
 | inductiveInfo (info : InductiveInfo) : DocInfo
 | structureInfo (info : StructureInfo) : DocInfo
 | classInfo (info : ClassInfo) : DocInfo
+  deriving Inhabited
 
 structure Module where
   name : Name
@@ -83,13 +89,18 @@ structure Module where
   members : Array DocInfo
   deriving Inhabited
 
-def prettyPrintTerm (expr : Expr) : MetaM InfoFormat := do
-  let ((expr, _), _) ← Elab.Term.TermElabM.run $ Elab.Term.levelMVarToParam (←instantiateMVars expr)
-  let (stx, info) ← delabCore Name.anonymous [] expr
-  let stx := sanitizeSyntax stx |>.run' { options := ←getOptions }
-  let stx ← parenthesizeTerm stx
-  let fmt ← PrettyPrinter.formatTerm stx
-  (fmt, info)
+def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
+  let (fmt, infos) ← formatInfos expr
+  let tt := TaggedText.prettyTagged fmt
+  let ctx := {
+    env := ← getEnv
+    mctx := ← getMCtx
+    options := ← getOptions
+    currNamespace := ← getCurrNamespace
+    openDecls := ← getOpenDecls
+    fileMap := arbitrary
+  }
+  tagExprInfos ctx infos tt
 
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let env ← getEnv
@@ -122,7 +133,7 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo :=
   --let value ← prettyPrintTerm v.value
   return DefinitionInfo.mk info v.safety v.hints
 
-def getConstructorType (ctor : Name) : MetaM InfoFormat := do
+def getConstructorType (ctor : Name) : MetaM CodeWithInfos := do
   let env ← getEnv
   match env.find? ctor with
   | some (ConstantInfo.ctorInfo i) => ←prettyPrintTerm i.type
@@ -233,25 +244,6 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
   | ConstantInfo.recInfo i => none
   | ConstantInfo.quotInfo i => none
 
-def prettyPrint (i : DocInfo) : CoreM String := do
-  match i with
-  | axiomInfo i => s!"axiom {i.toNameInfo.prettyPrint}, doc string: {i.doc}"
-  | theoremInfo i => s!"theorem {i.toNameInfo.prettyPrint}, doc string: {i.doc}"
-  | opaqueInfo i => s!"constant {i.toNameInfo.prettyPrint}, doc string: {i.doc}"
-  | definitionInfo i => s!"def {i.toNameInfo.prettyPrint}, doc string: {i.doc}"
-  | instanceInfo i => s!"instance {i.toNameInfo.prettyPrint}, doc string: {i.doc}"
-  | inductiveInfo i =>
-    let ctorString := i.ctors.map NameInfo.prettyPrint
-    s!"inductive {←i.toNameInfo.prettyPrint}, ctors: {ctorString}, doc string: {i.doc}"
-  | structureInfo i =>
-    let ctorString := i.ctor.prettyPrint
-    let fieldString := i.fieldInfo.map (λ f => s!"{f.name} : {f.type.fst}")
-    s!"structure {i.toNameInfo.prettyPrint} extends {i.parents}, ctor: {ctorString}, fields : {fieldString}, doc string: {i.doc}"
-  | classInfo i =>
-    let instanceString := i.instances.map Prod.fst
-    let fieldString := i.fieldInfo.map (NameInfo.prettyPrint ∘ FieldInfo.toNameInfo)
-    s!"class {i.toNameInfo.prettyPrint} extends {i.parents}, fields: {fieldString}, instances : {instanceString}, doc string: {i.doc}"
-
 def getName : DocInfo → Name
 | axiomInfo i => i.name
 | theoremInfo i => i.name
@@ -272,7 +264,7 @@ def getKind : DocInfo → String
 | structureInfo _ => "structure"
 | classInfo _ => "class" -- TODO: This is handled as structure right now
 
-def getType : DocInfo → InfoFormat
+def getType : DocInfo → CodeWithInfos
 | axiomInfo i => i.type
 | theoremInfo i => i.type
 | opaqueInfo i => i.type
@@ -283,14 +275,6 @@ def getType : DocInfo → InfoFormat
 | classInfo i => i.type
 
 end DocInfo
-
-namespace Module
-
-def prettyPrint (m : Module) : CoreM String := do
-  let pretty := s!"Module {m.name}, doc string: {m.doc} with members:\n"
-  Array.foldlM (λ p mem => return p ++ "  " ++ (←mem.prettyPrint) ++ "\n") pretty m.members
-
-end Module
 
 structure AnalyzerResult where
   name2ModIdx : HashMap Name ModuleIdx
