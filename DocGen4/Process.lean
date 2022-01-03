@@ -52,14 +52,8 @@ structure DefinitionInfo extends Info where
 abbrev InstanceInfo := DefinitionInfo
 
 structure InductiveInfo extends Info where
-  numParams : Nat     -- Number of parameters
-  numIndices : Nat    -- Number of indices
-  all : List Name     -- List of all (including this one) inductive datatypes in the mutual declaration containing this one
   ctors : List NameInfo   -- List of all constructors and their type for this inductive datatype
-  isRec : Bool        -- `true` Iff it is recursive
   isUnsafe : Bool
-  isReflexive : Bool
-  isNested : Bool
   deriving Inhabited
 
 structure FieldInfo extends NameInfo where
@@ -166,7 +160,7 @@ def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let env ← getEnv
   let ctors ← v.ctors.mapM (λ name => do NameInfo.mk name (←getConstructorType name))
-  return InductiveInfo.mk info v.numParams v.numIndices v.all ctors v.isRec v.isUnsafe v.isReflexive v.isNested
+  return InductiveInfo.mk info ctors v.isUnsafe
 
 def getFieldTypeAux (type : Expr) (vars : List Name) : (Expr × List Name) :=
   match type with
