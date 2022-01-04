@@ -56,13 +56,8 @@ structure InductiveInfo extends Info where
   isUnsafe : Bool
   deriving Inhabited
 
-structure FieldInfo extends NameInfo where
-  projFn : Name
-  subobject? : Option Name
-  deriving Inhabited
-
 structure StructureInfo extends Info where
-  fieldInfo : Array FieldInfo
+  fieldInfo : Array NameInfo
   parents : Array Name
   ctor : NameInfo
   deriving Inhabited
@@ -162,33 +157,36 @@ def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
   let ctors ← v.ctors.mapM (λ name => do NameInfo.mk name (←getConstructorType name))
   return InductiveInfo.mk info ctors v.isUnsafe
 
-def getFieldTypeAux (type : Expr) (vars : List Name) : (Expr × List Name) :=
-  match type with
-  | Expr.forallE `self _ b .. => (b, (`self :: vars))
-  | Expr.forallE n _ b .. => getFieldTypeAux b (n :: vars)
-  | _ => (type, vars)
+def dropArgs (type : Expr) (n : Nat) : (Expr × List (Name × Expr)) :=
+  match type, n with
+  | e, 0 => (e, [])
+  | Expr.forallE name type body _, x + 1 =>
+    let body := body.instantiate1 $ mkFVar ⟨name⟩
+    let next := dropArgs body x
+    { next with snd := (name, type) :: next.snd}
+  | e, x + 1 => panic! s!"No forallE left"
 
-def getFieldType (projFn : Name) : MetaM Expr := do
-  let fn ← mkConstWithFreshMVarLevels projFn
-  let type ← inferType fn
-  let (type, vars) := getFieldTypeAux type []
-  type.instantiate $ vars.toArray.map mkConst
-
-def FieldInfo.ofStructureFieldInfo (i : StructureFieldInfo) : MetaM FieldInfo := do
-  let type ← getFieldType i.projFn
-  let ni := NameInfo.mk i.fieldName (←prettyPrintTerm type)
-  FieldInfo.mk ni i.projFn i.subobject?
+def getFieldTypes (ctor : ConstructorVal) (parents : Nat) : MetaM (Array NameInfo) := do
+  let type := ctor.type
+  let (field_function, params) := dropArgs type (ctor.numParams + parents)
+  let (_, fields) := dropArgs field_function (ctor.numFields - parents)
+  let mut field_infos := #[]
+  for (name, type) in fields do
+    field_infos := field_infos.push { name := name, type := ←prettyPrintTerm type}
+  field_infos
 
 def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let env ← getEnv
   let parents := getParentStructures env v.name
-  let ctor := getStructureCtor env v.name |>.name
-  let ctorType ← getConstructorType ctor
+  let ctor := getStructureCtor env v.name
+  let ctorType ← prettyPrintTerm ctor.type
   match getStructureInfo? env v.name with
   | some i =>
-    let fieldInfos ← i.fieldInfo.mapM FieldInfo.ofStructureFieldInfo
-    return StructureInfo.mk info fieldInfos parents ⟨ctor, ctorType⟩
+    if i.fieldNames.size - parents.size > 0 then
+      return StructureInfo.mk info (←getFieldTypes ctor parents.size) parents ⟨ctor.name, ctorType⟩
+    else
+      return StructureInfo.mk info #[] parents ⟨ctor.name, ctorType⟩
   | none => panic! s!"{v.name} is not a structure"
 
 def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do

@@ -5,6 +5,7 @@ Authors: Henrik Böving
 -/
 import DocGen4.Output.Template
 import DocGen4.Output.Inductive
+import DocGen4.Output.Structure
 
 namespace DocGen4
 namespace Output
@@ -30,6 +31,19 @@ def argToHtml (arg : Arg) : HtmlM Html := do
   else
     html
 
+def structureInfoHeader (s : StructureInfo) : HtmlM (Array Html) := do
+  let mut nodes := #[]
+  if s.parents.size > 0 then
+    nodes := nodes.push <span «class»="decl_extends">extends</span>
+    let mut parents := #[]
+    for parent in s.parents do
+      let link := <a «class»="break_within" href={←declNameToLink parent}>{parent.toString}</a>
+      let inner := Html.element "span" true #[("class", "fn")] #[link]
+      let html:= Html.element "span" false #[("class", "decl_parent")] #[inner]
+      parents := parents.push html
+    nodes := nodes.append (parents.toList.intersperse (Html.text ", ")).toArray
+  nodes
+
 def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
   -- TODO: noncomputable, partial
@@ -44,14 +58,19 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
     </span>
   for arg in doc.getArgs do
     nodes := nodes.push (←argToHtml arg)
+
+  if let DocInfo.structureInfo i := doc then
+    nodes := nodes.append (←structureInfoHeader i)
+
   nodes := nodes.push <span «class»="decl_args">:</span>
   nodes := nodes.push $ Html.element "div" true #[("class", "decl_type")] (←infoFormatToHtml doc.getType)
   -- TODO: The final type of the declaration
   return <div «class»="decl_header"> [nodes] </div>
 
 def docInfoToHtml (doc : DocInfo) : HtmlM Html := do
-  let doc_html := match doc with
+  let doc_html ← match doc with
   | DocInfo.inductiveInfo i => inductiveToHtml i
+  | DocInfo.structureInfo i => structureToHtml i
   | _ => #[]
 
   return <div «class»="decl" id={doc.getName.toString}>
