@@ -421,7 +421,7 @@ main h2, main h3, main h4, main h5, main h6 {
     border-radius: 5px;
 }
 
-.decl_args, .decl_type {
+.decl_args, .decl_type .decl_parent {
     font-weight: normal;
 }
 
@@ -430,7 +430,7 @@ main h2, main h3, main h4, main h5, main h6 {
     white-space: nowrap;
 }
 
-.decl_kind, .decl_name {
+.decl_kind, .decl_name, .decl_extends {
     font-weight: bold;
 }
 
@@ -480,14 +480,7 @@ pre code { padding: 0 0; }
 
 .structure_field {
     display: block;
-}
-.structure_field:before {
-    content: '(';
-    color: gray;
-}
-.structure_field:after {
-    content: ')';
-    color: gray;
+    margin-left: 2ex;
 }
 
 .constructor {

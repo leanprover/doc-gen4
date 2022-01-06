@@ -5,7 +5,6 @@ namespace Output
 
 open scoped DocGen4.Jsx
 
-
 def ctorToHtml (i : NameInfo) : HtmlM Html := do
   let name := i.name.components'.head!.toString
   return <li «class»="constructor" id={name}>{name} : [←infoFormatToHtml i.type]</li>
