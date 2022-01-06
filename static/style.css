@@ -359,7 +359,7 @@ main h2, main h3, main h4, main h5, main h6 {
     margin-top: 4rem;
 }
 
-.def {
+.def, .instance {
     border-left: 10px solid #92dce5;
     border-top: 2px solid #92dce5;
 }
@@ -374,7 +374,7 @@ main h2, main h3, main h4, main h5, main h6 {
     border-top: 2px solid #f44708;
 }
 
-.structure, .inductive {
+.structure, .inductive, .class {
     border-left: 10px solid #f0a202;
     border-top: 2px solid #f0a202;
 }
@@ -400,7 +400,7 @@ main h2, main h3, main h4, main h5, main h6 {
     transition: background-color 100ms ease-in-out;
 }
 
-.def .fn:hover {
+.def .fn:hover, .instance .fn:hover {
     background-color: hsla(187, 61%, calc(100% - 5%*var(--fn)));
     box-shadow: 0 0 0 1px hsla(187, 61%, calc(100% - 5%*(var(--fn) + 1)));
     border-radius: 5px;
@@ -415,7 +415,7 @@ main h2, main h3, main h4, main h5, main h6 {
     box-shadow: 0 0 0 1px hsla(16, 94%, calc(100% - 5%*(var(--fn) + 1)));
     border-radius: 5px;
 }
-.structure .fn:hover, .inductive .fn:hover {
+.structure .fn:hover, .inductive .fn:hover, .class .fn:hover {
     background-color: hsla(40, 98%, calc(100% - 5%*var(--fn)));
     box-shadow: 0 0 0 1px hsla(40, 98%, calc(100% - 5%*(var(--fn) + 1)));
     border-radius: 5px;

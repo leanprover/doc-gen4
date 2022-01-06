@@ -63,8 +63,7 @@ structure StructureInfo extends Info where
   deriving Inhabited
 
 structure ClassInfo extends StructureInfo where
-  hasOutParam : Bool
-  instances : Array CodeWithInfos
+  instances : Array Name
   deriving Inhabited
 
 inductive DocInfo where
@@ -193,8 +192,7 @@ def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do
   let fn ← mkConstWithFreshMVarLevels v.name
   let (xs, _, _) ← forallMetaTelescopeReducing (← inferType fn)
   let insts ← SynthInstance.getInstances (mkAppN fn xs)
-  let insts_stx ← insts.mapM prettyPrintTerm
-  return ClassInfo.mk sinfo (hasOutParams (←getEnv) v.name) insts_stx
+  return ClassInfo.mk sinfo (insts.map Expr.constName!)
 
 namespace DocInfo
 

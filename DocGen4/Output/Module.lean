@@ -6,6 +6,7 @@ Authors: Henrik Böving
 import DocGen4.Output.Template
 import DocGen4.Output.Inductive
 import DocGen4.Output.Structure
+import DocGen4.Output.Class
 
 namespace DocGen4
 namespace Output
@@ -59,8 +60,11 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   for arg in doc.getArgs do
     nodes := nodes.push (←argToHtml arg)
 
-  if let DocInfo.structureInfo i := doc then
-    nodes := nodes.append (←structureInfoHeader i)
+  -- TODO: dedup this
+  match doc with
+  | DocInfo.structureInfo i => nodes := nodes.append (←structureInfoHeader i)
+  | DocInfo.classInfo i => nodes := nodes.append (←structureInfoHeader i.toStructureInfo)
+  | _ => nodes := nodes
 
   nodes := nodes.push <span «class»="decl_args">:</span>
   nodes := nodes.push $ Html.element "div" true #[("class", "decl_type")] (←infoFormatToHtml doc.getType)
@@ -70,6 +74,7 @@ def docInfoToHtml (doc : DocInfo) : HtmlM Html := do
   let doc_html ← match doc with
   | DocInfo.inductiveInfo i => inductiveToHtml i
   | DocInfo.structureInfo i => structureToHtml i
+  | DocInfo.classInfo i => classToHtml i
   | _ => #[]
 
   return <div «class»="decl" id={doc.getName.toString}>
