@@ -64,7 +64,6 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
 
   nodes := nodes.push <span «class»="decl_args">:</span>
   nodes := nodes.push $ Html.element "div" true #[("class", "decl_type")] (←infoFormatToHtml doc.getType)
-  -- TODO: The final type of the declaration
   return <div «class»="decl_header"> [nodes] </div>
 
 def docInfoToHtml (doc : DocInfo) : HtmlM Html := do

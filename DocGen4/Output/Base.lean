@@ -30,7 +30,6 @@ def getCurrentName : HtmlM (Option Name) := do (←read).currentName
 def templateExtends {α β : Type} (base : α → HtmlM β) (new : HtmlM α) : HtmlM β :=
   new >>= base
 
--- TODO: Change this to HtmlM and auto add the root URl
 def moduleNameToLink (n : Name) : HtmlM String := do
   let parts := n.components.map Name.toString
   (←getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"

@@ -150,7 +150,6 @@ def getConstructorType (ctor : Name) : MetaM CodeWithInfos := do
   | some (ConstantInfo.ctorInfo i) => ←prettyPrintTerm i.type
   | _ => panic! s!"Constructor {ctor} was requested but does not exist"
 
--- TODO: Obtain parameters that come after the inductive Name
 def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let env ← getEnv
