@@ -295,6 +295,16 @@ def getArgs : DocInfo → Array Arg
 | structureInfo i => i.args
 | classInfo i => i.args
 
+def getDeclarationRange : DocInfo → DeclarationRange
+| axiomInfo i => i.declarationRange
+| theoremInfo i => i.declarationRange
+| opaqueInfo i => i.declarationRange
+| definitionInfo i => i.declarationRange
+| instanceInfo i => i.declarationRange
+| inductiveInfo i => i.declarationRange
+| structureInfo i => i.declarationRange
+| classInfo i => i.declarationRange
+
 end DocInfo
 
 structure AnalyzerResult where

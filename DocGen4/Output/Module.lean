@@ -92,7 +92,8 @@ def docInfoToHtml (doc : DocInfo) : HtmlM Html := do
 def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
   -- TODO: Probably some sort of ordering by line number would be cool?
   -- maybe they should already be ordered in members.
-  let docInfos ← module.members.mapM docInfoToHtml
+  let sortedMembers := module.members.qsort (λ l r => l.getDeclarationRange.pos.line < r.getDeclarationRange.pos.line)
+  let docInfos ← sortedMembers.mapM docInfoToHtml
   -- TODO: This is missing imports, imported by, source link, list of decls
   templateExtends (baseHtml module.name.toString) $
     Html.element "main" false #[] docInfos
