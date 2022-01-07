@@ -14,9 +14,8 @@ namespace DocGen4
 
 open Lean Std IO System Output
 
-def htmlOutput (result : AnalyzerResult) : IO Unit := do
-  -- TODO: parameterize this
-  let config := { root := "/", result := result, currentName := none}
+def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
+  let config := { root := root, result := result, currentName := none}
   let basePath := FilePath.mk "./build/doc/"
   let indexHtml := ReaderT.run index config 
   let notFoundHtml := ReaderT.run notFound config
