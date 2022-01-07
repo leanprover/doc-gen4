@@ -77,9 +77,27 @@ inductive DocInfo where
 | classInfo (info : ClassInfo) : DocInfo
   deriving Inhabited
 
+namespace DocInfo
+
+def getDeclarationRange : DocInfo → DeclarationRange
+| axiomInfo i => i.declarationRange
+| theoremInfo i => i.declarationRange
+| opaqueInfo i => i.declarationRange
+| definitionInfo i => i.declarationRange
+| instanceInfo i => i.declarationRange
+| inductiveInfo i => i.declarationRange
+| structureInfo i => i.declarationRange
+| classInfo i => i.declarationRange
+
+def lineOrder (l r : DocInfo) : Bool :=
+  l.getDeclarationRange.pos.line < r.getDeclarationRange.pos.line
+
+end DocInfo
+
 structure Module where
   name : Name
   doc : Option String
+  -- Sorted according to their line numbers
   members : Array DocInfo
   deriving Inhabited
 
@@ -295,16 +313,6 @@ def getArgs : DocInfo → Array Arg
 | structureInfo i => i.args
 | classInfo i => i.args
 
-def getDeclarationRange : DocInfo → DeclarationRange
-| axiomInfo i => i.declarationRange
-| theoremInfo i => i.declarationRange
-| opaqueInfo i => i.declarationRange
-| definitionInfo i => i.declarationRange
-| instanceInfo i => i.declarationRange
-| inductiveInfo i => i.declarationRange
-| structureInfo i => i.declarationRange
-| classInfo i => i.declarationRange
-
 end DocInfo
 
 structure AnalyzerResult where
@@ -338,6 +346,11 @@ def process : MetaM AnalyzerResult := do
         res := res.insert moduleName {module with members := module.members.push dinfo}
       | none => panic! "impossible"
     | none => ()
+
+  -- This could probably be faster if we did an insertion sort above instead
+  for (moduleName, module) in res.toArray do
+    res := res.insert moduleName {module with members := module.members.qsort DocInfo.lineOrder}
+
   return {
     name2ModIdx := env.const2ModIdx,
     moduleNames := env.header.moduleNames,

@@ -103,11 +103,10 @@ def internalNav (members : Array Name) (moduleName : Name) : Html :=
   </nav>
 
 def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
-  let sortedMembers := module.members.qsort (λ l r => l.getDeclarationRange.pos.line < r.getDeclarationRange.pos.line)
-  let docInfos ← sortedMembers.mapM docInfoToHtml
+  let docInfos ← module.members.mapM docInfoToHtml
   -- TODO: This is missing imports, imported by
   templateExtends (baseHtmlArray module.name.toString) $ #[
-    internalNav (sortedMembers.map DocInfo.getName) module.name,
+    internalNav (module.members.map DocInfo.getName) module.name,
     Html.element "main" false #[] docInfos
   ]
 
