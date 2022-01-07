@@ -34,8 +34,8 @@ if [ "$3" = "true" ]; then
   chmod 600 ~/.ssh/id_ed25519
   cd mathlib4_docs/docs
   git remote set-url origin "git@github.com:leanprover-community/mathlib4_docs.git"
-  git config user.email "hargonix@gmail.com"
-  git config user.name "doc-gen4-bot"
+  git config user.email "leanprover.community@gmail.com"
+  git config user.name "leanprover-community-bot"
   git add -A .
   git checkout --orphan master2
   git commit -m "automatic update to mathlib4 $mathlib_short_git_hash using doc-gen4 $docgen_git_hash"
