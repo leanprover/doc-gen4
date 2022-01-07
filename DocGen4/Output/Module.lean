@@ -89,14 +89,27 @@ def docInfoToHtml (doc : DocInfo) : HtmlM Html := do
     </div>
   </div>
 
+def moduleToNavLink (module : Name) : Html :=
+  <div «class»="nav_link">
+    <a «class»="break_within" href={s!"#{module.toString}"}>{module.toString}</a>
+  </div>
+
+def internalNav (members : Array Name) (moduleName : Name) : Html :=
+  <nav «class»="internal_nav">
+    <h3><a «class»="break_within" href="#top">{moduleName.toString}</a></h3>
+    -- TODO: Proper source links
+    <p «class»="gh_nav_link"><a href="https://github.com">source</a></p>
+    [members.map moduleToNavLink]
+  </nav>
+
 def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
-  -- TODO: Probably some sort of ordering by line number would be cool?
-  -- maybe they should already be ordered in members.
   let sortedMembers := module.members.qsort (λ l r => l.getDeclarationRange.pos.line < r.getDeclarationRange.pos.line)
   let docInfos ← sortedMembers.mapM docInfoToHtml
-  -- TODO: This is missing imports, imported by, source link, list of decls
-  templateExtends (baseHtml module.name.toString) $
+  -- TODO: This is missing imports, imported by
+  templateExtends (baseHtmlArray module.name.toString) $ #[
+    internalNav (sortedMembers.map DocInfo.getName) module.name,
     Html.element "main" false #[] docInfos
+  ]
 
 end Output
 end DocGen4
