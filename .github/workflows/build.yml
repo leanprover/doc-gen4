@@ -1,0 +1,47 @@
+name: build and deploy docs
+
+on:
+  schedule:
+    - cron: '0 */2 * * *' # every 2 hours
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: build and deploy docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+
+      - name: install elan
+        run: |
+          set -o pipefail
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- --default-toolchain none -y
+          ~/.elan/bin/lean --version
+          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
+      - name: compile doc-gen4
+        run: |
+          lake build
+
+      - name: Checkout and compile mathlib4
+        run: |
+          cd ../
+          git clone https://github.com/leanprover-community/mathlib4
+          cd mathlib4
+          lake build
+
+      - name: generate and deploy docs
+        run: |
+          if [ "$github_repo" = "leanprover/doc-gen4" ] && [ "$github_ref" = "refs/heads/main" ]; then
+            deploy="true"
+          else
+            deploy="false"
+          fi
+          cd ../
+          ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "$deploy"
+        env:
+          MATHLIB4_DOCS_KEY: ${{ secrets.MATHLIB4_DOCS_KEY }}
+          github_repo: ${{ github.repository }}
+          github_ref: ${{ github.ref }}
