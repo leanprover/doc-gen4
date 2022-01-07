@@ -11,7 +11,7 @@ namespace Output
 
 open scoped DocGen4.Jsx
 
-def baseHtml (title : String) (site : Html) : HtmlM Html := do
+def baseHtmlArray (title : String) (site : Array Html) : HtmlM Html := do
   <html lang="en">
     <head>
       <link rel="stylesheet" href={s!"{←getRoot}style.css"}/>
@@ -37,9 +37,7 @@ def baseHtml (title : String) (site : Html) : HtmlM Html := do
       </form>
     </header>
 
-    <nav «class»="internal_nav"></nav>
-
-    {site}
+    [site]
     
     {←navbar}
 
@@ -52,6 +50,9 @@ def baseHtml (title : String) (site : Html) : HtmlM Html := do
     <script src={s!"{←getRoot}nav.js"}></script>
     </body>
   </html>
+
+
+def baseHtml (title : String) (site : Html) : HtmlM Html := baseHtmlArray title #[site]
 
 end Output
 end DocGen4
