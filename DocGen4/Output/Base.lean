@@ -17,6 +17,8 @@ structure SiteContext where
   root : String
   result : AnalyzerResult
   currentName : Option Name
+  -- Generates a URL pointing to the source of the given module Name
+  sourceLinker : Name → Option DeclarationRange → String
 
 def setCurrentName (name : Name) (ctx : SiteContext) := {ctx with currentName := some name}
 
@@ -26,6 +28,7 @@ abbrev HtmlM := HtmlT Id
 def getRoot : HtmlM String := do (←read).root
 def getResult : HtmlM AnalyzerResult := do (←read).result
 def getCurrentName : HtmlM (Option Name) := do (←read).currentName
+def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do (←read).sourceLinker module range
 
 def templateExtends {α β : Type} (base : α → HtmlM β) (new : HtmlM α) : HtmlM β :=
   new >>= base

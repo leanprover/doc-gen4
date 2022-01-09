@@ -70,7 +70,7 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   nodes := nodes.push $ Html.element "div" true #[("class", "decl_type")] (←infoFormatToHtml doc.getType)
   return <div «class»="decl_header"> [nodes] </div>
 
-def docInfoToHtml (doc : DocInfo) : HtmlM Html := do
+def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   let doc_html ← match doc with
   | DocInfo.inductiveInfo i => inductiveToHtml i
   | DocInfo.structureInfo i => structureToHtml i
@@ -81,7 +81,7 @@ def docInfoToHtml (doc : DocInfo) : HtmlM Html := do
     <div «class»={doc.getKind}>
       <div «class»="gh_link">
         -- TODO: Put the proper source link
-        <a href="https://github.com">source</a>
+        <a href={←getSourceUrl module doc.getDeclarationRange}>source</a>
       </div>
       -- TODO: Attributes
       {←docInfoHeader doc}
@@ -94,19 +94,19 @@ def moduleToNavLink (module : Name) : Html :=
     <a «class»="break_within" href={s!"#{module.toString}"}>{module.toString}</a>
   </div>
 
-def internalNav (members : Array Name) (moduleName : Name) : Html :=
+def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
   <nav «class»="internal_nav">
     <h3><a «class»="break_within" href="#top">{moduleName.toString}</a></h3>
     -- TODO: Proper source links
-    <p «class»="gh_nav_link"><a href="https://github.com">source</a></p>
+    <p «class»="gh_nav_link"><a href={←getSourceUrl moduleName none}>source</a></p>
     [members.map moduleToNavLink]
   </nav>
 
 def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
-  let docInfos ← module.members.mapM docInfoToHtml
+  let docInfos ← module.members.mapM (λ i => docInfoToHtml module.name i)
   -- TODO: This is missing imports, imported by
   templateExtends (baseHtmlArray module.name.toString) $ #[
-    internalNav (module.members.map DocInfo.getName) module.name,
+    ←internalNav (module.members.map DocInfo.getName) module.name,
     Html.element "main" false #[] docInfos
   ]
 
