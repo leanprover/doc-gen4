@@ -182,13 +182,13 @@ def dropArgs (type : Expr) (n : Nat) : (Expr × List (Name × Expr)) :=
     { next with snd := (name, type) :: next.snd}
   | e, x + 1 => panic! s!"No forallE left"
 
-def getFieldTypes (ctor : ConstructorVal) (parents : Nat) : MetaM (Array NameInfo) := do
+def getFieldTypes (struct : Name) (ctor : ConstructorVal) (parents : Nat) : MetaM (Array NameInfo) := do
   let type := ctor.type
   let (field_function, params) := dropArgs type (ctor.numParams + parents)
   let (_, fields) := dropArgs field_function (ctor.numFields - parents)
   let mut field_infos := #[]
   for (name, type) in fields do
-    field_infos := field_infos.push { name := name, type := ←prettyPrintTerm type}
+    field_infos := field_infos.push { name := struct.append name, type := ←prettyPrintTerm type}
   field_infos
 
 def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
@@ -200,7 +200,7 @@ def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   match getStructureInfo? env v.name with
   | some i =>
     if i.fieldNames.size - parents.size > 0 then
-      return StructureInfo.mk info (←getFieldTypes ctor parents.size) parents ⟨ctor.name, ctorType⟩
+      return StructureInfo.mk info (←getFieldTypes v.name ctor parents.size) parents ⟨ctor.name, ctorType⟩
     else
       return StructureInfo.mk info #[] parents ⟨ctor.name, ctorType⟩
   | none => panic! s!"{v.name} is not a structure"
