@@ -14,8 +14,54 @@ namespace DocGen4
 
 open Lean Std IO System Output
 
+
+/-
+Three link types from git supported:
+- https://github.com/org/repo
+- https://github.com/org/repo.git
+- git@github.com:org/repo.git
+TODO: This function is quite brittle and very github specific, we can
+probably do better.
+-/
+def getGithubBaseUrl : IO String := do
+  let out ← IO.Process.output {cmd := "git", args := #["remote", "get-url", "origin"]}
+  if out.exitCode != 0 then
+    throw <| IO.userError <| "git exited with code " ++ toString out.exitCode
+  let mut url := out.stdout.trimRight
+
+  if url.startsWith "git@" then
+    url := url.drop 15
+    url := url.dropRight 4
+    s!"https://github.com/{url}"
+  else if url.endsWith ".git" then
+    url.dropRight 4
+  else
+    url
+
+def getCommit : IO String := do
+  let out ← IO.Process.output {cmd := "git", args := #["rev-parse", "HEAD"]}
+  if out.exitCode != 0 then
+    throw <| IO.userError <| "git exited with code " ++ toString out.exitCode
+  out.stdout.trimRight
+
+def sourceLinker : IO (Name → Option DeclarationRange → String) := do
+  let baseUrl ← getGithubBaseUrl
+  let commit ← getCommit
+  return λ name range =>
+    let parts := name.components.map Name.toString
+    let path := (parts.intersperse "/").foldl (· ++ ·) ""
+    let r := name.getRoot
+    let basic := if r == `Lean ∨ r == `Init ∨ r == `Std then
+      s!"https://github.com/leanprover/lean4/blob/{githash}/src/{path}.lean"
+    else
+      s!"{baseUrl}/blob/{commit}/{path}.lean"
+
+    match range with
+    | some range => s!"{basic}#L{range.pos.line}-L{range.endPos.line}"
+    | none => basic
+
 def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
-  let config := { root := root, result := result, currentName := none}
+  let config := { root := root, result := result, currentName := none, sourceLinker := ←sourceLinker}
   let basePath := FilePath.mk "./build/doc/"
   let indexHtml := ReaderT.run index config 
   let notFoundHtml := ReaderT.run notFound config
