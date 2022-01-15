@@ -102,17 +102,22 @@ structure Module where
   deriving Inhabited
 
 partial def typeToArgsType (e : Expr) : (Array (Name × Expr × BinderInfo) × Expr) :=
+  let helper := λ name type body data =>
+    -- Once we hit a name with a macro scope we stop traversing the expression
+    -- and print what is left after the : instead. The only exception
+    -- to this is instances since these almost never have a name
+    -- but should still be printed as arguments instead of after the :.
+    if name.hasMacroScopes ∧ ¬data.binderInfo.isInstImplicit then
+      (#[], e)
+    else
+      let name := name.eraseMacroScopes
+      let arg := (name, type, data.binderInfo)
+      let (args, final) := typeToArgsType (Expr.instantiate1 body (mkFVar ⟨name⟩))
+      (#[arg] ++ args, final)
+
   match e.consumeMData with
-  | Expr.lam name type body data =>
-    let name := name.eraseMacroScopes
-    let arg := (name, type, data.binderInfo)
-    let (args, final) := typeToArgsType (Expr.instantiate1 body (mkFVar ⟨name⟩))
-    (#[arg] ++ args, final)
-  | Expr.forallE name type body data =>
-    let name := name.eraseMacroScopes
-    let arg := (name, type, data.binderInfo)
-    let (args, final) := typeToArgsType (Expr.instantiate1 body (mkFVar ⟨name⟩))
-    (#[arg] ++ args, final)
+  | Expr.lam name type body data => helper name type body data
+  | Expr.forallE name type body data => helper name type body data
   | _ => (#[], e)
 
 def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
