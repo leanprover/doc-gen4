@@ -11,9 +11,8 @@ namespace DocGen4
 open Lean Std Name
 
 def getNLevels (name : Name) (levels: Nat) : Name :=
-    (components.drop (components.length - levels)).reverse.foldl (· ++ ·) Name.anonymous
-  where
-    components := name.components'
+  let components := name.components'
+  (components.drop (components.length - levels)).reverse.foldl (· ++ ·) Name.anonymous
 
 inductive Hierarchy where
 | node (name : Name) (isFile : Bool) (children : RBNode Name (λ _ => Hierarchy)) : Hierarchy
@@ -53,8 +52,6 @@ def isFile : Hierarchy → Bool
 partial def insert! (h : Hierarchy) (n : Name) : Hierarchy := Id.run $ do
   let hn := h.getName
   let mut cs := h.getChildren
-
-  assert! getNumParts hn ≤ getNumParts n
 
   if getNumParts hn + 1 == getNumParts n then
     match cs.find Name.cmp n with

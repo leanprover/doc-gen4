@@ -38,14 +38,12 @@ def moduleNameToLink (n : Name) : HtmlM String := do
   (←getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
-    FilePath.withExtension (basePath / parts.foldl (· / ·) (FilePath.mk ".")) "html"
-  where
-    parts := n.components.map Name.toString
+  let parts := n.components.map Name.toString
+  FilePath.withExtension (basePath / parts.foldl (· / ·) (FilePath.mk ".")) "html"
 
 def moduleNameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
-    basePath / parts.foldl (· / ·) (FilePath.mk ".")
-  where
-    parts := n.components.dropLast.map Name.toString
+  let parts := n.components.dropLast.map Name.toString
+  basePath / parts.foldl (· / ·) (FilePath.mk ".")
 
 section Static
   def styleCss : String := include_str "./static/style.css"
