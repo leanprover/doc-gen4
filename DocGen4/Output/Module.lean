@@ -89,22 +89,68 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
     </div>
   </div>
 
-def moduleToNavLink (module : Name) : Html :=
+def declarationToNavLink (module : Name) : Html :=
   <div «class»="nav_link">
     <a «class»="break_within" href={s!"#{module.toString}"}>{module.toString}</a>
   </div>
+
+-- TODO: Similar functions are used all over the place, we should dedup them
+def moduleToNavLink (module : Name) : HtmlM Html := do
+  <a href={←moduleNameToLink module}>{module.toString}</a>
+
+def getImports (module : Name) : HtmlM (Array Name) := do
+  let res ← getResult
+  let some idx ← res.moduleNames.findIdx? (. == module) | unreachable!
+  let adj := res.importAdj.get! idx
+  let mut imports := #[]
+  for i in [:adj.size] do
+    if adj.get! i then
+      imports := imports.push (res.moduleNames.get! i)
+  imports
+
+def getImportedBy (module : Name) : HtmlM (Array Name) := do
+  let res ← getResult
+  let some idx ← res.moduleNames.findIdx? (. == module) | unreachable!
+  let adj := res.importAdj
+  let mut impBy := #[]
+  for i in [:adj.size] do
+    if adj.get! i |>.get! idx then
+      impBy := impBy.push (res.moduleNames.get! i)
+  impBy
+
+def importedByHtml (moduleName : Name) : HtmlM (Array Html) := do
+  let imports := (←getImportedBy moduleName) |>.qsort Name.lt
+  imports.mapM (λ i => do <li>{←moduleToNavLink i}</li>)
+
+
+def importsHtml (moduleName : Name) : HtmlM (Array Html) := do
+  let imports := (←getImports moduleName) |>.qsort Name.lt
+  imports.mapM (λ i => do <li>{←moduleToNavLink i}</li>)
 
 def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
   <nav «class»="internal_nav">
     <h3><a «class»="break_within" href="#top">{moduleName.toString}</a></h3>
     -- TODO: Proper source links
     <p «class»="gh_nav_link"><a href={←getSourceUrl moduleName none}>source</a></p>
-    [members.map moduleToNavLink]
+    <div «class»="imports">
+      <details>
+        <summary>Imports</summary>
+        <ul>
+          [←importsHtml moduleName]
+        </ul>
+      </details>
+      <details>
+        <summary>Imported by</summary>
+        <ul>
+          [←importedByHtml moduleName]
+        </ul>
+      </details>
+    </div>
+    [members.map declarationToNavLink]
   </nav>
 
 def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
   let docInfos ← module.members.mapM (λ i => docInfoToHtml module.name i)
-  -- TODO: This is missing imports, imported by
   templateExtends (baseHtmlArray module.name.toString) $ #[
     ←internalNav (module.members.map DocInfo.getName) module.name,
     Html.element "main" false #[] docInfos
