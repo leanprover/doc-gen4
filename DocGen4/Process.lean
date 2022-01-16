@@ -129,7 +129,7 @@ def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
     options := ← getOptions
     currNamespace := ← getCurrNamespace
     openDecls := ← getOpenDecls
-    fileMap := arbitrary
+    fileMap := default
   }
   tagExprInfos ctx infos tt
 
@@ -325,6 +325,8 @@ structure AnalyzerResult where
   moduleNames : Array Name
   moduleInfo : HashMap Name Module
   hierarchy : Hierarchy
+  -- Indexed by ModIdx
+  importAdj : Array (Array Bool)
   deriving Inhabited
 
 def process : MetaM AnalyzerResult := do
@@ -343,24 +345,29 @@ def process : MetaM AnalyzerResult := do
     let d := ←DocInfo.ofConstant cinfo
     match d with
     | some dinfo =>
-      match (env.getModuleIdxFor? cinfo.fst) with
-      | some modidx =>
-        -- TODO: Check whether this is still efficient
-        let moduleName := env.allImportedModuleNames.get! modidx
-        let module := res.find! moduleName
-        res := res.insert moduleName {module with members := module.members.push dinfo}
-      | none => panic! "impossible"
+      let some modidx ← env.getModuleIdxFor? cinfo.fst | unreachable!
+      let moduleName := env.allImportedModuleNames.get! modidx
+      let module := res.find! moduleName
+      res := res.insert moduleName {module with members := module.members.push dinfo}
     | none => ()
 
-  -- This could probably be faster if we did an insertion sort above instead
+  -- TODO: This is definitely not the most efficient way to store this data
+  let mut adj := Array.mkArray res.size (Array.mkArray res.size false)
+  -- TODO: This could probably be faster if we did an insertion sort above instead
   for (moduleName, module) in res.toArray do
     res := res.insert moduleName {module with members := module.members.qsort DocInfo.lineOrder}
+    let some modIdx ← env.getModuleIdx? moduleName | unreachable!
+    let moduleData := env.header.moduleData.get! modIdx
+    for imp in moduleData.imports do
+      let some importIdx ← env.getModuleIdx? imp.module | unreachable!
+      adj := adj.set! modIdx (adj.get! modIdx |>.set! importIdx true)
 
   return {
     name2ModIdx := env.const2ModIdx,
     moduleNames := env.header.moduleNames,
     moduleInfo := res,
-    hierarchy := Hierarchy.fromArray env.header.moduleNames
+    hierarchy := Hierarchy.fromArray env.header.moduleNames,
+    importAdj := adj
   }
 
 end DocGen4
