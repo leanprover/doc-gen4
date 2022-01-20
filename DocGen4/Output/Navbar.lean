@@ -13,16 +13,10 @@ namespace Output
 open Lean
 open scoped DocGen4.Jsx
 
-def moduleListFile (file : Name) : HtmlM Html := do
-  let attributes := match ←getCurrentName with
-  | some name =>
-    if file == name then
-      #[("class", "nav_link"), ("visible", "")]
-    else
-      #[("class", "nav_link")]
-  | none => #[("class", "nav_link")]
-  let nodes := #[<a href={s!"{←moduleNameToLink file}"}>{file.toString}</a>]
-  return Html.element "div" false attributes nodes
+def moduleListFile (file : Name) : HtmlM Html :=
+  return <div "class"="nav_link" [if (← getCurrentName) == file then #[("visible", "")] else #[]]>
+    <a href={← moduleNameToLink file}>{file.toString}</a>
+  </div>
 
 partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
   let children := Array.mk (h.getChildren.toList.map Prod.snd)
@@ -31,24 +25,19 @@ partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
   let dirNodes ← (dirs.mapM moduleListDir)
   let fileNodes ← (files.mapM moduleListFile)
   let moduleLink ← moduleNameToLink h.getName
-  let attributes := match ←getCurrentName with
-  | some name =>
-    if h.getName.isPrefixOf name then
-      #[("class", "nav_sect"), ("data-path", moduleLink), ("open", "")]
-    else
-      #[("class", "nav_sect"), ("data-path", moduleLink)]
-  | none =>
-      #[("class", "nav_sect"), ("data-path", moduleLink)]
-  let nodes := #[<summary>{h.getName.toString}</summary>] ++ dirNodes ++ fileNodes
-  return Html.element "details" false attributes nodes
+  return <details "class"="nav_sect" "data-path"={moduleLink}
+      [if (← getCurrentName).any (h.getName.isPrefixOf ·) then #[("open", "")] else #[]]>
+    <summary>{h.getName.toString}</summary>
+    [dirNodes]
+    [fileNodes]
+  </details>
 
-def moduleList : HtmlM (Array Html) := do
+def moduleList : HtmlM Html := do
   let hierarchy := (←getResult).hierarchy
   let mut list := Array.empty
   for (n, cs) in hierarchy.getChildren do
-    list := list.push <h4>{n.toString}</h4>
     list := list.push $ ←moduleListDir cs
-  list
+  return <div "class"="module_list">[list]</div>
 
 def navbar : HtmlM Html := do
   <nav «class»="nav">
@@ -64,7 +53,7 @@ def navbar : HtmlM Html := do
     <div «class»="nav_link"><a href={s!"{←getRoot}references.html"}>references</a></div>
     -/
     <h3>Library</h3>
-    [←moduleList]
+    {← moduleList}
   </nav>
 
 end Output

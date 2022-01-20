@@ -4,6 +4,10 @@ import Lean
 open DocGen4 Lean IO
 
 def main (args : List String) : IO Unit := do
+  if args.isEmpty then
+    IO.println "Usage: doc-gen4 root/url/ Module1 Module2 ..."
+    IO.Process.exit 1
+    return
   let root := args.head!
   let modules := args.tail!
   let path ← lakeSetupSearchPath (←getLakePath) modules.toArray
