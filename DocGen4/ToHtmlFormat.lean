@@ -53,9 +53,6 @@ open Parser PrettyPrinter
 declare_syntax_cat jsxElement
 declare_syntax_cat jsxChild
 
-def jsxAttrVal : Parser := strLit <|> group ("{" >> termParser >> "}")
-def jsxAttr : Parser := ident >> "=" >> jsxAttrVal
-
 -- JSXTextCharacter : SourceCharacter but not one of {, <, > or }
 def jsxText : Parser :=
   withAntiquot (mkAntiquot "jsxText" `jsxText) {
@@ -67,41 +64,57 @@ def jsxText : Parser :=
 @[combinatorFormatter DocGen4.Jsx.jsxText] def jsxText.formatter : Formatter := pure ()
 @[combinatorParenthesizer DocGen4.Jsx.jsxText] def jsxText.parenthesizer : Parenthesizer := pure ()
 
-scoped syntax "<" ident jsxAttr* "/>" : jsxElement
-scoped syntax "<" ident jsxAttr* ">" jsxChild* "</" ident ">" : jsxElement
+syntax jsxAttrName := ident <|> strLit
+syntax jsxAttrVal := strLit <|> group("{" term "}")
+syntax jsxSimpleAttr := jsxAttrName "=" jsxAttrVal
+syntax jsxAttrSpread := "[" term "]"
+syntax jsxAttr := jsxSimpleAttr <|> jsxAttrSpread
 
-scoped syntax jsxText      : jsxChild
-scoped syntax "{" term "}" : jsxChild
-scoped syntax "[" term "]" : jsxChild
-scoped syntax jsxElement   : jsxChild
+syntax "<" ident jsxAttr* "/>" : jsxElement
+syntax "<" ident jsxAttr* ">" jsxChild* "</" ident ">" : jsxElement
+
+syntax jsxText      : jsxChild
+syntax "{" term "}" : jsxChild
+syntax "[" term "]" : jsxChild
+syntax jsxElement   : jsxChild
 
 scoped syntax:max jsxElement : term
 
+def translateAttrs (attrs : Array Syntax) : MacroM Syntax := do
+  let mut as ← `(#[])
+  for attr in attrs do
+    as ← match attr with
+    | `(jsxAttr| $n:jsxAttrName=$v:jsxAttrVal) =>
+      let n ← match n with
+        | `(jsxAttrName| $n:strLit) => n
+        | `(jsxAttrName| $n:ident) => quote (toString n.getId)
+        | _ => Macro.throwUnsupported
+      let v ← match v with
+        | `(jsxAttrVal| {$v}) => v
+        | `(jsxAttrVal| $v:strLit) => v
+        | _ => Macro.throwUnsupported
+      `(($as).push ($n, $v))
+    | `(jsxAttr| [$t]) => `($as ++ ($t : Array (String × String)))
+    | _ => Macro.throwUnsupported
+  return as
+
 macro_rules
-  | `(<$n $[$ns = $vs]* />) =>
-    let ns := ns.map (quote <| toString ·.getId)
-    let vs := vs.map fun
-      | `(jsxAttrVal| $s:strLit) => s
-      | `(jsxAttrVal| { $t:term }) => t
-      | _ => unreachable!
-    `(Html.element $(quote <| toString n.getId) false #[ $[($ns, $vs)],* ] #[])
-  | `(<$n $[$ns = $vs]* >$cs*</$m>) =>
-    if n.getId == m.getId then do
-      let ns := ns.map (quote <| toString ·.getId)
-      let vs := vs.map fun
-        | `(jsxAttrVal| $s:strLit) => s
-        | `(jsxAttrVal| { $t:term }) => t
-        | _ => unreachable!
-      let cs ← cs.mapM fun
-        | `(jsxChild|$t:jsxText)    => `(#[Html.text $(quote t[0].getAtomVal!)])
-        -- TODO(WN): elab as list of children if type is `t Html` where `Foldable t`
-        | `(jsxChild|{$t})          => `(#[$t])
-        | `(jsxChild|[$t])          => `($t)
-        | `(jsxChild|$e:jsxElement) => `(#[$e:jsxElement])
-        | _                         => unreachable!
-      let tag := toString n.getId
-      `(Html.element $(quote tag) false #[ $[($ns, $vs)],* ] (Array.foldl Array.append #[] #[ $[$cs],* ]))
-    else Macro.throwError ("expected </" ++ toString n.getId ++ ">")
+  | `(<$n $attrs* />) => do
+    `(Html.element $(quote (toString n.getId)) true $(← translateAttrs attrs) #[])
+  | `(<$n $attrs* >$children*</$m>) => do
+    unless n.getId == m.getId do
+      withRef m <| Macro.throwError s!"expected </{n.getId}>"
+    let mut cs ← `(#[])
+    for child in children do
+      cs ← match child with
+      | `(jsxChild|$t:jsxText)    => `(($cs).push (Html.text $(quote t[0].getAtomVal!)))
+      -- TODO(WN): elab as list of children if type is `t Html` where `Foldable t`
+      | `(jsxChild|{$t})          => `(($cs).push ($t : Html))
+      | `(jsxChild|[$t])          => `($cs ++ ($t : Array Html))
+      | `(jsxChild|$e:jsxElement) => `(($cs).push ($e:jsxElement : Html))
+      | _                         => Macro.throwUnsupported
+    let tag := toString n.getId
+    `(Html.element $(quote tag) false $(← translateAttrs attrs) $cs)
 
 end Jsx
 
