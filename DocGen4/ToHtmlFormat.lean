@@ -93,7 +93,7 @@ def translateAttrs (attrs : Array Syntax) : MacroM Syntax := do
         | `(jsxAttrVal| {$v}) => v
         | `(jsxAttrVal| $v:strLit) => v
         | _ => Macro.throwUnsupported
-      `(($as).push ($n, $v))
+      `(($as).push ($n, ($v : String)))
     | `(jsxAttr| [$t]) => `($as ++ ($t : Array (String × String)))
     | _ => Macro.throwUnsupported
   return as

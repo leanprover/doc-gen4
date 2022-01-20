@@ -10,8 +10,8 @@ def ctorToHtml (i : NameInfo) : HtmlM Html := do
   let name := i.name.toString
   return <li «class»="constructor" id={name}>{shortName} : [←infoFormatToHtml i.type]</li>
 
-def inductiveToHtml (i : InductiveInfo) : HtmlM (Array Html) := do
-  #[Html.element "ul" false #[("class", "constructors")] (←i.ctors.toArray.mapM ctorToHtml)]
+def inductiveToHtml (i : InductiveInfo) : HtmlM (Array Html) :=
+  return #[<ul "class"="constructors">[← i.ctors.toArray.mapM ctorToHtml]</ul>]
 
 end Output
 end DocGen4
