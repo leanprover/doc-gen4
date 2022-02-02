@@ -7,6 +7,7 @@ import DocGen4.Output.Template
 import DocGen4.Output.Inductive
 import DocGen4.Output.Structure
 import DocGen4.Output.Class
+import DocGen4.Output.Definition
 
 namespace DocGen4
 namespace Output
@@ -75,6 +76,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   | DocInfo.inductiveInfo i => inductiveToHtml i
   | DocInfo.structureInfo i => structureToHtml i
   | DocInfo.classInfo i => classToHtml i
+  | DocInfo.definitionInfo i => definitionToHtml i
   | _ => #[]
 
   return <div «class»="decl" id={doc.getName.toString}>

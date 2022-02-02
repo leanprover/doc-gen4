@@ -47,6 +47,7 @@ structure DefinitionInfo extends Info where
   --value : CodeWithInfos
   unsafeInformation : DefinitionSafety
   hints : ReducibilityHints
+  equations : Option (Array CodeWithInfos)
   deriving Inhabited
 
 abbrev InstanceInfo := DefinitionInfo
@@ -160,11 +161,33 @@ def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
 def isInstance (declName : Name) : MetaM Bool := do
   (instanceExtension.getState (←getEnv)).instanceNames.contains declName
 
+
+partial def stripArgs (e : Expr) : Expr :=
+  match e.consumeMData with
+  | Expr.lam name type body data =>
+    let name := name.eraseMacroScopes
+    stripArgs (Expr.instantiate1 body (mkFVar ⟨name⟩))
+  | Expr.forallE name type body data =>
+    let name := name.eraseMacroScopes
+    stripArgs (Expr.instantiate1 body (mkFVar ⟨name⟩))
+  | _ => e
+
+def processEq (eq : Name) : MetaM CodeWithInfos := do
+  let type ← (mkConstWithFreshMVarLevels eq >>= inferType)
+  let final := stripArgs type
+  prettyPrintTerm final
+
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
-  -- Elaborating the value yields weird exceptions
-  --let value ← prettyPrintTerm v.value
-  return DefinitionInfo.mk info v.safety v.hints
+  let mut eqs? := none
+  try
+    eqs? ← getEqnsFor? v.name
+  catch err =>
+    IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {←err.toMessageData.toString}"
+
+  let prettyEqs ← eqs?.mapM (λ eqs => eqs.mapM processEq)
+  return DefinitionInfo.mk info v.safety v.hints prettyEqs
+
 
 def getConstructorType (ctor : Name) : MetaM CodeWithInfos := do
   let env ← getEnv
@@ -254,7 +277,6 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
   | ConstantInfo.axiomInfo i => some $ axiomInfo (←AxiomInfo.ofAxiomVal i)
   | ConstantInfo.thmInfo i => some $ theoremInfo (←TheoremInfo.ofTheoremVal i)
   | ConstantInfo.opaqueInfo i => some $ opaqueInfo (←OpaqueInfo.ofOpaqueVal i)
-  -- TODO: Find a way to extract equations nicely
   | ConstantInfo.defnInfo i =>
     if ← (isProjFn i.name) then
       none
@@ -342,14 +364,15 @@ def process : MetaM AnalyzerResult := do
     res := res.insert module (Module.mk module moduleDoc #[])
 
   for cinfo in env.constants.toList do
-    let d := ←DocInfo.ofConstant cinfo
-    match d with
-    | some dinfo =>
-      let some modidx ← env.getModuleIdxFor? cinfo.fst | unreachable!
-      let moduleName := env.allImportedModuleNames.get! modidx
-      let module := res.find! moduleName
-      res := res.insert moduleName {module with members := module.members.push dinfo}
-    | none => ()
+    try
+      let analysis := Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant cinfo) { maxHeartbeats := 5000000, options := ⟨[(`pp.tagAppFns, true)]⟩ } { env := env} {} {}
+      if let some dinfo ← analysis then
+        let some modidx ← env.getModuleIdxFor? dinfo.getName | unreachable!
+        let moduleName := env.allImportedModuleNames.get! modidx
+        let module := res.find! moduleName
+        res := res.insert moduleName {module with members := module.members.push dinfo}
+    catch e =>
+      IO.println s!"WARNING: Failed to obtain information for: {cinfo.fst}: {←e.toMessageData.toString}"
 
   -- TODO: This is definitely not the most efficient way to store this data
   let mut adj := Array.mkArray res.size (Array.mkArray res.size false)
@@ -369,5 +392,7 @@ def process : MetaM AnalyzerResult := do
     hierarchy := Hierarchy.fromArray env.header.moduleNames,
     importAdj := adj
   }
+
+
 
 end DocGen4
