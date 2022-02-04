@@ -7,11 +7,11 @@ namespace Output
 open scoped DocGen4.Jsx
 open Lean
 
-def instanceToHtml (name : Name) : HtmlM Html := do
+def classInstanceToHtml (name : Name) : HtmlM Html := do
   <li><a href={←declNameToLink name}>{name.toString}</a></li>
 
-def instancesToHtml (i : ClassInfo) : HtmlM Html := do
-  let instancesHtml ← i.instances.mapM instanceToHtml
+def classInstancesToHtml (i : ClassInfo) : HtmlM Html := do
+  let instancesHtml ← i.instances.mapM classInstanceToHtml
   return <details «class»="instances">
         <summary>Instances</summary>
         <ul>
@@ -20,7 +20,7 @@ def instancesToHtml (i : ClassInfo) : HtmlM Html := do
     </details>
 
 def classToHtml (i : ClassInfo) : HtmlM (Array Html) := do
-  (←structureToHtml i.toStructureInfo).push (←instancesToHtml i)
+  (←structureToHtml i.toStructureInfo).push (←classInstancesToHtml i)
 
 end Output
 end DocGen4
