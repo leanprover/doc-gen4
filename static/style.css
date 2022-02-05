@@ -455,7 +455,8 @@ main h2, main h3, main h4, main h5, main h6 {
 }
 
 .imports li, code, .decl_header, .attributes, .structure_field,
-        .constructor, .instances li, .equation, #search_results div {
+        .constructor, .instances li, .equation, #search_results div,
+        .structure_ext_ctor {
     font-family: 'Source Code Pro', monospace;
 }
 
@@ -482,6 +483,22 @@ pre code { padding: 0 0; }
 .structure_field {
     display: block;
     margin-left: 2ex;
+}
+
+.structure_ext_fields {
+    display: block;
+    padding-inline-start: 0;
+    margin-top: 1ex;
+    text-indent: -2ex; padding-left: 2ex;
+}
+
+.structure_ext_fields .structure_field {
+    margin-left: -1ex !important;
+}
+
+.structure_ext_ctor {
+    display: block;
+    text-indent: -3ex;
 }
 
 .constructor {
