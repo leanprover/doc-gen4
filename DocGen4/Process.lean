@@ -177,17 +177,29 @@ def processEq (eq : Name) : MetaM CodeWithInfos := do
   let final := stripArgs type
   prettyPrintTerm final
 
+def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
+  let env ← getEnv
+  withOptions (tactic.hygienic.set . false) do
+    lambdaTelescope v.value fun xs body => do
+      let us := v.levelParams.map mkLevelParam
+      let type ← mkEq (mkAppN (Lean.mkConst v.name us) xs) body
+      let type ← mkForallFVars xs type
+      type
+
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
-  let mut eqs? := none
   try
-    eqs? ← getEqnsFor? v.name
+    let eqs? ← getEqnsFor? v.name
+    match eqs? with
+    | some eqs =>
+      let prettyEqs ← eqs.mapM processEq
+      DefinitionInfo.mk info v.safety v.hints prettyEqs
+    | none =>
+      let eq ← prettyPrintTerm $ stripArgs (←valueToEq v)
+      DefinitionInfo.mk info v.safety v.hints (some #[eq])
   catch err =>
     IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {←err.toMessageData.toString}"
-
-  let prettyEqs ← eqs?.mapM (λ eqs => eqs.mapM processEq)
-  return DefinitionInfo.mk info v.safety v.hints prettyEqs
-
+    return DefinitionInfo.mk info v.safety v.hints none
 
 def getConstructorType (ctor : Name) : MetaM CodeWithInfos := do
   let env ← getEnv
