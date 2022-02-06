@@ -40,12 +40,14 @@ structure TheoremInfo extends Info
 
 structure OpaqueInfo extends Info where
   value : CodeWithInfos
-  isUnsafe : Bool
+  -- A value of partial is interpreted as this constant being part of a partial def
+  -- since the actual definition for a partial def is hidden behind an inaccessible value
+  unsafeInformation : DefinitionSafety
   deriving Inhabited
 
 structure DefinitionInfo extends Info where
-  --value : CodeWithInfos
-  unsafeInformation : DefinitionSafety
+  -- partial defs are handled by OpaqueInfo
+  isUnsafe : Bool
   hints : ReducibilityHints
   equations : Option (Array CodeWithInfos)
   deriving Inhabited
@@ -156,11 +158,16 @@ def TheoremInfo.ofTheoremVal (v : TheoremVal) : MetaM TheoremInfo := do
 def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let t ← prettyPrintTerm v.value
-  return OpaqueInfo.mk info t v.isUnsafe
+  let env ← getEnv
+  let isPartial := env.find? (Compiler.mkUnsafeRecName v.name) |>.isSome
+  if isPartial then
+    return OpaqueInfo.mk info t DefinitionSafety.partial
+  else
+    let safety := if v.isUnsafe then DefinitionSafety.unsafe else DefinitionSafety.safe
+    return OpaqueInfo.mk info t safety
 
 def isInstance (declName : Name) : MetaM Bool := do
   (instanceExtension.getState (←getEnv)).instanceNames.contains declName
-
 
 partial def stripArgs (e : Expr) : Expr :=
   match e.consumeMData with
@@ -188,18 +195,19 @@ def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
 
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
+  let isUnsafe := v.safety == DefinitionSafety.unsafe
   try
     let eqs? ← getEqnsFor? v.name
     match eqs? with
     | some eqs =>
       let prettyEqs ← eqs.mapM processEq
-      DefinitionInfo.mk info v.safety v.hints prettyEqs
+      DefinitionInfo.mk info isUnsafe v.hints prettyEqs
     | none =>
       let eq ← prettyPrintTerm $ stripArgs (←valueToEq v)
-      DefinitionInfo.mk info v.safety v.hints (some #[eq])
+      DefinitionInfo.mk info isUnsafe v.hints (some #[eq])
   catch err =>
     IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {←err.toMessageData.toString}"
-    return DefinitionInfo.mk info v.safety v.hints none
+    return DefinitionInfo.mk info isUnsafe v.hints none
 
 def getConstructorType (ctor : Name) : MetaM CodeWithInfos := do
   let env ← getEnv
@@ -327,10 +335,25 @@ def getKind : DocInfo → String
 | theoremInfo _ => "theorem"
 | opaqueInfo _ => "constant"
 | definitionInfo _ => "def"
-| instanceInfo _ => "instance" -- TODO: This doesnt exist in CSS yet
+| instanceInfo _ => "instance"
 | inductiveInfo _ => "inductive"
 | structureInfo _ => "structure"
-| classInfo _ => "class" -- TODO: This is handled as structure right now
+| classInfo _ => "class"
+
+open DefinitionSafety in
+def getKindDescription : DocInfo → String
+| axiomInfo i => if i.isUnsafe then "unsafe axiom" else "axiom"
+| theoremInfo _ => "theorem"
+| opaqueInfo i =>
+  match i.unsafeInformation with
+  | safe => "constant"
+  | «unsafe» => "unsafe constant"
+  | «partial» => "partial def"
+| definitionInfo i => if i.isUnsafe then "unsafe def" else "def"
+| instanceInfo i => if i.isUnsafe then "unsafe instance" else "instance"
+| inductiveInfo i => if i.isUnsafe then "unsafe inductive" else "inductive"
+| structureInfo _ => "structure"
+| classInfo _ => "class"
 
 def getType : DocInfo → CodeWithInfos
 | axiomInfo i => i.type

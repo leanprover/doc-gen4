@@ -49,9 +49,7 @@ def structureInfoHeader (s : StructureInfo) : HtmlM (Array Html) := do
 
 def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
-  -- TODO: noncomputable, partial
-  -- TODO: Support all the kinds in CSS
-  nodes := nodes.push <span «class»="decl_kind">{doc.getKind}</span>
+  nodes := nodes.push <span «class»="decl_kind">{doc.getKindDescription}</span>
   nodes := nodes.push
     <span «class»="decl_name">
       <a «class»="break_within" href={←declNameToLink doc.getName}>
@@ -84,7 +82,6 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   return <div «class»="decl" id={doc.getName.toString}>
     <div «class»={doc.getKind}>
       <div «class»="gh_link">
-        -- TODO: Put the proper source link
         <a href={←getSourceUrl module doc.getDeclarationRange}>source</a>
       </div>
       -- TODO: Attributes
@@ -134,7 +131,6 @@ def importsHtml (moduleName : Name) : HtmlM (Array Html) := do
 def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
   <nav «class»="internal_nav">
     <h3><a «class»="break_within" href="#top">{moduleName.toString}</a></h3>
-    -- TODO: Proper source links
     <p «class»="gh_nav_link"><a href={←getSourceUrl moduleName none}>source</a></p>
     <div «class»="imports">
       <details>
