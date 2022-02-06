@@ -10,8 +10,8 @@ open Lean
 def classInstanceToHtml (name : Name) : HtmlM Html := do
   <li><a href={←declNameToLink name}>{name.toString}</a></li>
 
-def classInstancesToHtml (i : ClassInfo) : HtmlM Html := do
-  let instancesHtml ← i.instances.mapM classInstanceToHtml
+def classInstancesToHtml (instances : Array Name) : HtmlM Html := do
+  let instancesHtml ← instances.mapM classInstanceToHtml
   return <details «class»="instances">
         <summary>Instances</summary>
         <ul>
@@ -20,7 +20,7 @@ def classInstancesToHtml (i : ClassInfo) : HtmlM Html := do
     </details>
 
 def classToHtml (i : ClassInfo) : HtmlM (Array Html) := do
-  (←structureToHtml i.toStructureInfo).push (←classInstancesToHtml i)
+  (←structureToHtml i.toStructureInfo).push (←classInstancesToHtml i.instances)
 
 end Output
 end DocGen4

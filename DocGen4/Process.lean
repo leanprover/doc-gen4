@@ -69,6 +69,10 @@ structure ClassInfo extends StructureInfo where
   instances : Array Name
   deriving Inhabited
 
+structure ClassInductiveInfo extends InductiveInfo where
+  instances : Array Name
+  deriving Inhabited
+
 inductive DocInfo where
 | axiomInfo (info : AxiomInfo) : DocInfo
 | theoremInfo (info : TheoremInfo) : DocInfo
@@ -78,6 +82,7 @@ inductive DocInfo where
 | inductiveInfo (info : InductiveInfo) : DocInfo
 | structureInfo (info : StructureInfo) : DocInfo
 | classInfo (info : ClassInfo) : DocInfo
+| classInductiveInfo (info : ClassInductiveInfo) : DocInfo
   deriving Inhabited
 
 namespace DocInfo
@@ -91,6 +96,7 @@ def getDeclarationRange : DocInfo → DeclarationRange
 | inductiveInfo i => i.declarationRange
 | structureInfo i => i.declarationRange
 | classInfo i => i.declarationRange
+| classInductiveInfo i => i.declarationRange
 
 def lineOrder (l r : DocInfo) : Bool :=
   l.getDeclarationRange.pos.line < r.getDeclarationRange.pos.line
@@ -253,12 +259,19 @@ def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
       return StructureInfo.mk info #[] parents ⟨ctor.name, ctorType⟩
   | none => panic! s!"{v.name} is not a structure"
 
-def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do
-  let sinfo ← StructureInfo.ofInductiveVal v
-  let fn ← mkConstWithFreshMVarLevels v.name
+def getInstances (className : Name) : MetaM (Array Name) := do
+  let fn ← mkConstWithFreshMVarLevels className
   let (xs, _, _) ← forallMetaTelescopeReducing (← inferType fn)
   let insts ← SynthInstance.getInstances (mkAppN fn xs)
-  return ClassInfo.mk sinfo (insts.map Expr.constName!)
+  insts.map Expr.constName!
+
+def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do
+  let sinfo ← StructureInfo.ofInductiveVal v
+  return ClassInfo.mk sinfo (←getInstances v.name)
+
+def ClassInductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInductiveInfo := do
+  let info ← InductiveInfo.ofInductiveVal v
+  return ClassInductiveInfo.mk info (←getInstances v.name)
 
 namespace DocInfo
 
@@ -314,7 +327,10 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
       else
         some $ structureInfo (←StructureInfo.ofInductiveVal i)
     else
-      some $ inductiveInfo (←InductiveInfo.ofInductiveVal i)
+      if isClass env i.name then
+        some $ classInductiveInfo (←ClassInductiveInfo.ofInductiveVal i)
+      else
+        some $ inductiveInfo (←InductiveInfo.ofInductiveVal i)
   -- we ignore these for now
   | ConstantInfo.ctorInfo i => none
   | ConstantInfo.recInfo i => none
@@ -329,6 +345,7 @@ def getName : DocInfo → Name
 | inductiveInfo i => i.name
 | structureInfo i => i.name
 | classInfo i => i.name
+| classInductiveInfo i => i.name
 
 def getKind : DocInfo → String
 | axiomInfo _ => "axiom"
@@ -339,6 +356,7 @@ def getKind : DocInfo → String
 | inductiveInfo _ => "inductive"
 | structureInfo _ => "structure"
 | classInfo _ => "class"
+| classInductiveInfo _ => "class"
 
 def getKindDescription : DocInfo → String
 | axiomInfo i => if i.isUnsafe then "unsafe axiom" else "axiom"
@@ -359,6 +377,7 @@ def getKindDescription : DocInfo → String
 | inductiveInfo i => if i.isUnsafe then "unsafe inductive" else "inductive"
 | structureInfo _ => "structure"
 | classInfo _ => "class"
+| classInductiveInfo _ => "class inductive"
 
 def getType : DocInfo → CodeWithInfos
 | axiomInfo i => i.type
@@ -369,6 +388,7 @@ def getType : DocInfo → CodeWithInfos
 | inductiveInfo i => i.type
 | structureInfo i => i.type
 | classInfo i => i.type
+| classInductiveInfo i => i.type
 
 def getArgs : DocInfo → Array Arg
 | axiomInfo i => i.args
@@ -379,6 +399,7 @@ def getArgs : DocInfo → Array Arg
 | inductiveInfo i => i.args
 | structureInfo i => i.args
 | classInfo i => i.args
+| classInductiveInfo i => i.args
 
 end DocInfo
 
