@@ -340,16 +340,21 @@ def getKind : DocInfo → String
 | structureInfo _ => "structure"
 | classInfo _ => "class"
 
-open DefinitionSafety in
 def getKindDescription : DocInfo → String
 | axiomInfo i => if i.isUnsafe then "unsafe axiom" else "axiom"
 | theoremInfo _ => "theorem"
 | opaqueInfo i =>
   match i.unsafeInformation with
-  | safe => "constant"
-  | «unsafe» => "unsafe constant"
-  | «partial» => "partial def"
-| definitionInfo i => if i.isUnsafe then "unsafe def" else "def"
+  | DefinitionSafety.safe => "constant"
+  | DefinitionSafety.unsafe => "unsafe constant"
+  | DefinitionSafety.partial => "partial def"
+| definitionInfo i =>
+  if i.hints.isAbbrev then
+    "abbrev"
+  else if i.isUnsafe then
+    "unsafe def"
+  else
+    "def"
 | instanceInfo i => if i.isUnsafe then "unsafe instance" else "instance"
 | inductiveInfo i => if i.isUnsafe then "unsafe inductive" else "inductive"
 | structureInfo _ => "structure"
