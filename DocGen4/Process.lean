@@ -140,13 +140,13 @@ def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
     openDecls := ← getOpenDecls
     fileMap := default
   }
-  tagExprInfos ctx infos tt
+  return tagExprInfos ctx infos tt
 
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let env ← getEnv
   let (args, type) := typeToArgsType v.type
   let type ← prettyPrintTerm type
-  let args ← args.mapM (λ (n, e, b) => do Arg.mk n (←prettyPrintTerm e) b)
+  let args ← args.mapM (λ (n, e, b) => do pure $ Arg.mk n (←prettyPrintTerm e) b)
   let doc ← findDocString? env v.name
   match ←findDeclarationRanges? v.name with
   -- TODO: Maybe selection range is more relevant? Figure this out in the future
@@ -173,7 +173,7 @@ def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
     return OpaqueInfo.mk info t safety
 
 def isInstance (declName : Name) : MetaM Bool := do
-  (instanceExtension.getState (←getEnv)).instanceNames.contains declName
+  return (instanceExtension.getState (←getEnv)).instanceNames.contains declName
 
 partial def stripArgs (e : Expr) : Expr :=
   match e.consumeMData with
@@ -197,7 +197,7 @@ def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
       let us := v.levelParams.map mkLevelParam
       let type ← mkEq (mkAppN (Lean.mkConst v.name us) xs) body
       let type ← mkForallFVars xs type
-      type
+      pure type
 
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
@@ -207,10 +207,10 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo :=
     match eqs? with
     | some eqs =>
       let prettyEqs ← eqs.mapM processEq
-      DefinitionInfo.mk info isUnsafe v.hints prettyEqs
+      pure $ DefinitionInfo.mk info isUnsafe v.hints prettyEqs
     | none =>
       let eq ← prettyPrintTerm $ stripArgs (←valueToEq v)
-      DefinitionInfo.mk info isUnsafe v.hints (some #[eq])
+      pure $ DefinitionInfo.mk info isUnsafe v.hints (some #[eq])
   catch err =>
     IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {←err.toMessageData.toString}"
     return DefinitionInfo.mk info isUnsafe v.hints none
@@ -218,13 +218,13 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo :=
 def getConstructorType (ctor : Name) : MetaM CodeWithInfos := do
   let env ← getEnv
   match env.find? ctor with
-  | some (ConstantInfo.ctorInfo i) => ←prettyPrintTerm i.type
+  | some (ConstantInfo.ctorInfo i) => prettyPrintTerm i.type
   | _ => panic! s!"Constructor {ctor} was requested but does not exist"
 
 def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let env ← getEnv
-  let ctors ← v.ctors.mapM (λ name => do NameInfo.mk name (←getConstructorType name))
+  let ctors ← v.ctors.mapM (λ name => do pure $ NameInfo.mk name (←getConstructorType name))
   return InductiveInfo.mk info ctors v.isUnsafe
 
 def dropArgs (type : Expr) (n : Nat) : (Expr × List (Name × Expr)) :=
@@ -243,7 +243,7 @@ def getFieldTypes (struct : Name) (ctor : ConstructorVal) (parents : Nat) : Meta
   let mut field_infos := #[]
   for (name, type) in fields do
     field_infos := field_infos.push { name := struct.append name, type := ←prettyPrintTerm type}
-  field_infos
+  return field_infos
 
 def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
@@ -263,7 +263,7 @@ def getInstances (className : Name) : MetaM (Array Name) := do
   let fn ← mkConstWithFreshMVarLevels className
   let (xs, _, _) ← forallMetaTelescopeReducing (← inferType fn)
   let insts ← SynthInstance.getInstances (mkAppN fn xs)
-  insts.map Expr.constName!
+  return insts.map Expr.constName!
 
 def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do
   let sinfo ← StructureInfo.ofInductiveVal v
@@ -279,18 +279,18 @@ def isBlackListed (declName : Name) : MetaM Bool := do
   match ←findDeclarationRanges? declName with
   | some _ =>
     let env ← getEnv
-    declName.isInternal
-    <||> isAuxRecursor env declName
-    <||> isNoConfusion env declName
+    pure (declName.isInternal)
+    <||> (pure $ isAuxRecursor env declName)
+    <||> (pure $ isNoConfusion env declName)
     <||> isRec declName
     <||> isMatcher declName
   -- TODO: Evaluate whether filtering out declarations without range is sensible
-  | none => true
+  | none => pure true
 
 -- TODO: Is this actually the best way?
 def isProjFn (declName : Name) : MetaM Bool := do
   let env ← getEnv
-  match declName with
+  return match declName with
   | Name.str parent name _ =>
     if isStructure env parent then
       match getStructureInfo? env parent with
@@ -307,34 +307,34 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
   if (←isBlackListed name) then
     return none
   match info with
-  | ConstantInfo.axiomInfo i => some $ axiomInfo (←AxiomInfo.ofAxiomVal i)
-  | ConstantInfo.thmInfo i => some $ theoremInfo (←TheoremInfo.ofTheoremVal i)
-  | ConstantInfo.opaqueInfo i => some $ opaqueInfo (←OpaqueInfo.ofOpaqueVal i)
+  | ConstantInfo.axiomInfo i => pure <| some <| axiomInfo (←AxiomInfo.ofAxiomVal i)
+  | ConstantInfo.thmInfo i => pure <| some <| theoremInfo (←TheoremInfo.ofTheoremVal i)
+  | ConstantInfo.opaqueInfo i => pure <| some <| opaqueInfo (←OpaqueInfo.ofOpaqueVal i)
   | ConstantInfo.defnInfo i =>
     if ← (isProjFn i.name) then
-      none
+      pure none
     else
       let info ← DefinitionInfo.ofDefinitionVal i
       if (←isInstance i.name) then
-        some $ instanceInfo info
+        pure <| some <| instanceInfo info
       else
-        some $ definitionInfo info
+        pure <| some <| definitionInfo info
   | ConstantInfo.inductInfo i =>
     let env ← getEnv
     if isStructure env i.name then
       if isClass env i.name then
-        some $ classInfo (←ClassInfo.ofInductiveVal i)
+        pure <| some <| classInfo (←ClassInfo.ofInductiveVal i)
       else
-        some $ structureInfo (←StructureInfo.ofInductiveVal i)
+        pure <| some <| structureInfo (←StructureInfo.ofInductiveVal i)
     else
       if isClass env i.name then
-        some $ classInductiveInfo (←ClassInductiveInfo.ofInductiveVal i)
+        pure <| some <| classInductiveInfo (←ClassInductiveInfo.ofInductiveVal i)
       else
-        some $ inductiveInfo (←InductiveInfo.ofInductiveVal i)
+        pure <| some <| inductiveInfo (←InductiveInfo.ofInductiveVal i)
   -- we ignore these for now
-  | ConstantInfo.ctorInfo i => none
-  | ConstantInfo.recInfo i => none
-  | ConstantInfo.quotInfo i => none
+  | ConstantInfo.ctorInfo i => pure none
+  | ConstantInfo.recInfo i => pure none
+  | ConstantInfo.quotInfo i => pure none
 
 def getName : DocInfo → Name
 | axiomInfo i => i.name
@@ -428,7 +428,7 @@ def process : MetaM AnalyzerResult := do
     try
       let analysis := Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant cinfo) { maxHeartbeats := 5000000, options := ⟨[(`pp.tagAppFns, true)]⟩ } { env := env} {} {}
       if let some dinfo ← analysis then
-        let some modidx ← env.getModuleIdxFor? dinfo.getName | unreachable!
+        let some modidx := env.getModuleIdxFor? dinfo.getName | unreachable!
         let moduleName := env.allImportedModuleNames.get! modidx
         let module := res.find! moduleName
         res := res.insert moduleName {module with members := module.members.push dinfo}
@@ -440,10 +440,10 @@ def process : MetaM AnalyzerResult := do
   -- TODO: This could probably be faster if we did an insertion sort above instead
   for (moduleName, module) in res.toArray do
     res := res.insert moduleName {module with members := module.members.qsort DocInfo.lineOrder}
-    let some modIdx ← env.getModuleIdx? moduleName | unreachable!
+    let some modIdx := env.getModuleIdx? moduleName | unreachable!
     let moduleData := env.header.moduleData.get! modIdx
     for imp in moduleData.imports do
-      let some importIdx ← env.getModuleIdx? imp.module | unreachable!
+      let some importIdx := env.getModuleIdx? imp.module | unreachable!
       adj := adj.set! modIdx (adj.get! modIdx |>.set! importIdx true)
 
   return {
