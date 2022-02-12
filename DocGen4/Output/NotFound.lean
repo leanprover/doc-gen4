@@ -11,7 +11,7 @@ namespace Output
 
 open scoped DocGen4.Jsx
 
-def notFound : HtmlM Html := do templateExtends (baseHtml "404") $
+def notFound : HtmlM Html := do templateExtends (baseHtml "404") $ pure $
   <main>
     <h1>404 Not Found</h1>
     <p> Unfortunately, the page you were looking for is no longer here. </p>

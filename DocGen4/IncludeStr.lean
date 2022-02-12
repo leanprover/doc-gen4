@@ -19,7 +19,7 @@ syntax (name := includeStr) "include_str" str : term
         throwError s!"{str} is a directory"
       else
         let content ← FS.readFile path
-        return mkStrLit content
+        pure $ mkStrLit content
     else
       throwError s!"\"{str}\" does not exist as a file"
 

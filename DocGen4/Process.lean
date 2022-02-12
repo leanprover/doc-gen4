@@ -140,7 +140,7 @@ def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
     openDecls := ← getOpenDecls
     fileMap := default
   }
-  return tagExprInfos ctx infos tt
+  pure $ tagExprInfos ctx infos tt
 
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let env ← getEnv
@@ -150,16 +150,16 @@ def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let doc ← findDocString? env v.name
   match ←findDeclarationRanges? v.name with
   -- TODO: Maybe selection range is more relevant? Figure this out in the future
-  | some range => return Info.mk ⟨v.name, type⟩ args doc range.range
+  | some range => pure $ Info.mk ⟨v.name, type⟩ args doc range.range
   | none => panic! s!"{v.name} is a declaration without position"
 
 def AxiomInfo.ofAxiomVal (v : AxiomVal) : MetaM AxiomInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
-  return AxiomInfo.mk info v.isUnsafe
+  pure $ AxiomInfo.mk info v.isUnsafe
 
 def TheoremInfo.ofTheoremVal (v : TheoremVal) : MetaM TheoremInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
-  return TheoremInfo.mk info
+  pure $ TheoremInfo.mk info
 
 def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
@@ -167,13 +167,13 @@ def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
   let env ← getEnv
   let isPartial := env.find? (Compiler.mkUnsafeRecName v.name) |>.isSome
   if isPartial then
-    return OpaqueInfo.mk info t DefinitionSafety.partial
+    pure $ OpaqueInfo.mk info t DefinitionSafety.partial
   else
     let safety := if v.isUnsafe then DefinitionSafety.unsafe else DefinitionSafety.safe
-    return OpaqueInfo.mk info t safety
+    pure $ OpaqueInfo.mk info t safety
 
 def isInstance (declName : Name) : MetaM Bool := do
-  return (instanceExtension.getState (←getEnv)).instanceNames.contains declName
+  pure $ (instanceExtension.getState (←getEnv)).instanceNames.contains declName
 
 partial def stripArgs (e : Expr) : Expr :=
   match e.consumeMData with
@@ -213,7 +213,7 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo :=
       pure $ DefinitionInfo.mk info isUnsafe v.hints (some #[eq])
   catch err =>
     IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {←err.toMessageData.toString}"
-    return DefinitionInfo.mk info isUnsafe v.hints none
+    pure $ DefinitionInfo.mk info isUnsafe v.hints none
 
 def getConstructorType (ctor : Name) : MetaM CodeWithInfos := do
   let env ← getEnv
@@ -225,7 +225,7 @@ def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let env ← getEnv
   let ctors ← v.ctors.mapM (λ name => do pure $ NameInfo.mk name (←getConstructorType name))
-  return InductiveInfo.mk info ctors v.isUnsafe
+  pure $ InductiveInfo.mk info ctors v.isUnsafe
 
 def dropArgs (type : Expr) (n : Nat) : (Expr × List (Name × Expr)) :=
   match type, n with
@@ -243,7 +243,7 @@ def getFieldTypes (struct : Name) (ctor : ConstructorVal) (parents : Nat) : Meta
   let mut field_infos := #[]
   for (name, type) in fields do
     field_infos := field_infos.push { name := struct.append name, type := ←prettyPrintTerm type}
-  return field_infos
+  pure $ field_infos
 
 def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
@@ -254,24 +254,24 @@ def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   match getStructureInfo? env v.name with
   | some i =>
     if i.fieldNames.size - parents.size > 0 then
-      return StructureInfo.mk info (←getFieldTypes v.name ctor parents.size) parents ⟨ctor.name, ctorType⟩
+      pure $ StructureInfo.mk info (←getFieldTypes v.name ctor parents.size) parents ⟨ctor.name, ctorType⟩
     else
-      return StructureInfo.mk info #[] parents ⟨ctor.name, ctorType⟩
+      pure $ StructureInfo.mk info #[] parents ⟨ctor.name, ctorType⟩
   | none => panic! s!"{v.name} is not a structure"
 
 def getInstances (className : Name) : MetaM (Array Name) := do
   let fn ← mkConstWithFreshMVarLevels className
   let (xs, _, _) ← forallMetaTelescopeReducing (← inferType fn)
   let insts ← SynthInstance.getInstances (mkAppN fn xs)
-  return insts.map Expr.constName!
+  pure $ insts.map Expr.constName!
 
 def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do
   let sinfo ← StructureInfo.ofInductiveVal v
-  return ClassInfo.mk sinfo (←getInstances v.name)
+  pure $ ClassInfo.mk sinfo (←getInstances v.name)
 
 def ClassInductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInductiveInfo := do
   let info ← InductiveInfo.ofInductiveVal v
-  return ClassInductiveInfo.mk info (←getInstances v.name)
+  pure $ ClassInductiveInfo.mk info (←getInstances v.name)
 
 namespace DocInfo
 
@@ -290,18 +290,18 @@ def isBlackListed (declName : Name) : MetaM Bool := do
 -- TODO: Is this actually the best way?
 def isProjFn (declName : Name) : MetaM Bool := do
   let env ← getEnv
-  return match declName with
+  match declName with
   | Name.str parent name _ =>
     if isStructure env parent then
       match getStructureInfo? env parent with
       | some i =>
         match i.fieldNames.find? (· == name) with
-        | some _ => true
-        | none => false
+        | some _ => pure true
+        | none => pure false
       | none => panic! s!"{parent} is not a structure"
     else
-      false
-  | _ => false
+      pure false
+  | _ => pure false
 
 def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, info) => do
   if (←isBlackListed name) then
@@ -446,7 +446,7 @@ def process : MetaM AnalyzerResult := do
       let some importIdx := env.getModuleIdx? imp.module | unreachable!
       adj := adj.set! modIdx (adj.get! modIdx |>.set! importIdx true)
 
-  return {
+  pure {
     name2ModIdx := env.const2ModIdx,
     moduleNames := env.header.moduleNames,
     moduleInfo := res,

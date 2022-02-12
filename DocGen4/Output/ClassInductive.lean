@@ -7,7 +7,7 @@ namespace DocGen4
 namespace Output
 
 def classInductiveToHtml (i : ClassInductiveInfo) : HtmlM (Array Html) := do
-  (←inductiveToHtml i.toInductiveInfo).push (←classInstancesToHtml i.instances)
+  pure $ (←inductiveToHtml i.toInductiveInfo).push (←classInstancesToHtml i.instances)
 
 end Output
 end DocGen4

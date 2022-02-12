@@ -14,10 +14,10 @@ open Lean System Std IO
 
 def getLakePath : IO FilePath := do
   match (← IO.getEnv "LAKE") with
-  | some path => System.FilePath.mk path
+  | some path => pure $ System.FilePath.mk path
   | none =>
     let lakePath := (←findSysroot?) / "bin" / "lake"
-    lakePath.withExtension System.FilePath.exeExtension
+    pure $ lakePath.withExtension System.FilePath.exeExtension
 
 -- Modified from the LSP Server
 def lakeSetupSearchPath (lakePath : System.FilePath) (imports : Array String) : IO Lean.SearchPath := do

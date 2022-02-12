@@ -9,16 +9,18 @@ open Lean
 def fieldToHtml (f : NameInfo) : HtmlM Html := do
   let shortName := f.name.components'.head!.toString
   let name := f.name.toString
-  return <li «class»="structure_field" id={name}>{s!"{shortName} "} : [←infoFormatToHtml f.type]</li>
+  pure <li «class»="structure_field" id={name}>{s!"{shortName} "} : [←infoFormatToHtml f.type]</li>
 
 def structureToHtml (i : StructureInfo) : HtmlM (Array Html) := do
   if Name.isSuffixOf `mk i.ctor.name then
-    #[<ul «class»="structure_fields" id={i.ctor.name.toString}>
-      [←i.fieldInfo.mapM fieldToHtml]
-    </ul>]
+    pure #[
+      <ul «class»="structure_fields" id={i.ctor.name.toString}>
+        [←i.fieldInfo.mapM fieldToHtml]
+      </ul>]
   else
     let ctorShortName := i.ctor.name.components'.head!.toString
-    #[<ul «class»="structure_ext">
+    pure #[
+      <ul «class»="structure_ext">
         <li id={i.ctor.name.toString} «class»="structure_ext_ctor">{s!"{ctorShortName} "} :: (</li>
         <ul «class»="structure_ext_fields">
           [←i.fieldInfo.mapM fieldToHtml]
