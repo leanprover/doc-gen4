@@ -50,6 +50,7 @@ structure DefinitionInfo extends Info where
   isUnsafe : Bool
   hints : ReducibilityHints
   equations : Option (Array CodeWithInfos)
+  isComputable : Bool
   deriving Inhabited
 
 abbrev InstanceInfo := DefinitionInfo
@@ -199,21 +200,28 @@ def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
       let type ← mkForallFVars xs type
       pure type
 
+-- The following code is translated from ll_infer_type.cpp
+def computable? (defn : Name) : MetaM Bool := do
+  let cstage2Name := defn.append `_cstage2
+  let env ← getEnv
+  pure $ env.find? cstage2Name |>.isSome
+
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let isUnsafe := v.safety == DefinitionSafety.unsafe
+  let isComputable ← computable? v.name
   try
     let eqs? ← getEqnsFor? v.name
     match eqs? with
     | some eqs =>
       let prettyEqs ← eqs.mapM processEq
-      pure $ DefinitionInfo.mk info isUnsafe v.hints prettyEqs
+      pure $ DefinitionInfo.mk info isUnsafe v.hints prettyEqs isComputable
     | none =>
       let eq ← prettyPrintTerm $ stripArgs (←valueToEq v)
-      pure $ DefinitionInfo.mk info isUnsafe v.hints (some #[eq])
+      pure $ DefinitionInfo.mk info isUnsafe v.hints (some #[eq]) isComputable
   catch err =>
     IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {←err.toMessageData.toString}"
-    pure $ DefinitionInfo.mk info isUnsafe v.hints none
+    pure $ DefinitionInfo.mk info isUnsafe v.hints none isComputable
 
 def getConstructorType (ctor : Name) : MetaM CodeWithInfos := do
   let env ← getEnv
@@ -366,14 +374,27 @@ def getKindDescription : DocInfo → String
   | DefinitionSafety.safe => "constant"
   | DefinitionSafety.unsafe => "unsafe constant"
   | DefinitionSafety.partial => "partial def"
-| definitionInfo i =>
+| definitionInfo i => Id.run do
   if i.hints.isAbbrev then
-    "abbrev"
-  else if i.isUnsafe then
-    "unsafe def"
+    pure "abbrev"
   else
-    "def"
-| instanceInfo i => if i.isUnsafe then "unsafe instance" else "instance"
+    let mut modifiers := #[]
+    if i.isUnsafe then
+      modifiers := modifiers.push "unsafe"
+    if ¬i.isComputable then
+      modifiers := modifiers.push "noncomputable"
+
+    modifiers := modifiers.push "def"
+    pure $ String.intercalate " " modifiers.toList
+| instanceInfo i => Id.run do
+  let mut modifiers := #[]
+  if i.isUnsafe then
+    modifiers := modifiers.push "unsafe"
+  if ¬i.isComputable then
+    modifiers := modifiers.push "noncomputable"
+
+  modifiers := modifiers.push "instance"
+  pure $ String.intercalate " " modifiers.toList
 | inductiveInfo i => if i.isUnsafe then "unsafe inductive" else "inductive"
 | structureInfo _ => "structure"
 | classInfo _ => "class"
