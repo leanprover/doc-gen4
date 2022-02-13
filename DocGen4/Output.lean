@@ -9,6 +9,7 @@ import DocGen4.Output.Base
 import DocGen4.Output.Index
 import DocGen4.Output.Module
 import DocGen4.Output.NotFound
+import DocGen4.Output.Find
 
 namespace DocGen4
 
@@ -66,10 +67,25 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   let indexHtml := ReaderT.run index config 
   let notFoundHtml := ReaderT.run notFound config
   FS.createDirAll basePath
+  FS.createDirAll (basePath / "find")
+
+  let mut declList := #[]
+  for (_, mod) in result.moduleInfo.toArray do
+    for decl in mod.members do
+      let findHtml := ReaderT.run (findRedirectHtml decl.getName) config
+      let findDir := basePath / "find" / decl.getName.toString
+      FS.createDirAll findDir
+      FS.writeFile (findDir / "index.html") findHtml.toString
+      let obj := Json.mkObj [("name", decl.getName.toString), ("description", decl.getDocString.getD "")]
+      declList := declList.push obj
+  let json := Json.arr declList
+
+  FS.writeFile (basePath / "searchable_data.bmp") json.compress
   FS.writeFile (basePath / "index.html") indexHtml.toString
   FS.writeFile (basePath / "style.css") styleCss
   FS.writeFile (basePath / "404.html") notFoundHtml.toString
   FS.writeFile (basePath / "nav.js") navJs
+  FS.writeFile (basePath / "search.js") searchJs
   for (module, content) in result.moduleInfo.toArray do
     let moduleHtml := ReaderT.run (moduleToHtml content) config
     let path := moduleNameToFile basePath module

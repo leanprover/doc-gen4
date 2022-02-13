@@ -49,6 +49,7 @@ def baseHtmlArray (title : String) (site : Array Html) : HtmlM Html := do
 
       -- TODO Add more js stuff
       <script src={s!"{←getRoot}nav.js"}></script>
+      <script src={s!"{←getRoot}search.js"}></script>
       </body>
     </html>
 

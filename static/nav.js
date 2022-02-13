@@ -106,14 +106,23 @@ if (tse != null) {
 // Simple declaration search
 // -------------------------
 
-const searchWorkerURL = new URL(`${siteRoot}searchWorker.js`, window.location);
-const declSearch = (q) => new Promise((resolve, reject) => {
-  const worker = new SharedWorker(searchWorkerURL);
-  worker.port.start();
-  worker.port.onmessage = ({data}) => resolve(data);
-  worker.port.onmessageerror = (e) => reject(e);
-  worker.port.postMessage({q});
-});
+const declURL = new URL(`${siteRoot}searchable_data.bmp`, window.location);
+const getDecls = (() => {
+  let decls;
+  return () => {
+    if (!decls) decls = new Promise((resolve, reject) => {
+        const req = new XMLHttpRequest();
+        req.responseType = 'json';
+        req.addEventListener('load', () => resolve(loadDecls(req.response)));
+        req.addEventListener('error', () => reject());
+        req.open('GET', declURL);
+        req.send();
+      })
+    return decls;
+  }
+})()
+
+const declSearch = async (q) => getMatches(await getDecls(), q);
 
 const srId = 'search_results';
 document.getElementById('search_form')

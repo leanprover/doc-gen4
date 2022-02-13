@@ -206,7 +206,9 @@ def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
 def computable? (defn : Name) : MetaM Bool := do
   let cstage2Name := defn.append `_cstage2
   let env ← getEnv
-  pure $ env.find? cstage2Name |>.isSome
+  let extern? := externAttr.getParam env defn |>.isSome
+  let cstage2? := env.find? cstage2Name |>.isSome
+  pure $ extern? ∨ cstage2?
 
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
@@ -443,6 +445,17 @@ def getAttrs : DocInfo → Array String
 | structureInfo i => i.attrs
 | classInfo i => i.attrs
 | classInductiveInfo i => i.attrs
+
+def getDocString : DocInfo → Option String
+| axiomInfo i => i.doc
+| theoremInfo i => i.doc
+| opaqueInfo i => i.doc
+| definitionInfo i => i.doc
+| instanceInfo i => i.doc
+| inductiveInfo i => i.doc
+| structureInfo i => i.doc
+| classInfo i => i.doc
+| classInductiveInfo i => i.doc
 
 end DocInfo
 
