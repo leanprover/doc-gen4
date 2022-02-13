@@ -70,6 +70,7 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   FS.writeFile (basePath / "style.css") styleCss
   FS.writeFile (basePath / "404.html") notFoundHtml.toString
   FS.writeFile (basePath / "nav.js") navJs
+  FS.writeFile (basePath / "search.js") searchJs
   for (module, content) in result.moduleInfo.toArray do
     let moduleHtml := ReaderT.run (moduleToHtml content) config
     let path := moduleNameToFile basePath module

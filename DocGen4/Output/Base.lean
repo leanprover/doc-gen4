@@ -48,6 +48,7 @@ def moduleNameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
 section Static
   def styleCss : String := include_str "./static/style.css"
   def navJs : String := include_str "./static/nav.js"
+  def searchJs : String := include_str "./static/search.js"
 end Static
 
 def declNameToLink (name : Name) : HtmlM String := do
