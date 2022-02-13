@@ -9,6 +9,7 @@ import DocGen4.Output.Structure
 import DocGen4.Output.Class
 import DocGen4.Output.Definition
 import DocGen4.Output.Instance
+import DocGen4.Output.ClassInductive
 
 namespace DocGen4
 namespace Output
@@ -30,9 +31,9 @@ def argToHtml (arg : Arg) : HtmlM Html := do
   let inner := Html.element "span" true #[("class", "fn")] nodes
   let html := Html.element "span" false #[("class", "decl_args")] #[inner]
   if implicit then
-    <span «class»="impl_arg">{html}</span>
+    pure <span «class»="impl_arg">{html}</span>
   else
-    html
+    pure html
 
 def structureInfoHeader (s : StructureInfo) : HtmlM (Array Html) := do
   let mut nodes := #[]
@@ -45,13 +46,11 @@ def structureInfoHeader (s : StructureInfo) : HtmlM (Array Html) := do
       let html:= Html.element "span" false #[("class", "decl_parent")] #[inner]
       parents := parents.push html
     nodes := nodes.append (parents.toList.intersperse (Html.text ", ")).toArray
-  nodes
+  pure nodes
 
 def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
-  -- TODO: noncomputable, partial
-  -- TODO: Support all the kinds in CSS
-  nodes := nodes.push <span «class»="decl_kind">{doc.getKind}</span>
+  nodes := nodes.push <span «class»="decl_kind">{doc.getKindDescription}</span>
   nodes := nodes.push
     <span «class»="decl_name">
       <a «class»="break_within" href={←declNameToLink doc.getName}>
@@ -70,28 +69,37 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
 
   nodes := nodes.push <span «class»="decl_args">:</span>
   nodes := nodes.push $ Html.element "div" true #[("class", "decl_type")] (←infoFormatToHtml doc.getType)
-  return <div «class»="decl_header"> [nodes] </div>
+  pure <div «class»="decl_header"> [nodes] </div>
 
 def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
-  let doc_html ← match doc with
+  let docHtml ← match doc with
   | DocInfo.inductiveInfo i => inductiveToHtml i
   | DocInfo.structureInfo i => structureToHtml i
   | DocInfo.classInfo i => classToHtml i
   | DocInfo.definitionInfo i => definitionToHtml i
   | DocInfo.instanceInfo i => instanceToHtml i
-  | _ => #[]
+  | DocInfo.classInductiveInfo i => classInductiveToHtml i
+  | _ => pure #[]
 
-  return <div «class»="decl" id={doc.getName.toString}>
-    <div «class»={doc.getKind}>
-      <div «class»="gh_link">
-        -- TODO: Put the proper source link
-        <a href={←getSourceUrl module doc.getDeclarationRange}>source</a>
+  let attrs := doc.getAttrs
+  let attrsHtml :=
+    if attrs.size > 0 then
+      let attrStr := "@[" ++ String.intercalate ", " doc.getAttrs.toList ++ "]"
+      #[Html.element "div" false #[("class", "attributes")] #[attrStr]]
+    else
+      #[]
+
+  pure
+    <div «class»="decl" id={doc.getName.toString}>
+      <div «class»={doc.getKind}>
+        <div «class»="gh_link">
+          <a href={←getSourceUrl module doc.getDeclarationRange}>source</a>
+        </div>
+        [attrsHtml]
+        {←docInfoHeader doc}
+        [docHtml]
       </div>
-      -- TODO: Attributes
-      {←docInfoHeader doc}
-      [←doc_html]
     </div>
-  </div>
 
 def declarationToNavLink (module : Name) : Html :=
   <div «class»="nav_link">
@@ -100,62 +108,62 @@ def declarationToNavLink (module : Name) : Html :=
 
 -- TODO: Similar functions are used all over the place, we should dedup them
 def moduleToNavLink (module : Name) : HtmlM Html := do
-  <a href={←moduleNameToLink module}>{module.toString}</a>
+  pure <a href={←moduleNameToLink module}>{module.toString}</a>
 
 def getImports (module : Name) : HtmlM (Array Name) := do
   let res ← getResult
-  let some idx ← res.moduleNames.findIdx? (. == module) | unreachable!
+  let some idx := res.moduleNames.findIdx? (. == module) | unreachable!
   let adj := res.importAdj.get! idx
   let mut imports := #[]
   for i in [:adj.size] do
     if adj.get! i then
       imports := imports.push (res.moduleNames.get! i)
-  imports
+  pure imports
 
 def getImportedBy (module : Name) : HtmlM (Array Name) := do
   let res ← getResult
-  let some idx ← res.moduleNames.findIdx? (. == module) | unreachable!
+  let some idx := res.moduleNames.findIdx? (. == module) | unreachable!
   let adj := res.importAdj
   let mut impBy := #[]
   for i in [:adj.size] do
     if adj.get! i |>.get! idx then
       impBy := impBy.push (res.moduleNames.get! i)
-  impBy
+  pure impBy
 
 def importedByHtml (moduleName : Name) : HtmlM (Array Html) := do
   let imports := (←getImportedBy moduleName) |>.qsort Name.lt
-  imports.mapM (λ i => do <li>{←moduleToNavLink i}</li>)
+  imports.mapM (λ i => do pure <li>{←moduleToNavLink i}</li>)
 
 
 def importsHtml (moduleName : Name) : HtmlM (Array Html) := do
   let imports := (←getImports moduleName) |>.qsort Name.lt
-  imports.mapM (λ i => do <li>{←moduleToNavLink i}</li>)
+  imports.mapM (λ i => do pure <li>{←moduleToNavLink i}</li>)
 
 def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
-  <nav «class»="internal_nav">
-    <h3><a «class»="break_within" href="#top">{moduleName.toString}</a></h3>
-    -- TODO: Proper source links
-    <p «class»="gh_nav_link"><a href={←getSourceUrl moduleName none}>source</a></p>
-    <div «class»="imports">
-      <details>
-        <summary>Imports</summary>
-        <ul>
-          [←importsHtml moduleName]
-        </ul>
-      </details>
-      <details>
-        <summary>Imported by</summary>
-        <ul>
-          [←importedByHtml moduleName]
-        </ul>
-      </details>
-    </div>
-    [members.map declarationToNavLink]
-  </nav>
+  pure
+    <nav «class»="internal_nav">
+      <h3><a «class»="break_within" href="#top">{moduleName.toString}</a></h3>
+      <p «class»="gh_nav_link"><a href={←getSourceUrl moduleName none}>source</a></p>
+      <div «class»="imports">
+        <details>
+          <summary>Imports</summary>
+          <ul>
+            [←importsHtml moduleName]
+          </ul>
+        </details>
+        <details>
+          <summary>Imported by</summary>
+          <ul>
+            [←importedByHtml moduleName]
+          </ul>
+        </details>
+      </div>
+      [members.map declarationToNavLink]
+    </nav>
 
 def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
   let docInfos ← module.members.mapM (λ i => docInfoToHtml module.name i)
-  templateExtends (baseHtmlArray module.name.toString) $ #[
+  templateExtends (baseHtmlArray module.name.toString) $ pure #[
     ←internalNav (module.members.map DocInfo.getName) module.name,
     Html.element "main" false #[] docInfos
   ]

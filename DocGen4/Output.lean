@@ -32,22 +32,22 @@ def getGithubBaseUrl : IO String := do
   if url.startsWith "git@" then
     url := url.drop 15
     url := url.dropRight 4
-    s!"https://github.com/{url}"
+    pure s!"https://github.com/{url}"
   else if url.endsWith ".git" then
-    url.dropRight 4
+    pure $ url.dropRight 4
   else
-    url
+    pure url
 
 def getCommit : IO String := do
   let out ← IO.Process.output {cmd := "git", args := #["rev-parse", "HEAD"]}
   if out.exitCode != 0 then
     throw <| IO.userError <| "git exited with code " ++ toString out.exitCode
-  out.stdout.trimRight
+  pure out.stdout.trimRight
 
 def sourceLinker : IO (Name → Option DeclarationRange → String) := do
   let baseUrl ← getGithubBaseUrl
   let commit ← getCommit
-  return λ name range =>
+  pure λ name range =>
     let parts := name.components.map Name.toString
     let path := (parts.intersperse "/").foldl (· ++ ·) ""
     let r := name.getRoot

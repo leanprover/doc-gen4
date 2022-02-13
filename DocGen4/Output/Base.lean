@@ -25,17 +25,17 @@ def setCurrentName (name : Name) (ctx : SiteContext) := {ctx with currentName :=
 abbrev HtmlT := ReaderT SiteContext
 abbrev HtmlM := HtmlT Id
 
-def getRoot : HtmlM String := do (←read).root
-def getResult : HtmlM AnalyzerResult := do (←read).result
-def getCurrentName : HtmlM (Option Name) := do (←read).currentName
-def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do (←read).sourceLinker module range
+def getRoot : HtmlM String := do pure (←read).root
+def getResult : HtmlM AnalyzerResult := do pure (←read).result
+def getCurrentName : HtmlM (Option Name) := do pure (←read).currentName
+def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do pure $ (←read).sourceLinker module range
 
 def templateExtends {α β : Type} (base : α → HtmlM β) (new : HtmlM α) : HtmlM β :=
   new >>= base
 
 def moduleNameToLink (n : Name) : HtmlM String := do
   let parts := n.components.map Name.toString
-  (←getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+  pure $ (←getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
   let parts := n.components.map Name.toString
@@ -53,7 +53,7 @@ end Static
 def declNameToLink (name : Name) : HtmlM String := do
   let res ← getResult
   let module := res.moduleNames[res.name2ModIdx.find! name]
-  (←moduleNameToLink module) ++ "#" ++ name.toString
+  pure $ (←moduleNameToLink module) ++ "#" ++ name.toString
 
 def splitWhitespaces (s : String) : (String × String × String) := Id.run do
   let front := "".pushn ' ' (s.find (!Char.isWhitespace ·))
@@ -64,8 +64,8 @@ def splitWhitespaces (s : String) : (String × String × String) := Id.run do
 
 partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
   match i with
-  | TaggedText.text t => return #[t]
-  | TaggedText.append tt => tt.foldlM (λ acc t => do acc ++ (←infoFormatToHtml t)) #[]
+  | TaggedText.text t => pure #[t]
+  | TaggedText.append tt => tt.foldlM (λ acc t => do pure $ acc ++ (←infoFormatToHtml t)) #[]
   | TaggedText.tag a t =>
     match a.info.val.info with
     | Info.ofTermInfo i =>
@@ -75,13 +75,13 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
          | TaggedText.text t =>
            let (front, t, back) := splitWhitespaces t
            let elem := Html.element "a" true #[("href", ←declNameToLink name)] #[t]
-           #[Html.text front, elem, Html.text back]
+           pure #[Html.text front, elem, Html.text back]
          | _ =>
            -- TODO: Is this ever reachable?
-           #[Html.element "a" true #[("href", ←declNameToLink name)] (←infoFormatToHtml t)]
+           pure #[Html.element "a" true #[("href", ←declNameToLink name)] (←infoFormatToHtml t)]
       | _ =>
-         #[Html.element "span" true #[("class", "fn")] (←infoFormatToHtml t)]
-    | _ => #[Html.element "span" true #[("class", "fn")] (←infoFormatToHtml t)]
+         pure #[Html.element "span" true #[("class", "fn")] (←infoFormatToHtml t)]
+    | _ => pure #[Html.element "span" true #[("class", "fn")] (←infoFormatToHtml t)]
 
 end Output
 end DocGen4
