@@ -10,6 +10,7 @@ import Std.Data.HashMap
 import Lean.Meta.SynthInstance
 
 import DocGen4.Hierarchy
+import DocGen4.Attributes
 
 namespace DocGen4
 
@@ -29,6 +30,7 @@ structure Info extends NameInfo where
   args : Array Arg
   doc : Option String
   declarationRange : DeclarationRange
+  attrs : Array String
   deriving Inhabited
 
 structure AxiomInfo extends Info where
@@ -151,7 +153,7 @@ def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let doc ← findDocString? env v.name
   match ←findDeclarationRanges? v.name with
   -- TODO: Maybe selection range is more relevant? Figure this out in the future
-  | some range => pure $ Info.mk ⟨v.name, type⟩ args doc range.range
+  | some range => pure $ Info.mk ⟨v.name, type⟩ args doc range.range (←getAllAttributes v.name)
   | none => panic! s!"{v.name} is a declaration without position"
 
 def AxiomInfo.ofAxiomVal (v : AxiomVal) : MetaM AxiomInfo := do
@@ -222,6 +224,14 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo :=
   catch err =>
     IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {←err.toMessageData.toString}"
     pure $ DefinitionInfo.mk info isUnsafe v.hints none isComputable
+
+def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
+  let info ← DefinitionInfo.ofDefinitionVal v
+  let some className := getClassName (←getEnv) v.type | unreachable!
+  if let some instAttr ← getDefaultInstance v.name className then
+    pure { info with attrs := info.attrs.push instAttr }
+  else
+    pure info
 
 def getConstructorType (ctor : Name) : MetaM CodeWithInfos := do
   let env ← getEnv
@@ -322,11 +332,12 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
     if ← (isProjFn i.name) then
       pure none
     else
-      let info ← DefinitionInfo.ofDefinitionVal i
       if (←isInstance i.name) then
+        let info ← InstanceInfo.ofDefinitionVal i
         pure <| some <| instanceInfo info
       else
-        pure <| some <| definitionInfo info
+        let info ← DefinitionInfo.ofDefinitionVal i
+        pure <| some <| definitionInfo  info
   | ConstantInfo.inductInfo i =>
     let env ← getEnv
     if isStructure env i.name then
@@ -422,6 +433,17 @@ def getArgs : DocInfo → Array Arg
 | classInfo i => i.args
 | classInductiveInfo i => i.args
 
+def getAttrs : DocInfo → Array String
+| axiomInfo i => i.attrs
+| theoremInfo i => i.attrs
+| opaqueInfo i => i.attrs
+| definitionInfo i => i.attrs
+| instanceInfo i => i.attrs
+| inductiveInfo i => i.attrs
+| structureInfo i => i.attrs
+| classInfo i => i.attrs
+| classInductiveInfo i => i.attrs
+
 end DocInfo
 
 structure AnalyzerResult where
@@ -474,7 +496,5 @@ def process : MetaM AnalyzerResult := do
     hierarchy := Hierarchy.fromArray env.header.moduleNames,
     importAdj := adj
   }
-
-
 
 end DocGen4

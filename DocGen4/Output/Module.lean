@@ -72,7 +72,7 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   pure <div «class»="decl_header"> [nodes] </div>
 
 def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
-  let doc_html ← match doc with
+  let docHtml ← match doc with
   | DocInfo.inductiveInfo i => inductiveToHtml i
   | DocInfo.structureInfo i => structureToHtml i
   | DocInfo.classInfo i => classToHtml i
@@ -81,15 +81,23 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   | DocInfo.classInductiveInfo i => classInductiveToHtml i
   | _ => pure #[]
 
+  let attrs := doc.getAttrs
+  let attrsHtml :=
+    if attrs.size > 0 then
+      let attrStr := "@[" ++ String.intercalate ", " doc.getAttrs.toList ++ "]"
+      #[Html.element "div" false #[("class", "attributes")] #[attrStr]]
+    else
+      #[]
+
   pure
     <div «class»="decl" id={doc.getName.toString}>
       <div «class»={doc.getKind}>
         <div «class»="gh_link">
           <a href={←getSourceUrl module doc.getDeclarationRange}>source</a>
         </div>
-        -- TODO: Attributes
+        [attrsHtml]
         {←docInfoHeader doc}
-        [doc_html]
+        [docHtml]
       </div>
     </div>
 
