@@ -444,6 +444,17 @@ def getAttrs : DocInfo → Array String
 | classInfo i => i.attrs
 | classInductiveInfo i => i.attrs
 
+def getDocString : DocInfo → Option String
+| axiomInfo i => i.doc
+| theoremInfo i => i.doc
+| opaqueInfo i => i.doc
+| definitionInfo i => i.doc
+| instanceInfo i => i.doc
+| inductiveInfo i => i.doc
+| structureInfo i => i.doc
+| classInfo i => i.doc
+| classInductiveInfo i => i.doc
+
 end DocInfo
 
 structure AnalyzerResult where

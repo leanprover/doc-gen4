@@ -65,6 +65,13 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   let basePath := FilePath.mk "./build/doc/"
   let indexHtml := ReaderT.run index config 
   let notFoundHtml := ReaderT.run notFound config
+  let mut declList := #[]
+  for (_, mod) in result.moduleInfo.toArray do
+    for decl in mod.members do
+      let obj := Json.mkObj [("name", decl.getName.toString), ("description", decl.getDocString.getD "")]
+      declList := declList.push obj
+  let json := Json.arr declList
+  FS.writeFile (basePath / "searchable_data.bmp") json.compress
   FS.createDirAll basePath
   FS.writeFile (basePath / "index.html") indexHtml.toString
   FS.writeFile (basePath / "style.css") styleCss
