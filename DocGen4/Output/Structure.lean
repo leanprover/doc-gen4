@@ -1,3 +1,4 @@
+import CMark
 import DocGen4.Output.Template
 
 namespace DocGen4
@@ -12,21 +13,24 @@ def fieldToHtml (f : NameInfo) : HtmlM Html := do
   pure <li «class»="structure_field" id={name}>{s!"{shortName} "} : [←infoFormatToHtml f.type]</li>
 
 def structureToHtml (i : StructureInfo) : HtmlM (Array Html) := do
-  if Name.isSuffixOf `mk i.ctor.name then
-    pure #[
-      <ul «class»="structure_fields" id={i.ctor.name.toString}>
+  let structureHtml :=
+    if Name.isSuffixOf `mk i.ctor.name then
+      (<ul «class»="structure_fields" id={i.ctor.name.toString}>
         [←i.fieldInfo.mapM fieldToHtml]
-      </ul>]
-  else
-    let ctorShortName := i.ctor.name.components'.head!.toString
-    pure #[
-      <ul «class»="structure_ext">
+      </ul>)
+    else
+      let ctorShortName := i.ctor.name.components'.head!.toString
+      (<ul «class»="structure_ext">
         <li id={i.ctor.name.toString} «class»="structure_ext_ctor">{s!"{ctorShortName} "} :: (</li>
         <ul «class»="structure_ext_fields">
           [←i.fieldInfo.mapM fieldToHtml]
         </ul>
         <li «class»="structure_ext_ctor">)</li>
-      </ul>]
+      </ul>)
+  let docstringHtml? := i.doc.map λ s => Html.text (CMark.renderHtml s)
+  match docstringHtml? with
+  | some d => pure #[structureHtml, d]
+  | none   => pure #[structureHtml]
 
 end Output
 end DocGen4
