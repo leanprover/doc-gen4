@@ -101,16 +101,17 @@ def getDeclarationRange : DocInfo → DeclarationRange
 | classInfo i => i.declarationRange
 | classInductiveInfo i => i.declarationRange
 
-def lineOrder (l r : DocInfo) : Bool :=
-  l.getDeclarationRange.pos.line < r.getDeclarationRange.pos.line
-
 end DocInfo
+
+inductive ModuleMember where
+| docInfo (info : DocInfo) : ModuleMember
+| modDoc (doc : ModuleDoc) : ModuleMember
+deriving Inhabited
 
 structure Module where
   name : Name
-  doc : Option String
   -- Sorted according to their line numbers
-  members : Array DocInfo
+  members : Array ModuleMember
   deriving Inhabited
 
 partial def typeToArgsType (e : Expr) : (Array (Name × Expr × BinderInfo) × Expr) :=
@@ -459,6 +460,29 @@ def getDocString : DocInfo → Option String
 
 end DocInfo
 
+namespace ModuleMember
+
+def getDeclarationRange : ModuleMember → DeclarationRange
+| docInfo i => i.getDeclarationRange
+| modDoc i => i.declarationRange
+
+def order (l r : ModuleMember) : Bool :=
+  Position.lt l.getDeclarationRange.pos r.getDeclarationRange.pos
+
+def isDocInfo : ModuleMember → Bool
+| docInfo _ => true
+| _ => false
+
+def getName : ModuleMember → Name
+| docInfo i => i.getName
+| modDoc i => Name.anonymous
+
+def getDocString : ModuleMember → Option String
+| docInfo i => i.getDocString
+| modDoc i => i.doc
+
+end ModuleMember
+
 structure AnalyzerResult where
   name2ModIdx : HashMap Name ModuleIdx
   moduleNames : Array Name
@@ -472,13 +496,12 @@ def process : MetaM AnalyzerResult := do
   let env ← getEnv
   let mut res := mkHashMap env.header.moduleNames.size
   for module in env.header.moduleNames do
-    -- TODO: Check why modules can have multiple doc strings and add that later on
-    let moduleDoc := match getModuleDoc? env module with
-    | none => none
-    | some #[] => none
-    | some doc => doc.get! 0
+    let modDocs := match getModuleDoc? env module with
+    | none => #[]
+    | some ds => ds
+    |>.map (λ doc => ModuleMember.modDoc doc)
 
-    res := res.insert module (Module.mk module moduleDoc #[])
+    res := res.insert module (Module.mk module modDocs)
 
   for cinfo in env.constants.toList do
     try
@@ -487,7 +510,7 @@ def process : MetaM AnalyzerResult := do
         let some modidx := env.getModuleIdxFor? dinfo.getName | unreachable!
         let moduleName := env.allImportedModuleNames.get! modidx
         let module := res.find! moduleName
-        res := res.insert moduleName {module with members := module.members.push dinfo}
+        res := res.insert moduleName {module with members := module.members.push (ModuleMember.docInfo dinfo)}
     catch e =>
       IO.println s!"WARNING: Failed to obtain information for: {cinfo.fst}: {←e.toMessageData.toString}"
 
@@ -495,7 +518,7 @@ def process : MetaM AnalyzerResult := do
   let mut adj := Array.mkArray res.size (Array.mkArray res.size false)
   -- TODO: This could probably be faster if we did an insertion sort above instead
   for (moduleName, module) in res.toArray do
-    res := res.insert moduleName {module with members := module.members.qsort DocInfo.lineOrder}
+    res := res.insert moduleName {module with members := module.members.qsort ModuleMember.order}
     let some modIdx := env.getModuleIdx? moduleName | unreachable!
     let moduleData := env.header.moduleData.get! modIdx
     for imp in moduleData.imports do

@@ -71,7 +71,7 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
 
   let mut declList := #[]
   for (_, mod) in result.moduleInfo.toArray do
-    for decl in mod.members do
+    for decl in mod.members.filter ModuleMember.isDocInfo do
       let findHtml := ReaderT.run (findRedirectHtml decl.getName) config
       let findDir := basePath / "find" / decl.getName.toString
       FS.createDirAll findDir

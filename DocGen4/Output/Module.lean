@@ -3,6 +3,7 @@ Copyright (c) 2021 Henrik Böving. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
+import CMark
 import DocGen4.Output.Template
 import DocGen4.Output.Inductive
 import DocGen4.Output.Structure
@@ -101,6 +102,17 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
       </div>
     </div>
 
+def modDocToHtml (module : Name) (mdoc : ModuleDoc) : HtmlM Html := do
+  pure 
+    <div «class»="mod_doc">
+      {Html.text (CMark.renderHtml mdoc.doc)}
+    </div>
+
+def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := 
+  match member with
+  | ModuleMember.docInfo d => docInfoToHtml module d
+  | ModuleMember.modDoc d => modDocToHtml module d
+
 def declarationToNavLink (module : Name) : Html :=
   <div «class»="nav_link">
     <a «class»="break_within" href={s!"#{module.toString}"}>{module.toString}</a>
@@ -162,9 +174,9 @@ def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
     </nav>
 
 def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
-  let docInfos ← module.members.mapM (λ i => docInfoToHtml module.name i)
+  let docInfos ← module.members.mapM (λ i => moduleMemberToHtml module.name i)
   templateExtends (baseHtmlArray module.name.toString) $ pure #[
-    ←internalNav (module.members.map DocInfo.getName) module.name,
+    ←internalNav (module.members.filter ModuleMember.isDocInfo |>.map ModuleMember.getName) module.name,
     Html.element "main" false #[] docInfos
   ]
 
