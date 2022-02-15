@@ -14,9 +14,10 @@ open scoped DocGen4.Jsx
 open Lean System Widget Elab
 
 structure SiteContext where
-  root : String
+  -- root : String
   result : AnalyzerResult
   currentName : Option Name
+  currentDepth : Nat
   -- Generates a URL pointing to the source of the given module Name
   sourceLinker : Name → Option DeclarationRange → String
 
@@ -25,7 +26,15 @@ def setCurrentName (name : Name) (ctx : SiteContext) := {ctx with currentName :=
 abbrev HtmlT := ReaderT SiteContext
 abbrev HtmlM := HtmlT Id
 
-def getRoot : HtmlM String := do pure (←read).root
+def getCurrentDepth : HtmlM Nat := do pure (<-read).currentDepth
+def getRoot : HtmlM String := do
+  let rec go: Nat -> String
+  | 0 => ""
+  | Nat.succ n' => "../" ++ go n'
+  let d <- getCurrentDepth
+  return (go d)
+
+-- def getRoot : HtmlM String := do pure (←read).root
 def getResult : HtmlM AnalyzerResult := do pure (←read).result
 def getCurrentName : HtmlM (Option Name) := do pure (←read).currentName
 def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do pure $ (←read).sourceLinker module range

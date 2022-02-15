@@ -61,8 +61,8 @@ def sourceLinker : IO (Name → Option DeclarationRange → String) := do
     | some range => s!"{basic}#L{range.pos.line}-L{range.endPos.line}"
     | none => basic
 
-def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
-  let config := { root := root, result := result, currentName := none, sourceLinker := ←sourceLinker}
+def htmlOutput (result : AnalyzerResult) : IO Unit := do
+  let config := { currentDepth := 0, result := result, currentName := none, sourceLinker := ←sourceLinker}
   let basePath := FilePath.mk "./build/doc/"
   let indexHtml := ReaderT.run index config 
   let notFoundHtml := ReaderT.run notFound config
@@ -87,6 +87,8 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   FS.writeFile (basePath / "nav.js") navJs
   FS.writeFile (basePath / "search.js") searchJs
   for (module, content) in result.moduleInfo.toArray do
+    let depth := module.components.length
+    let config := { config with currentDepth := depth }
     let moduleHtml := ReaderT.run (moduleToHtml content) config
     let path := moduleNameToFile basePath module
     FS.createDirAll $ moduleNameToDirectory basePath module
