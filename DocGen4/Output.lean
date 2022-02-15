@@ -61,21 +61,24 @@ def sourceLinker : IO (Name → Option DeclarationRange → String) := do
     | some range => s!"{basic}#L{range.pos.line}-L{range.endPos.line}"
     | none => basic
 
-def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
-  let config := { root := root, result := result, currentName := none, sourceLinker := ←sourceLinker}
-  let basePath := FilePath.mk "." / "build" / "doc"
-  let indexHtml := ReaderT.run index config 
-  let notFoundHtml := ReaderT.run notFound config
+def htmlOutput (result : AnalyzerResult) : IO Unit := do
+  let basePath := FilePath.mk "./build/doc/"
+  let config := { depthToRoot := 0, result := result, currentName := none, sourceLinker := ←sourceLinker}
   FS.createDirAll basePath
   FS.createDirAll (basePath / "find")
+  let indexHtml := ReaderT.run index config 
+  let notFoundHtml := ReaderT.run notFound config
 
   let mut declList := #[]
-  for (_, mod) in result.moduleInfo.toArray do
+  for (module, mod) in result.moduleInfo.toArray do
     for decl in filterMapDocInfo mod.members do
-      let findHtml := ReaderT.run (findRedirectHtml decl.getName) config
       let findDir := basePath / "find" / decl.getName.toString
+      let findFile := (findDir / "index.html")
+      -- path: 'basePath/find/decl.getName.toString'
+      let config := { config with depthToRoot := 2 }
+      let findHtml := ReaderT.run (findRedirectHtml decl.getName) config
       FS.createDirAll findDir
-      FS.writeFile (findDir / "index.html") findHtml.toString
+      FS.writeFile findFile findHtml.toString
       let obj := Json.mkObj [("name", decl.getName.toString), ("description", decl.getDocString.getD "")]
       declList := declList.push obj
   let json := Json.arr declList
@@ -88,10 +91,14 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   FS.writeFile (basePath / "search.js") searchJs
   FS.writeFile (basePath / "mathjax-config.js") mathjaxConfigJs
   for (module, content) in result.moduleInfo.toArray do
+    let fileDir := moduleNameToDirectory basePath module
+    let filePath := moduleNameToFile basePath module
+    -- path: 'basePath/module/components/till/last.html'
+    -- The last component is the file name, so we drop it from the depth to root.
+    let config := { config with depthToRoot := module.components.dropLast.length }
     let moduleHtml := ReaderT.run (moduleToHtml content) config
-    let path := moduleNameToFile basePath module
-    FS.createDirAll $ moduleNameToDirectory basePath module
-    FS.writeFile path moduleHtml.toString
+    FS.createDirAll $ fileDir
+    FS.writeFile filePath moduleHtml.toString
 
 end DocGen4
 

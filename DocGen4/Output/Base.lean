@@ -14,10 +14,9 @@ open scoped DocGen4.Jsx
 open Lean System Widget Elab
 
 structure SiteContext where
-  root : String
   result : AnalyzerResult
+  depthToRoot: Nat
   currentName : Option Name
-  -- Generates a URL pointing to the source of the given module Name
   sourceLinker : Name → Option DeclarationRange → String
 
 def setCurrentName (name : Name) (ctx : SiteContext) := {ctx with currentName := some name}
@@ -25,7 +24,13 @@ def setCurrentName (name : Name) (ctx : SiteContext) := {ctx with currentName :=
 abbrev HtmlT := ReaderT SiteContext
 abbrev HtmlM := HtmlT Id
 
-def getRoot : HtmlM String := do pure (←read).root
+def getRoot : HtmlM String := do
+  let rec go: Nat -> String
+  | 0 => "./"
+  | Nat.succ n' => "../" ++ go n'
+  let d <- SiteContext.depthToRoot <$> read
+  return (go d)
+
 def getResult : HtmlM AnalyzerResult := do pure (←read).result
 def getCurrentName : HtmlM (Option Name) := do pure (←read).currentName
 def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do pure $ (←read).sourceLinker module range
@@ -35,11 +40,13 @@ def templateExtends {α β : Type} (base : α → HtmlM β) (new : HtmlM α) : H
 
 def moduleNameToLink (n : Name) : HtmlM String := do
   let parts := n.components.map Name.toString
-  pure $ (←getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+  pure $ (<- getRoot) ++ (parts.intersperse "/").foldl (. ++ ·) "" ++ ".html"
 
 def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
   let parts := n.components.map Name.toString
   FilePath.withExtension (basePath / parts.foldl (· / ·) (FilePath.mk ".")) "html"
+
+
 
 def moduleNameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
   let parts := n.components.dropLast.map Name.toString
