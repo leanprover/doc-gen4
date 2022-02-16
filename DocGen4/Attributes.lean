@@ -66,7 +66,7 @@ instance : ToString ExternEntry where
     | ExternEntry.foreign backend fn  => s!"{backend} foreign {fn}"
 
 instance : ToString ExternAttrData where
-  toString data := (data.arity?.map toString |>.getD "") ++ String.intercalate " " (data.entries.map toString)
+  toString data := (data.arity?.map toString |>.getD "") ++ " " ++ String.intercalate " " (data.entries.map toString)
 
 def parametricAttributes : Array ParametricAttrWrapper := #[⟨externAttr⟩, ⟨Compiler.implementedByAttr⟩]
 
