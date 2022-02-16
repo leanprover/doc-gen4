@@ -62,10 +62,9 @@ def sourceLinker : IO (Name → Option DeclarationRange → String) := do
     | none => basic
 
 def htmlOutput (result : AnalyzerResult) : IO Unit := do
-  let config := { currentDepth := 0, result := result, currentName := none, sourceLinker := ←sourceLinker}
   let basePath := FilePath.mk "./build/doc/"
-  let indexHtml := ReaderT.run index config 
-  let notFoundHtml := ReaderT.run notFound config
+  let config := { basePath := basePath, currentPath := basePath, result := result, currentName := none, sourceLinker := ←sourceLinker}
+
   FS.createDirAll basePath
   FS.createDirAll (basePath / "find")
 
@@ -74,14 +73,16 @@ def htmlOutput (result : AnalyzerResult) : IO Unit := do
     for decl in mod.members do
       let findDir := basePath / "find" / decl.getName.toString
       let findFile := (findDir / "index.html")
-      let config := { config with currentDepth := findFile.components.length - basePath.components.length }
+      let config := { config with currentPath := findDir }
       let findHtml := ReaderT.run (findRedirectHtml decl.getName) config
       FS.createDirAll findDir
-      FS.writeFile  findFile findHtml.toString
+      FS.writeFile findFile findHtml.toString
       let obj := Json.mkObj [("name", decl.getName.toString), ("description", decl.getDocString.getD "")]
       declList := declList.push obj
   let json := Json.arr declList
 
+  let indexHtml := ReaderT.run index config 
+  let notFoundHtml := ReaderT.run notFound config
   FS.writeFile (basePath / "searchable_data.bmp") json.compress
   FS.writeFile (basePath / "index.html") indexHtml.toString
   FS.writeFile (basePath / "style.css") styleCss
@@ -89,11 +90,12 @@ def htmlOutput (result : AnalyzerResult) : IO Unit := do
   FS.writeFile (basePath / "nav.js") navJs
   FS.writeFile (basePath / "search.js") searchJs
   for (module, content) in result.moduleInfo.toArray do
-    let path := moduleNameToFile basePath module
-    let config := { config with currentDepth := path.components.length - basePath.components.length - 1 }
+    let fileDir := moduleNameToDirectory basePath module
+    let filePath := moduleNameToFile basePath module
+    let config := { config with currentPath := fileDir }
     let moduleHtml := ReaderT.run (moduleToHtml content) config
-    FS.createDirAll $ moduleNameToDirectory basePath module
-    FS.writeFile path moduleHtml.toString
+    FS.createDirAll $ fileDir
+    FS.writeFile filePath moduleHtml.toString
 
 end DocGen4
 

@@ -15,9 +15,9 @@ open Lean System Widget Elab
 
 structure SiteContext where
   result : AnalyzerResult
+  basePath: FilePath
+  currentPath: FilePath
   currentName : Option Name
-  -- Current nesting depth of folder. Used to generate relative paths.
-  currentDepth : Nat
   -- Generates a URL pointing to the source of the given module Name
   sourceLinker : Name → Option DeclarationRange → String
 
@@ -26,11 +26,33 @@ def setCurrentName (name : Name) (ctx : SiteContext) := {ctx with currentName :=
 abbrev HtmlT := ReaderT SiteContext
 abbrev HtmlM := HtmlT Id
 
-def getCurrentDepth : HtmlM Nat := do pure (<-read).currentDepth
+partial def getDepthToBase (base: FilePath) (cur: FilePath): Nat :=
+  if cur == base
+  then 0
+  else match cur.parent with
+      | some cur' => 1 + getDepthToBase base cur'
+      | none => panic! "path (" ++ cur.toString ++ ")must have parent"
+
+
+unsafe def unsafePerformIO [Inhabited a] (io: IO a): a :=
+  match unsafeIO io with
+  | Except.ok a    =>  a
+  | Except.error e => panic! "expected io computation to never fail"
+
+@[implementedBy unsafePerformIO]
+def performIO [Inhabited a] (io: IO a): a := Inhabited.default
+
+def getCurrentDepth : HtmlM Nat := do
+    let currentPath <- (SiteContext.currentPath <$> read)
+    let basePath <- SiteContext.basePath <$> read
+    let basePath :=  performIO $  IO.FS.realPath basePath
+    let currentPath := performIO $  IO.FS.realPath currentPath
+    assert! (basePath.components.length <= currentPath.components.length)
+    return getDepthToBase basePath currentPath
+
 def getRoot : HtmlM String := do
   let rec go: Nat -> String
-  | 0 => ""
-  | 1 => ""
+  | 0 => "./"
   | Nat.succ n' => "../" ++ go n'
   let d <- getCurrentDepth
   return (go d)
@@ -44,11 +66,14 @@ def templateExtends {α β : Type} (base : α → HtmlM β) (new : HtmlM α) : H
 
 def moduleNameToLink (n : Name) : HtmlM String := do
   let parts := n.components.map Name.toString
-  pure $ (<- getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+  pure $ (<- getRoot) ++ (parts.intersperse "/").foldl (. ++ ·) "" ++ ".html"
 
 def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
   let parts := n.components.map Name.toString
+  -- FilePath.withExtension (basePath / parts.foldl (· / ·) (FilePath.mk ".")) "html"
   FilePath.withExtension (basePath / parts.foldl (· / ·) (FilePath.mk ".")) "html"
+
+
 
 def moduleNameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
   let parts := n.components.dropLast.map Name.toString
