@@ -30,6 +30,7 @@ def getCurrentDepth : HtmlM Nat := do pure (<-read).currentDepth
 def getRoot : HtmlM String := do
   let rec go: Nat -> String
   | 0 => ""
+  | 1 => ""
   | Nat.succ n' => "../" ++ go n'
   let d <- getCurrentDepth
   return (go d)
@@ -43,7 +44,7 @@ def templateExtends {α β : Type} (base : α → HtmlM β) (new : HtmlM α) : H
 
 def moduleNameToLink (n : Name) : HtmlM String := do
   let parts := n.components.map Name.toString
-  pure $ (←getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+  pure $ (<- getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
   let parts := n.components.map Name.toString
