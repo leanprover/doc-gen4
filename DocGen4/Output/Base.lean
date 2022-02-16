@@ -70,7 +70,6 @@ def moduleNameToLink (n : Name) : HtmlM String := do
 
 def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
   let parts := n.components.map Name.toString
-  -- FilePath.withExtension (basePath / parts.foldl (· / ·) (FilePath.mk ".")) "html"
   FilePath.withExtension (basePath / parts.foldl (· / ·) (FilePath.mk ".")) "html"
 
 
