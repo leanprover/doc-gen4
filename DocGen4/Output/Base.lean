@@ -14,9 +14,9 @@ open scoped DocGen4.Jsx
 open Lean System Widget Elab
 
 structure SiteContext where
-  -- root : String
   result : AnalyzerResult
   currentName : Option Name
+  -- Current nesting depth of folder. Used to generate relative paths.
   currentDepth : Nat
   -- Generates a URL pointing to the source of the given module Name
   sourceLinker : Name → Option DeclarationRange → String
@@ -34,7 +34,6 @@ def getRoot : HtmlM String := do
   let d <- getCurrentDepth
   return (go d)
 
--- def getRoot : HtmlM String := do pure (←read).root
 def getResult : HtmlM AnalyzerResult := do pure (←read).result
 def getCurrentName : HtmlM (Option Name) := do pure (←read).currentName
 def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do pure $ (←read).sourceLinker module range
