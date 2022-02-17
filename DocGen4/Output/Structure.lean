@@ -27,9 +27,9 @@ def structureToHtml (i : StructureInfo) : HtmlM (Array Html) := do
         </ul>
         <li «class»="structure_ext_ctor">)</li>
       </ul>)
-  let docstringHtml? := i.doc.map docStringToHtml
+  let docstringHtml? ← i.doc.mapM docStringToHtml
   match docstringHtml? with
-  | some d => pure #[structureHtml, d]
+  | some d => pure (#[structureHtml] ++ d)
   | none   => pure #[structureHtml]
 
 end Output

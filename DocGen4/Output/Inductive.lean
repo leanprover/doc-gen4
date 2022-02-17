@@ -13,9 +13,9 @@ def ctorToHtml (i : NameInfo) : HtmlM Html := do
 
 def inductiveToHtml (i : InductiveInfo) : HtmlM (Array Html) := do
   let constructorsHtml := <ul "class"="constructors">[← i.ctors.toArray.mapM ctorToHtml]</ul>
-  let docstringHtml? := i.doc.map docStringToHtml
+  let docstringHtml? ← i.doc.mapM docStringToHtml
   match docstringHtml? with
-  | some d => pure #[constructorsHtml, d]
+  | some d => pure (#[constructorsHtml] ++ d)
   | none   => pure #[constructorsHtml]
 
 end Output

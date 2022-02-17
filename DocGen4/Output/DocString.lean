@@ -28,9 +28,15 @@ def textToIdAttribute (s : String) : String :=
   |>.toLower
   |>.replace " " "-"
 
-partial def addAttributes : Element → Element
-| el@(Element.Element name attrs contents) => 
-  -- heading only
+def extendRelativeLink (link : String) (root : String) : String := 
+  -- HACK: better way to detect absolute links
+  if link.startsWith "http" then
+    link
+  else root ++ link
+
+partial def addAttributes : Element → HtmlM Element
+| el@(Element.Element name attrs contents) => do
+  -- add id and class to <h_></h_>
   if name = "h1" ∨ name = "h2" ∨ name = "h3" ∨ name = "h4" ∨ name = "h5" ∨ name = "h6" then
     let id := textToIdAttribute (elementToPlainText el)
     let anchorAttributes := Std.RBMap.empty
@@ -40,24 +46,33 @@ partial def addAttributes : Element → Element
     let newAttrs := attrs
       |>.insert "id" id
       |>.insert "class" "markdown-heading"
-    let newContents :=
-      contents.map (λ c => match c with
-      | Content.Element e => Content.Element (addAttributes e)
-      | _ => c)
+    let newContents := (← 
+      contents.mapM (λ c => match c with
+      | Content.Element e => (addAttributes e).map (Content.Element)
+      | _ => pure c))
       |>.push (Content.Element anchor)
-    ⟨ name, newAttrs, newContents⟩ 
+    pure ⟨ name, newAttrs, newContents⟩ 
+  -- extend relative href for <a></a>
+  else if name = "a" then
+    let root ← getRoot
+    let newAttrs := match attrs.find? "href" with
+    | some href => attrs.insert "href" (extendRelativeLink href root)
+    | none => attrs
+    pure ⟨ name, newAttrs, contents⟩
+  -- recursively modify
   else
-    let newContents := contents.map λ c => match c with
-      | Content.Element e => Content.Element (addAttributes e)
-      | _ => c
-    ⟨ name, attrs, newContents ⟩ 
+    let newContents ← contents.mapM λ c => match c with
+      | Content.Element e => (addAttributes e).map Content.Element
+      | _ => pure c
+    pure ⟨ name, attrs, newContents ⟩ 
 
-def docStringToHtml (s : String) : Html := 
+def docStringToHtml (s : String) : HtmlM (Array Html) := do
   let rendered := CMark.renderHtml s
-  let attributed := match manyDocument rendered.mkIterator with
-  | Parsec.ParseResult.success _ res =>  "".intercalate (res.map addAttributes |>.map toString).toList
-  | _ => rendered
-  Html.text attributed
+  match manyDocument rendered.mkIterator with
+  | Parsec.ParseResult.success _ res => 
+    res.mapM λ x => do
+      pure (Html.text $ toString (← addAttributes x))
+  | _ => pure #[Html.text rendered]
 
 end Output
 end DocGen4

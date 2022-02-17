@@ -25,11 +25,11 @@ def equationsToHtml (i : DefinitionInfo) : HtmlM (Option Html) := do
 
 def definitionToHtml (i : DefinitionInfo) : HtmlM (Array Html) := do
   let equationsHtml? ← equationsToHtml i
-  let docstringHtml? := i.doc.map docStringToHtml
+  let docstringHtml? ← i.doc.mapM docStringToHtml
   match equationsHtml?, docstringHtml? with
-  | some e, some d => pure #[e, d]
+  | some e, some d => pure (#[e] ++ d)
   | some e, none   => pure #[e]
-  | none  , some e => pure #[e]
+  | none  , some d => pure d
   | none  , none   => pure #[]
 
 

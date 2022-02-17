@@ -82,7 +82,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   | DocInfo.instanceInfo i => instanceToHtml i
   | DocInfo.classInductiveInfo i => classInductiveToHtml i
   | i => match i.getDocString with
-    | some d => pure #[docStringToHtml d]
+    | some d => pure (← docStringToHtml d)
     | _ => pure #[]
 
   let attrs := doc.getAttrs
@@ -108,7 +108,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
 def modDocToHtml (module : Name) (mdoc : ModuleDoc) : HtmlM Html := do
   pure 
     <div «class»="mod_doc">
-      {docStringToHtml mdoc.doc}
+      [←docStringToHtml mdoc.doc]
     </div>
 
 def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := 
