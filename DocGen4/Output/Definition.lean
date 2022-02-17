@@ -1,5 +1,5 @@
-import CMark
 import DocGen4.Output.Template
+import DocGen4.Output.DocString
 
 namespace DocGen4
 namespace Output
@@ -25,7 +25,7 @@ def equationsToHtml (i : DefinitionInfo) : HtmlM (Option Html) := do
 
 def definitionToHtml (i : DefinitionInfo) : HtmlM (Array Html) := do
   let equationsHtml? ← equationsToHtml i
-  let docstringHtml? := i.doc.map λ s => Html.text (CMark.renderHtml s)
+  let docstringHtml? := i.doc.map docStringToHtml
   match equationsHtml?, docstringHtml? with
   | some e, some d => pure #[e, d]
   | some e, none   => pure #[e]

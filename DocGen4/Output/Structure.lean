@@ -1,5 +1,5 @@
-import CMark
 import DocGen4.Output.Template
+import DocGen4.Output.DocString
 
 namespace DocGen4
 namespace Output
@@ -27,7 +27,7 @@ def structureToHtml (i : StructureInfo) : HtmlM (Array Html) := do
         </ul>
         <li «class»="structure_ext_ctor">)</li>
       </ul>)
-  let docstringHtml? := i.doc.map λ s => Html.text (CMark.renderHtml s)
+  let docstringHtml? := i.doc.map docStringToHtml
   match docstringHtml? with
   | some d => pure #[structureHtml, d]
   | none   => pure #[structureHtml]

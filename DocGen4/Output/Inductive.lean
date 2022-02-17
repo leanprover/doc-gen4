@@ -1,5 +1,5 @@
-import CMark
 import DocGen4.Output.Template
+import DocGen4.Output.DocString
 
 namespace DocGen4
 namespace Output
@@ -13,7 +13,7 @@ def ctorToHtml (i : NameInfo) : HtmlM Html := do
 
 def inductiveToHtml (i : InductiveInfo) : HtmlM (Array Html) := do
   let constructorsHtml := <ul "class"="constructors">[← i.ctors.toArray.mapM ctorToHtml]</ul>
-  let docstringHtml? := i.doc.map λ s => Html.text (CMark.renderHtml s)
+  let docstringHtml? := i.doc.map docStringToHtml
   match docstringHtml? with
   | some d => pure #[constructorsHtml, d]
   | none   => pure #[constructorsHtml]

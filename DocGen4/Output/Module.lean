@@ -3,7 +3,6 @@ Copyright (c) 2021 Henrik Böving. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
-import CMark
 import DocGen4.Output.Template
 import DocGen4.Output.Inductive
 import DocGen4.Output.Structure
@@ -11,6 +10,7 @@ import DocGen4.Output.Class
 import DocGen4.Output.Definition
 import DocGen4.Output.Instance
 import DocGen4.Output.ClassInductive
+import DocGen4.Output.DocString
 import Lean.Data.Xml.Parser
 
 namespace DocGen4
@@ -103,41 +103,11 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
       </div>
     </div>
 
-open Xml in
-partial def addAttributes : Element → Element
-| (Element.Element name attrs contents) => 
-  if name = "h1" ∨ name = "h2" ∨ name = "h3" ∨ name = "h4" ∨ name = "h5" ∨ name = "h6" then
-    let id := "".intercalate (contents.map toString).toList 
-      |>.dropWhile (λ c => !(c.isAlphanum ∨ c = '-'))
-      |>.toLower
-      |>.replace " " "-"
-    let anchorAttributes := Std.RBMap.empty
-      |>.insert "class" "hover-link"
-      |>.insert "href" s!"#{id}"
-    let anchor := Element.Element "a" anchorAttributes #[Content.Character "#"]
-    let newAttrs := attrs
-      |>.insert "id" id
-      |>.insert "class" "markdown-heading"
-    let newContents := contents.map (λ c => match c with
-      | Content.Element e => Content.Element (addAttributes e)
-      | _ => c)
-      |>.push (Content.Element anchor)
-    ⟨ name, newAttrs, newContents⟩ 
-  else
-    let newContents := contents.map λ c => match c with
-      | Content.Element e => Content.Element (addAttributes e)
-      | _ => c
-    ⟨ name, attrs, newContents⟩ 
-
 def modDocToHtml (module : Name) (mdoc : ModuleDoc) : HtmlM Html := do
-  let rendered := toString
+  pure 
     <div «class»="mod_doc">
-      {Html.text (CMark.renderHtml mdoc.doc)}
+      {docStringToHtml mdoc.doc}
     </div>
-  let modified := match Lean.Xml.parse rendered with
-  | Except.ok parsed => toString $ addAttributes parsed
-  | _                => rendered
-  pure (Html.text modified)
 
 def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := 
   match member with
