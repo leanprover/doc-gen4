@@ -33,8 +33,10 @@ def textToIdAttribute (s : String) : String :=
 def possibleNameToLink (s : String) : HtmlM (Option String) := do
   let res ← getResult
   let name := s.splitOn "." |>.foldl (λ acc part => Name.mkStr acc part) Name.anonymous
+  -- with exactly the same name
   if res.name2ModIdx.contains name then
      declNameToLink name
+  -- find similar name in the same module
   else
     match (← getCurrentName) with
     | some currentName =>
@@ -52,7 +54,7 @@ def extendRelativeLink (s : String)  : HtmlM String := do
     else
       pure s
   -- for absolute and relative urls
-  else if s.startsWith "http" then
+  else if s.startsWith "http" then 
     pure s
   else pure ((←getRoot) ++ s)
 
@@ -93,7 +95,7 @@ partial def modifyElement (element : Element) (linkCode : Bool := true) : HtmlM 
       | none => pure attrs
       pure ⟨ name, newAttrs, contents⟩
     -- auto link for inline <code></code>
-    else if name = "code" then
+    else if name = "code" ∧ linkCode then
       let mut newContents := #[]
       for c in contents do
         match c with
