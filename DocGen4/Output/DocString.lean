@@ -11,14 +11,28 @@ open Xml Parser Lean Parsec
 
 def manyDocument : Parsec (Array Element) := many (prolog *> element <* many Misc) <* eof
 
-partial def addAttributes : Element → Element
+partial def elementToPlainText : Xml.Element → String
 | (Element.Element name attrs contents) => 
+  "".intercalate (contents.toList.map contentToPlainText)
+  where
+    contentToPlainText c := match c with
+    | Content.Element el => elementToPlainText el
+    | Content.Comment _ => ""
+    | Content.Character s => s
+
+def dropAllCharWhile (s : String) (p : Char → Bool) : String :=
+  ⟨ s.data.filter p ⟩ 
+
+def textToIdAttribute (s : String) : String :=
+  dropAllCharWhile s (λ c => (c.isAlphanum ∨ c = '-' ∨ c = ' '))
+  |>.toLower
+  |>.replace " " "-"
+
+partial def addAttributes : Element → Element
+| el@(Element.Element name attrs contents) => 
   -- heading only
   if name = "h1" ∨ name = "h2" ∨ name = "h3" ∨ name = "h4" ∨ name = "h5" ∨ name = "h6" then
-    let id := "".intercalate (contents.map toString).toList 
-      |>.dropWhile (λ c => !(c.isAlphanum ∨ c = '-'))
-      |>.toLower
-      |>.replace " " "-"
+    let id := textToIdAttribute (elementToPlainText el)
     let anchorAttributes := Std.RBMap.empty
       |>.insert "class" "hover-link"
       |>.insert "href" s!"#{id}"
