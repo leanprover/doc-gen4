@@ -81,7 +81,9 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   | DocInfo.definitionInfo i => definitionToHtml i
   | DocInfo.instanceInfo i => instanceToHtml i
   | DocInfo.classInductiveInfo i => classInductiveToHtml i
-  | _ => pure #[]
+  | i => match i.getDocString with
+    | some d => pure #[docStringToHtml d]
+    | _ => pure #[]
 
   let attrs := doc.getAttrs
   let attrsHtml :=
