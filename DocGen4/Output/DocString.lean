@@ -47,12 +47,15 @@ def possibleNameToLink (s : String) : HtmlM (Option String) := do
     | _ => pure none
 
 def extendRelativeLink (s : String)  : HtmlM String := do
-  -- for relative doc links
-  if s.startsWith "#" then
-    if let some link ← possibleNameToLink (s.drop 1) then
+  -- for intra doc links
+  if s.startsWith "##" then
+    if let some link ← possibleNameToLink (s.drop 2) then
       pure link
     else
-      pure s
+      panic! s!"Cannot find {s.drop 2}, only full name and abbrev in current module is supported"
+  -- for id 
+  else if s.startsWith "#" then
+    pure s
   -- for absolute and relative urls
   else if s.startsWith "http" then 
     pure s
