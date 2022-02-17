@@ -7,7 +7,7 @@ package «doc-gen4» {
   dependencies := #[
     {
       name := `CMark
-      src := Source.git "https://github.com/xubaiw/CMark.lean" "925f2ab"
+      src := Source.git "https://github.com/xubaiw/CMark.lean" "0c59e4f"
     }
   ]
 }
