@@ -50,6 +50,9 @@ def baseHtmlArray (title : String) (site : Array Html) : HtmlM Html := do
       -- TODO Add more js stuff
       <script src={s!"{←getRoot}nav.js"}></script>
       <script src={s!"{←getRoot}search.js"}></script>
+      -- mathjax
+      <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
       </body>
     </html>
 
