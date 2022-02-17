@@ -103,7 +103,7 @@ partial def modifyElement (element : Element) (linkCode : Bool := true) : HtmlM 
       for c in contents do
         match c with
         | Content.Character s =>
-          newContents := newContents ++ (← s.splitOn.mapM possibleNameToAnchor)
+          newContents := newContents ++ (← s.splitOn.mapM possibleNameToAnchor).intersperse (Content.Character " ")
         | _ => newContents := newContents.push c
       pure ⟨ name, attrs, newContents⟩
     -- recursively modify
