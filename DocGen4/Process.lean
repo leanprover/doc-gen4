@@ -52,7 +52,7 @@ structure DefinitionInfo extends Info where
   isUnsafe : Bool
   hints : ReducibilityHints
   equations : Option (Array CodeWithInfos)
-  isComputable : Bool
+  isNonComputable : Bool
   deriving Inhabited
 
 abbrev InstanceInfo := DefinitionInfo
@@ -202,30 +202,22 @@ def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
       let type ← mkForallFVars xs type
       pure type
 
--- The following code is translated from ll_infer_type.cpp
-def computable? (defn : Name) : MetaM Bool := do
-  let cstage2Name := defn.append `_cstage2
-  let env ← getEnv
-  let extern? := externAttr.getParam env defn |>.isSome
-  let cstage2? := env.find? cstage2Name |>.isSome
-  pure $ extern? ∨ cstage2?
-
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let isUnsafe := v.safety == DefinitionSafety.unsafe
-  let isComputable ← computable? v.name
+  let isNonComput := isNoncomputable (←getEnv) v.name
   try
     let eqs? ← getEqnsFor? v.name
     match eqs? with
     | some eqs =>
       let prettyEqs ← eqs.mapM processEq
-      pure $ DefinitionInfo.mk info isUnsafe v.hints prettyEqs isComputable
+      pure $ DefinitionInfo.mk info isUnsafe v.hints prettyEqs isNonComput
     | none =>
       let eq ← prettyPrintTerm $ stripArgs (←valueToEq v)
-      pure $ DefinitionInfo.mk info isUnsafe v.hints (some #[eq]) isComputable
+      pure $ DefinitionInfo.mk info isUnsafe v.hints (some #[eq]) isNonComput
   catch err =>
     IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {←err.toMessageData.toString}"
-    pure $ DefinitionInfo.mk info isUnsafe v.hints none isComputable
+    pure $ DefinitionInfo.mk info isUnsafe v.hints none isNonComput
 
 def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
   let info ← DefinitionInfo.ofDefinitionVal v
@@ -394,7 +386,7 @@ def getKindDescription : DocInfo → String
     let mut modifiers := #[]
     if i.isUnsafe then
       modifiers := modifiers.push "unsafe"
-    if ¬i.isComputable then
+    if i.isNonComputable then
       modifiers := modifiers.push "noncomputable"
 
     modifiers := modifiers.push "def"
@@ -403,7 +395,7 @@ def getKindDescription : DocInfo → String
   let mut modifiers := #[]
   if i.isUnsafe then
     modifiers := modifiers.push "unsafe"
-  if ¬i.isComputable then
+  if i.isNonComputable then
     modifiers := modifiers.push "noncomputable"
 
   modifiers := modifiers.push "instance"
@@ -468,6 +460,8 @@ structure AnalyzerResult where
   importAdj : Array (Array Bool)
   deriving Inhabited
 
+deriving instance Inhabited for ModuleDoc
+
 def process : MetaM AnalyzerResult := do
   let env ← getEnv
   let mut res := mkHashMap env.header.moduleNames.size
@@ -476,7 +470,7 @@ def process : MetaM AnalyzerResult := do
     let moduleDoc := match getModuleDoc? env module with
     | none => none
     | some #[] => none
-    | some doc => doc.get! 0
+    | some doc => (doc.get! 0).doc
 
     res := res.insert module (Module.mk module moduleDoc #[])
 
