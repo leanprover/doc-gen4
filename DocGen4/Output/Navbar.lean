@@ -29,7 +29,7 @@ partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
   pure
     <details "class"="nav_sect" "data-path"={moduleLink}
       [if (←getCurrentName).any (h.getName.isPrefixOf ·) then #[("open", "")] else #[]]>
-      <summary><a "href"={← moduleNameToLink h.getName}>{h.getName.toString}</a></summary>
+      {Html.element "summary" true #[] #[<a "href"={← moduleNameToLink h.getName}>{h.getName.toString}</a>]}
       [dirNodes]
       [fileNodes]
     </details>
