@@ -74,17 +74,17 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   pure <div «class»="decl_header"> [nodes] </div>
 
 def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
-  let docHtml ← match doc with
+  let docInfoHtml ← match doc with
   | DocInfo.inductiveInfo i => inductiveToHtml i
   | DocInfo.structureInfo i => structureToHtml i
   | DocInfo.classInfo i => classToHtml i
   | DocInfo.definitionInfo i => definitionToHtml i
   | DocInfo.instanceInfo i => instanceToHtml i
   | DocInfo.classInductiveInfo i => classInductiveToHtml i
-  | i => match i.getDocString with
-    | some d => pure (← docStringToHtml d)
-    | _ => pure #[]
-
+  | i => pure #[]
+  let docStringHtml ← match doc.getDocString with
+  | some s => docStringToHtml s
+  | none => pure #[]
   let attrs := doc.getAttrs
   let attrsHtml :=
     if attrs.size > 0 then
@@ -101,7 +101,8 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
         </div>
         [attrsHtml]
         {←docInfoHeader doc}
-        [docHtml]
+        [docStringHtml]
+        [docInfoHtml]
       </div>
     </div>
 
@@ -111,7 +112,7 @@ def modDocToHtml (module : Name) (mdoc : ModuleDoc) : HtmlM Html := do
       [←docStringToHtml mdoc.doc]
     </div>
 
-def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := 
+def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := do
   match member with
   | ModuleMember.docInfo d => docInfoToHtml module d
   | ModuleMember.modDoc d => modDocToHtml module d
