@@ -33,9 +33,9 @@ def attributesToString (attrs : Array (String × String)) :String :=
 
 -- TODO: Termination proof
 partial def toStringAux : Html → String
-| element tag false attrs #[text s] => s!"<{tag}{attributesToString attrs}>{s}</{tag}>\n"
-| element tag false attrs #[child] => s!"<{tag}{attributesToString attrs}>\n{child.toStringAux}</{tag}>\n"
-| element tag false attrs children => s!"<{tag}{attributesToString attrs}>\n{children.foldl (· ++ toStringAux ·) ""}</{tag}>\n"
+| element tag false attrs #[text s] => s!"<{tag}{attributesToString attrs}>{s}</{tag}>"
+| element tag false attrs #[child] => s!"<{tag}{attributesToString attrs}>{child.toStringAux}</{tag}>"
+| element tag false attrs children => s!"<{tag}{attributesToString attrs}>{children.foldl (· ++ toStringAux ·) ""}</{tag}>"
 | element tag true attrs children => s!"<{tag}{attributesToString attrs}>{children.foldl (· ++ toStringAux ·) ""}</{tag}>"
 | text s => s
 
@@ -107,7 +107,7 @@ macro_rules
     let mut cs ← `(#[])
     for child in children do
       cs ← match child with
-      | `(jsxChild|$t:jsxText)    => `(($cs).push (Html.text $(quote t[0].getAtomVal!)))
+      | `(jsxChild|$t:jsxText)    => `(($cs).push (Html.text $(quote t[0].getAtomVal!))
       -- TODO(WN): elab as list of children if type is `t Html` where `Foldable t`
       | `(jsxChild|{$t})          => `(($cs).push ($t : Html))
       | `(jsxChild|[$t])          => `($cs ++ ($t : Array Html))
