@@ -178,10 +178,11 @@ def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
     </nav>
 
 def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
-  let docInfos ← module.members.mapM (λ i => moduleMemberToHtml module.name i)
+  let memberDocs ← module.members.mapM (λ i => moduleMemberToHtml module.name i)
+  let memberNames := filterMapDocInfo module.members |>.map DocInfo.getName
   templateExtends (baseHtmlArray module.name.toString) $ pure #[
-    ←internalNav (module.members.filter ModuleMember.isDocInfo |>.map ModuleMember.getName) module.name,
-    Html.element "main" false #[] docInfos
+    ←internalNav memberNames module.name,
+    Html.element "main" false #[] memberDocs
   ]
 
 end Output

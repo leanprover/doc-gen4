@@ -461,10 +461,6 @@ def getDeclarationRange : ModuleMember → DeclarationRange
 def order (l r : ModuleMember) : Bool :=
   Position.lt l.getDeclarationRange.pos r.getDeclarationRange.pos
 
-def isDocInfo : ModuleMember → Bool
-| docInfo _ => true
-| _ => false
-
 def getName : ModuleMember → Name
 | docInfo i => i.getName
 | modDoc i => Name.anonymous
@@ -474,6 +470,13 @@ def getDocString : ModuleMember → Option String
 | modDoc i => i.doc
 
 end ModuleMember
+
+def filterMapDocInfo (ms : Array ModuleMember) : Array DocInfo :=
+  ms.filterMap filter
+  where
+    filter : ModuleMember → Option DocInfo
+    | ModuleMember.docInfo i => some i
+    | _ => none
 
 structure AnalyzerResult where
   name2ModIdx : HashMap Name ModuleIdx
