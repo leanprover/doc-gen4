@@ -21,14 +21,15 @@ def moduleListFile (file : Name) : HtmlM Html := do
 partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
   let children := Array.mk (h.getChildren.toList.map Prod.snd)
   let dirs := children.filter (λ c => c.getChildren.toList.length != 0)
-  let files := children.filter Hierarchy.isFile |>.map Hierarchy.getName
+  let files := children.filter (λ c => Hierarchy.isFile c ∧ c.getChildren.toList.length = 0)
+    |>.map Hierarchy.getName
   let dirNodes ← (dirs.mapM moduleListDir)
   let fileNodes ← (files.mapM moduleListFile)
   let moduleLink ← moduleNameToLink h.getName
   pure
     <details "class"="nav_sect" "data-path"={moduleLink}
       [if (←getCurrentName).any (h.getName.isPrefixOf ·) then #[("open", "")] else #[]]>
-      <summary>{h.getName.toString}</summary>
+      {Html.element "summary" true #[] #[<a "href"={← moduleNameToLink h.getName}>{h.getName.toString}</a>]}
       [dirNodes]
       [fileNodes]
     </details>

@@ -273,13 +273,10 @@ nav {
     margin-top: 1ex;
 }
 
-.nav details > * {
+.nav details, .nav_link {
     padding-left: 2ex;
 }
-.nav summary {
-    cursor: pointer;
-    padding-left: 0;
-}
+
 .nav summary::marker {
     font-size: 85%;
 }
