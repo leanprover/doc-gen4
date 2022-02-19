@@ -63,7 +63,7 @@ def sourceLinker : IO (Name → Option DeclarationRange → String) := do
 
 def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   let config := { root := root, result := result, currentName := none, sourceLinker := ←sourceLinker}
-  let basePath := FilePath.mk "./build/doc/"
+  let basePath := FilePath.mk "." / "build" / "doc"
   let indexHtml := ReaderT.run index config 
   let notFoundHtml := ReaderT.run notFound config
   FS.createDirAll basePath
