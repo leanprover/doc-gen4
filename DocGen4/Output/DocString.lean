@@ -3,12 +3,10 @@ import DocGen4.Output.Template
 import Lean.Data.Parsec
 import Unicode.General.GeneralCategory
 
-open Lean Unicode
+open Lean Unicode  Xml Parser Parsec
 
 namespace DocGen4
 namespace Output
-
-open Xml Parser Lean Parsec
 
 instance : Inhabited Element := ⟨"", Std.RBMap.empty, #[]⟩
 
@@ -51,27 +49,26 @@ partial def xmlGetHeadingId (el : Xml.Element) : String :=
 -/
 def nameToLink? (s : String) : HtmlM (Option String) := do
   let res ← getResult
-  let name := s.splitOn "." |>.foldl (λ acc part => Name.mkStr acc part) Name.anonymous
-  -- with exactly the same name
-  if res.name2ModIdx.contains name then
-     declNameToLink name
-  -- find similar name in the same module
-  else
-    match (← getCurrentName) with
-    | some currentName =>
-      match (res.moduleInfo.find! currentName).members.find? (sameEnd ·.getName.toString s) with
-      | some info => 
-        declNameToLink info.getName
+  if let some name := Lean.Syntax.decodeNameLit ("`" ++ s) then
+    -- with exactly the same name
+    if res.name2ModIdx.contains name then
+      declNameToLink name
+    -- find similar name in the same module
+    else
+      match (← getCurrentName) with
+      | some currentName =>
+        match res.moduleInfo.find! currentName |>.members |> filterMapDocInfo |>.find? (sameEnd ·.getName name) with
+        | some info => 
+          declNameToLink info.getName
+        | _ => pure none
       | _ => pure none
-    | _ => pure none
+  else
+    pure none
   where
-    sameEnd n1 n2 := Id.run do
-      let n1' := n1.splitOn "." |>.reverse
-      let n2' := n2.splitOn "." |>.reverse
-      for i in [0:n2'.length] do
-        if n1'.getD i "" = n2'.get! i then
-          return true
-      return false
+    -- check if two names have the same ending components
+    sameEnd n1 n2 :=
+      List.zip n1.components n2.components
+      |>.all λ ⟨a, b⟩ => a == b
 
 /--
   Extend links with following rules:
