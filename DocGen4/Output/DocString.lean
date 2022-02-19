@@ -65,13 +65,10 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
       | _ => pure none
     | _ => pure none
   where
-    sameEnd n1 n2 := Id.run do
-      let n1' := n1.splitOn "." |>.reverse
-      let n2' := n2.splitOn "." |>.reverse
-      for i in [0:n2'.length] do
-        if n1'.getD i "" = n2'.get! i then
-          return true
-      return false
+    sameEnd n1 n2 :=
+      n1.endsWith n2 ||
+      (n2.endsWith (n1.splitOn ".").getLast!)
+
 
 /--
   Extend links with following rules:
