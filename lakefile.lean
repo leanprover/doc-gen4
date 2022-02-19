@@ -11,7 +11,7 @@ package «doc-gen4» {
     },
     {
       name := `Unicode
-      src := Source.git "https://github.com/xubaiw/Unicode.lean" "88ad4aacfcc7ab941a22c54de3e4fef0809cda87"
+      src := Source.git "https://github.com/xubaiw/Unicode.lean" "3b7b85472d42854a474099928a3423bb97d4fa64"
     }
   ]
 }
