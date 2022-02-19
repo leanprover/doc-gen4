@@ -74,17 +74,23 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   pure <div «class»="decl_header"> [nodes] </div>
 
 def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
+  -- basic info like headers, types, structure fields, etc.
   let docInfoHtml ← match doc with
   | DocInfo.inductiveInfo i => inductiveToHtml i
   | DocInfo.structureInfo i => structureToHtml i
   | DocInfo.classInfo i => classToHtml i
-  | DocInfo.definitionInfo i => definitionToHtml i
-  | DocInfo.instanceInfo i => instanceToHtml i
   | DocInfo.classInductiveInfo i => classInductiveToHtml i
   | i => pure #[]
+  -- rendered doc stirng
   let docStringHtml ← match doc.getDocString with
   | some s => docStringToHtml s
   | none => pure #[]
+  -- extra information like equations and instances
+  let extraInfoHtml ← match doc with
+  | DocInfo.classInfo i => pure #[←classInstancesToHtml i.instances]
+  | DocInfo.definitionInfo i => equationsToHtml i
+  | DocInfo.classInductiveInfo i => pure #[←classInstancesToHtml i.instances]
+  | i => pure #[]
   let attrs := doc.getAttrs
   let attrsHtml :=
     if attrs.size > 0 then
@@ -101,8 +107,9 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
         </div>
         [attrsHtml]
         {←docInfoHeader doc}
-        [docStringHtml]
         [docInfoHtml]
+        [docStringHtml]
+        [extraInfoHtml]
       </div>
     </div>
 
