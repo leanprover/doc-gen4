@@ -59,11 +59,19 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
   else
     match (← getCurrentName) with
     | some currentName =>
-      match (res.moduleInfo.find! currentName).members.find? (·.getName.toString.endsWith s) with
+      match (res.moduleInfo.find! currentName).members.find? (sameEnd ·.getName.toString s) with
       | some info => 
         declNameToLink info.getName
       | _ => pure none
     | _ => pure none
+  where
+    sameEnd n1 n2 := Id.run do
+      let n1' := n1.splitOn "." |>.reverse
+      let n2' := n2.splitOn "." |>.reverse
+      for i in [0:n2'.length] do
+        if n1'.getD i "" = n2'.get! i then
+          return true
+      return false
 
 /--
   Extend links with following rules:
