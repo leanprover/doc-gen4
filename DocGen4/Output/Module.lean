@@ -89,6 +89,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   let extraInfoHtml ← match doc with
   | DocInfo.classInfo i => pure #[←classInstancesToHtml i.instances]
   | DocInfo.definitionInfo i => equationsToHtml i
+  | DocInfo.instanceInfo i => equationsToHtml i
   | DocInfo.classInductiveInfo i => pure #[←classInstancesToHtml i.instances]
   | i => pure #[]
   let attrs := doc.getAttrs
