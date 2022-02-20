@@ -25,14 +25,14 @@ function matchCaseSensitive(declName, lowerDeclName, pat) {
 }
 
 export function loadDecls(searchableDataCnt) {
-    return searchableDataCnt.map(({name, description, link}) => [name, name.toLowerCase(), description.toLowerCase(), link]);
+    return searchableDataCnt.map(({name, description, link, source}) => [name, name.toLowerCase(), description.toLowerCase(), link, source]);
 }
 
 export function getMatches(decls, pat, maxResults = 30) {
     const lowerPats = pat.toLowerCase().split(/\s/g);
     const patNoSpaces = pat.replace(/\s/g, '');
     const results = [];
-    for (const [decl, lowerDecl, lowerDoc, link] of decls) {
+    for (const [decl, lowerDecl, lowerDoc, link, source] of decls) {
         let err = matchCaseSensitive(decl, lowerDecl, patNoSpaces);
 
         // match all words as substrings of docstring
@@ -41,7 +41,7 @@ export function getMatches(decls, pat, maxResults = 30) {
         }
 
         if (err !== undefined) {
-            results.push({decl, err, link});
+            results.push({decl, err, link, source});
         }
     }
     return results.sort(({err: a}, {err: b}) => a - b).slice(0, maxResults);
