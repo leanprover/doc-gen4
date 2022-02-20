@@ -18,6 +18,7 @@ def baseHtmlArray (title : String) (site : Array Html) : HtmlM Html := do
         <link rel="stylesheet" href={s!"{←getRoot}style.css"}/>
         <link rel="stylesheet" href={s!"{←getRoot}pygments.css"}/>
         <link rel="shortcut icon" href={s!"{←getRoot}favicon.ico"}/>
+        <link rel="prefetch" href={s!"{←getRoot}searchable_data.json"}/>
         <title>{title}</title>
         <meta charset="UTF-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
