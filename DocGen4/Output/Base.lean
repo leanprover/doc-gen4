@@ -49,6 +49,7 @@ section Static
   def styleCss : String := include_str "./static/style.css"
   def navJs : String := include_str "./static/nav.js"
   def searchJs : String := include_str "./static/search.js"
+  def findJs : String := include_str "./static/find/find.js"
   def mathjaxConfigJs : String := include_str "./static/mathjax-config.js"
 end Static
 

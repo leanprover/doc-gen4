@@ -1,5 +1,4 @@
-import { SITE_ROOT } from "./site-root.js";
-import { loadDecls, getMatches } from "./search.js";
+import { declSearch } from "./search.js";
 
 // Persistent expansion cookie for the file tree
 // ---------------------------------------------
@@ -109,24 +108,6 @@ if (tse != null) {
 // Simple declaration search
 // -------------------------
 
-const declURL = new URL(`${SITE_ROOT}searchable_data.bmp`, window.location);
-const getDecls = (() => {
-  let decls;
-  return () => {
-    if (!decls) decls = new Promise((resolve, reject) => {
-        const req = new XMLHttpRequest();
-        req.responseType = 'json';
-        req.addEventListener('load', () => resolve(loadDecls(req.response)));
-        req.addEventListener('error', () => reject());
-        req.open('GET', declURL);
-        req.send();
-      })
-    return decls;
-  }
-})()
-
-const declSearch = async (q) => getMatches(await getDecls(), q);
-
 const srId = 'search_results';
 document.getElementById('search_form')
   .appendChild(document.createElement('div'))
@@ -191,11 +172,11 @@ searchInput.addEventListener('input', async (ev) => {
 
   const oldSR = document.getElementById('search_results');
   const sr = oldSR.cloneNode(false);
-  for (const {decl} of result) {
+  for (const {decl, link} of result) {
     const d = sr.appendChild(document.createElement('a'));
     d.innerText = decl;
     d.title = decl;
-    d.href = `${SITE_ROOT}find/${decl}`;
+    d.href = link;
   }
   sr.setAttribute('state', 'done');
   oldSR.replaceWith(sr);
@@ -222,10 +203,10 @@ if (howabout) {
   declSearch(query).then((results) => {
       howabout.innerText = 'How about one of these instead:';
       const ul = howabout.appendChild(document.createElement('ul'));
-      for (const {decl} of results) {
+      for (const {decl, link} of results) {
           const li = ul.appendChild(document.createElement('li'));
           const a = li.appendChild(document.createElement('a'));
-          a.href = `${SITE_ROOT}find/${decl}`;
+          a.href = link;
           a.appendChild(document.createElement('code')).innerText = decl;
       }
   });

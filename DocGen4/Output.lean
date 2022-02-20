@@ -65,6 +65,7 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   let config := { root := root, result := result, currentName := none, sourceLinker := ←sourceLinker}
   let basePath := FilePath.mk "." / "build" / "doc"
   let indexHtml := ReaderT.run index config 
+  let findHtml := ReaderT.run find config
   let notFoundHtml := ReaderT.run notFound config
   FS.createDirAll basePath
   FS.createDirAll (basePath / "find")
@@ -72,12 +73,12 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   let mut declList := #[]
   for (_, mod) in result.moduleInfo.toArray do
     for decl in filterMapDocInfo mod.members do
-      let findHtml := ReaderT.run (findRedirectHtml decl.getName) config
-      let findDir := basePath / "find" / decl.getName.toString
-      FS.createDirAll findDir
-      FS.writeFile (findDir / "index.html") findHtml.toString
-      let obj := Json.mkObj [("name", decl.getName.toString), ("description", decl.getDocString.getD "")]
+      let name := decl.getName.toString
+      let description := decl.getDocString.getD ""
+      let link := Id.run <| ReaderT.run (declNameToLink decl.getName) config
+      let obj := Json.mkObj [("name", name), ("description", description), ("link", link)]
       declList := declList.push obj
+
   let json := Json.arr declList
 
   FS.writeFile (basePath / "searchable_data.bmp") json.compress
@@ -88,6 +89,11 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   FS.writeFile (basePath / "search.js") searchJs
   FS.writeFile (basePath / "mathjax-config.js") mathjaxConfigJs
   FS.writeFile (basePath / "site-root.js") s!"export const SITE_ROOT = \"{config.root}\";";
+
+  FS.writeFile (basePath / "find" / "index.html") findHtml.toString
+  FS.writeFile (basePath / "find" / "find.js") findJs
+
+
   for (module, content) in result.moduleInfo.toArray do
     let moduleHtml := ReaderT.run (moduleToHtml content) config
     let path := moduleNameToFile basePath module

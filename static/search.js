@@ -1,3 +1,5 @@
+import { SITE_ROOT } from "./site-root.js";
+
 function isSep(c) {
     return c === '.' || c === '_';
 }
@@ -23,14 +25,14 @@ function matchCaseSensitive(declName, lowerDeclName, pat) {
 }
 
 export function loadDecls(searchableDataCnt) {
-    return searchableDataCnt.map(({name, description}) => [name, name.toLowerCase(), description.toLowerCase()])
+    return searchableDataCnt.map(({name, description, link}) => [name, name.toLowerCase(), description.toLowerCase(), link]);
 }
 
 export function getMatches(decls, pat, maxResults = 30) {
     const lowerPats = pat.toLowerCase().split(/\s/g);
     const patNoSpaces = pat.replace(/\s/g, '');
     const results = [];
-    for (const [decl, lowerDecl, lowerDoc] of decls) {
+    for (const [decl, lowerDecl, lowerDoc, link] of decls) {
         let err = matchCaseSensitive(decl, lowerDecl, patNoSpaces);
 
         // match all words as substrings of docstring
@@ -39,8 +41,27 @@ export function getMatches(decls, pat, maxResults = 30) {
         }
 
         if (err !== undefined) {
-            results.push({decl, err});
+            results.push({decl, err, link});
         }
     }
     return results.sort(({err: a}, {err: b}) => a - b).slice(0, maxResults);
 }
+
+const declURL = new URL(`${SITE_ROOT}searchable_data.bmp`, window.location);
+
+export const getDecls = (() => {
+  let decls;
+  return () => {
+    if (!decls) decls = new Promise((resolve, reject) => {
+        const req = new XMLHttpRequest();
+        req.responseType = 'json';
+        req.addEventListener('load', () => resolve(loadDecls(req.response)));
+        req.addEventListener('error', () => reject());
+        req.open('GET', declURL);
+        req.send();
+      })
+    return decls;
+  }
+})()
+
+export const declSearch = async (q) => getMatches(await getDecls(), q);
