@@ -8,6 +8,25 @@ open Lean Unicode  Xml Parser Parsec
 namespace DocGen4
 namespace Output
 
+/-- Auxiliary function for `splitAround`. -/
+@[specialize] partial def splitAroundAux (s : String) (p : Char → Bool) (b i : String.Pos) (r : List String) : List String :=
+  if s.atEnd i then
+    let r := (s.extract b i)::r
+    r.reverse
+  else
+    let c := s.get i
+    if p c then
+      let i := s.next i
+      splitAroundAux s p i i (c.toString::s.extract b (i-1)::r)
+    else
+      splitAroundAux s p b (s.next i) r
+
+/--
+  Similar to `Stirng.split` in Lean core, but keeps the separater.
+  e.g. `splitAround "a,b,c" (λ c => c = ',') = ["a", ",", "b", ",", "c"]`
+-/
+def splitAround (s : String) (p : Char → Bool) : List String := splitAroundAux s p 0 0 []
+
 instance : Inhabited Element := ⟨"", Std.RBMap.empty, #[]⟩
 
 /-- Parse an array of Xml/Html document from String. -/
@@ -16,8 +35,8 @@ def manyDocument : Parsec (Array Element) := many (prolog *> element <* many Mis
 /--
   Generate id for heading elements, with the following rules:
 
-  1. Characters in `letter`, `number` and `symbol` unicode categories are preserved.
-  2. Any sequences of Characters in `mark`, `punctuation`, `separator` and `other` categories are replaced by a single dash.
+  1. Characters in `letter`, `mark`, `number` and `symbol` unicode categories are preserved.
+  2. Any sequences of Characters in `punctuation`, `separator` and `other` categories are replaced by a single dash.
   3. Cases (upper and lower) are preserved.
   4. Xml/Html tags are ignored.
 -/
@@ -35,11 +54,10 @@ partial def xmlGetHeadingId (el : Xml.Element) : String :=
       s.split pattern
       |>.filter (!·.isEmpty)
       |> replacement.intercalate
-    unicodeToDrop char := 
-      charInGeneralCategory char GeneralCategory.mark ||
-      charInGeneralCategory char GeneralCategory.punctuation ||
-      charInGeneralCategory char GeneralCategory.separator ||
-      charInGeneralCategory char GeneralCategory.other  
+    unicodeToDrop (c : Char) : Bool := 
+      charInGeneralCategory c GeneralCategory.punctuation ||
+      charInGeneralCategory c GeneralCategory.separator ||
+      charInGeneralCategory c GeneralCategory.other  
 
 /--
   This function try to find the given name, both globally and in current module.
@@ -53,6 +71,9 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
     -- with exactly the same name
     if res.name2ModIdx.contains name then
       declNameToLink name
+    -- module name
+    else if res.moduleNames.contains name then
+      moduleNameToLink name
     -- find similar name in the same module
     else
       match (← getCurrentName) with
@@ -67,7 +88,7 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
   where
     -- check if two names have the same ending components
     sameEnd n1 n2 :=
-      List.zip n1.components n2.components
+      List.zip n1.components' n2.components'
       |>.all λ ⟨a, b⟩ => a == b
 
 /--
@@ -131,7 +152,7 @@ def autoLink (el : Element) : HtmlM Element := do
     for c in contents do
       match c with
       | Content.Character s =>
-        newContents := newContents ++ (← s.splitOn.mapM linkify).intersperse (Content.Character " ")
+        newContents := newContents ++ (← splitAround s unicodeToSplit |>.mapM linkify).join
       | _ => newContents := newContents.push c
     pure ⟨ name, attrs, newContents ⟩
   where
@@ -139,13 +160,26 @@ def autoLink (el : Element) : HtmlM Element := do
       let link? ← nameToLink? s
       match link? with
       | some link => 
-        let res ← getResult
         let attributes := Std.RBMap.empty.insert "href" link
-        pure $ Content.Element $ Element.Element "a" attributes #[Content.Character s]
-      | none => pure $ Content.Character s
-
+        pure [Content.Element $ Element.Element "a" attributes #[Content.Character s]]
+      | none =>
+        let sHead := s.dropRightWhile (λ c => c ≠ '.')
+        let sTail := s.takeRightWhile (λ c => c ≠ '.')
+        let link'? ← nameToLink? sTail
+        match link'? with
+        | some link' => 
+          let attributes := Std.RBMap.empty.insert "href" link'
+          pure [
+            Content.Character sHead,
+            Content.Element $ Element.Element "a" attributes #[Content.Character sTail]
+          ]
+        | none =>
+          pure [Content.Character s]
+    unicodeToSplit (c : Char) : Bool := 
+      charInGeneralCategory c GeneralCategory.separator ||
+      charInGeneralCategory c GeneralCategory.other  
 /-- Core function of modifying the cmark rendered docstring html. -/
-partial def modifyElement (element : Element) (linkCode : Bool := true) : HtmlM Element :=
+partial def modifyElement (element : Element) : HtmlM Element :=
   match element with
   | el@(Element.Element name attrs contents) => do
     -- add id and class to <h_></h_>
@@ -155,13 +189,12 @@ partial def modifyElement (element : Element) (linkCode : Bool := true) : HtmlM 
     else if name = "a" then
       extendAnchor el
     -- auto link for inline <code></code>
-    else if name = "code" ∧ linkCode = true then
+    else if name = "code" then
       autoLink el
     -- recursively modify
     else
       let newContents ← contents.mapM λ c => match c with
-        -- disable auto link for code blocks
-        | Content.Element e => (modifyElement e (name ≠ "pre")).map Content.Element
+        | Content.Element e => (modifyElement e).map Content.Element
         | _ => pure c
       pure ⟨ name, attrs, newContents ⟩ 
 
