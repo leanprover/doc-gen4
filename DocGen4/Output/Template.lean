@@ -24,7 +24,7 @@ def baseHtmlArray (title : String) (site : Array Html) : HtmlM Html := do
         <link rel="stylesheet" href={s!"{←getRoot}style.css"}/>
         <link rel="stylesheet" href={s!"{←getRoot}pygments.css"}/>
         <link rel="shortcut icon" href={s!"{←getRoot}favicon.ico"}/>
-        <link rel="prefetch" href={s!"{←getRoot}searchable-data.json"}/>
+        <link rel="prefetch" href={s!"{←getRoot}searchable_data.bmp"}/>
 
         <script defer="true" src={s!"{←getRoot}site-root.js"}></script>
         <script defer="true" src={s!"{←getRoot}nav.js"}></script>
