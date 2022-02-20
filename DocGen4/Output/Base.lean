@@ -66,7 +66,7 @@ def splitWhitespaces (s : String) : (String × String × String) := Id.run do
 
 partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
   match i with
-  | TaggedText.text t => pure #[t]
+  | TaggedText.text t => pure #[Html.escape t]
   | TaggedText.append tt => tt.foldlM (λ acc t => do pure $ acc ++ (←infoFormatToHtml t)) #[]
   | TaggedText.tag a t =>
     match a.info.val.info with
@@ -75,7 +75,7 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
       | Expr.const name _ _ =>
          match t with
          | TaggedText.text t =>
-           let (front, t, back) := splitWhitespaces t
+           let (front, t, back) := splitWhitespaces $ Html.escape t
            let elem := Html.element "a" true #[("href", ←declNameToLink name)] #[t]
            pure #[Html.text front, elem, Html.text back]
          | _ =>

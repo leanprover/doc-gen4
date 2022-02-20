@@ -45,6 +45,23 @@ def toString (html : Html) : String :=
 instance : ToString Html :=
   ⟨toString⟩
 
+partial def textLength : Html → Nat
+| text s => s.length
+| element _ _ _ children =>
+  let lengths := children.map textLength
+  lengths.foldl Nat.add 0
+
+def escapePairs : Array (String × String) :=
+  #[
+    ("&", "&amp"),
+    ("<", "&lt"),
+    (">", "&gt"),
+    ("\"", "&quot")
+  ]
+
+def escape (s : String) : String :=
+  escapePairs.foldl (λ acc (o, r) => acc.replace o r) s
+
 end Html
 
 namespace Jsx
