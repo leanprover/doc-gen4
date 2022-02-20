@@ -22,11 +22,11 @@ function matchCaseSensitive(declName, lowerDeclName, pat) {
     }
 }
 
-function loadDecls(searchableDataCnt) {
+export function loadDecls(searchableDataCnt) {
     return searchableDataCnt.map(({name, description}) => [name, name.toLowerCase(), description.toLowerCase()])
 }
 
-function getMatches(decls, pat, maxResults = 30) {
+export function getMatches(decls, pat, maxResults = 30) {
     const lowerPats = pat.toLowerCase().split(/\s/g);
     const patNoSpaces = pat.replace(/\s/g, '');
     const results = [];
@@ -43,9 +43,4 @@ function getMatches(decls, pat, maxResults = 30) {
         }
     }
     return results.sort(({err: a}, {err: b}) => a - b).slice(0, maxResults);
-}
-
-if (typeof process === 'object') { // NodeJS
-    const data = loadDecls(JSON.parse(require('fs').readFileSync('searchable_data.bmp').toString()));
-    console.log(getMatches(data, process.argv[2] || 'ltltle'));
 }

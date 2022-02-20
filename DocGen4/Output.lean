@@ -87,7 +87,7 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   FS.writeFile (basePath / "nav.js") navJs
   FS.writeFile (basePath / "search.js") searchJs
   FS.writeFile (basePath / "mathjax-config.js") mathjaxConfigJs
-  FS.writeFile (basePath / "site-root.js") s!"siteRoot = \"{config.root}\"";
+  FS.writeFile (basePath / "site-root.js") s!"export const SITE_ROOT = \"{config.root}\";";
   for (module, content) in result.moduleInfo.toArray do
     let moduleHtml := ReaderT.run (moduleToHtml content) config
     let path := moduleNameToFile basePath module

@@ -1,3 +1,6 @@
+import { SITE_ROOT } from "./site-root.js";
+import { loadDecls, getMatches } from "./search.js";
+
 // Persistent expansion cookie for the file tree
 // ---------------------------------------------
 
@@ -106,7 +109,7 @@ if (tse != null) {
 // Simple declaration search
 // -------------------------
 
-const declURL = new URL(`${siteRoot}searchable_data.bmp`, window.location);
+const declURL = new URL(`${SITE_ROOT}searchable_data.bmp`, window.location);
 const getDecls = (() => {
   let decls;
   return () => {
@@ -192,7 +195,7 @@ searchInput.addEventListener('input', async (ev) => {
     const d = sr.appendChild(document.createElement('a'));
     d.innerText = decl;
     d.title = decl;
-    d.href = `${siteRoot}find/${decl}`;
+    d.href = `${SITE_ROOT}find/${decl}`;
   }
   sr.setAttribute('state', 'done');
   oldSR.replaceWith(sr);
@@ -222,7 +225,7 @@ if (howabout) {
       for (const {decl} of results) {
           const li = ul.appendChild(document.createElement('li'));
           const a = li.appendChild(document.createElement('a'));
-          a.href = `${siteRoot}find/${decl}`;
+          a.href = `${SITE_ROOT}find/${decl}`;
           a.appendChild(document.createElement('code')).innerText = decl;
       }
   });
