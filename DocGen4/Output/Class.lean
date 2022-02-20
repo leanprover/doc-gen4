@@ -21,7 +21,7 @@ def classInstancesToHtml (instances : Array Name) : HtmlM Html := do
     </details>
 
 def classToHtml (i : ClassInfo) : HtmlM (Array Html) := do
-  pure $ (←structureToHtml i.toStructureInfo).push (←classInstancesToHtml i.instances)
+  pure $ (←structureToHtml i.toStructureInfo)
 
 end Output
 end DocGen4

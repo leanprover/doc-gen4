@@ -1,4 +1,5 @@
 import DocGen4.Output.Template
+import DocGen4.Output.DocString
 
 namespace DocGen4
 namespace Output
@@ -11,7 +12,8 @@ def ctorToHtml (i : NameInfo) : HtmlM Html := do
   pure <li «class»="constructor" id={name}>{shortName} : [←infoFormatToHtml i.type]</li>
 
 def inductiveToHtml (i : InductiveInfo) : HtmlM (Array Html) := do
-  pure #[<ul "class"="constructors">[← i.ctors.toArray.mapM ctorToHtml]</ul>]
+  let constructorsHtml := <ul "class"="constructors">[← i.ctors.toArray.mapM ctorToHtml]</ul>
+  pure #[constructorsHtml]
 
 end Output
 end DocGen4

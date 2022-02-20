@@ -10,6 +10,8 @@ import DocGen4.Output.Class
 import DocGen4.Output.Definition
 import DocGen4.Output.Instance
 import DocGen4.Output.ClassInductive
+import DocGen4.Output.DocString
+import Lean.Data.Xml.Parser
 
 namespace DocGen4
 namespace Output
@@ -72,15 +74,23 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   pure <div «class»="decl_header"> [nodes] </div>
 
 def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
-  let docHtml ← match doc with
+  -- basic info like headers, types, structure fields, etc.
+  let docInfoHtml ← match doc with
   | DocInfo.inductiveInfo i => inductiveToHtml i
   | DocInfo.structureInfo i => structureToHtml i
   | DocInfo.classInfo i => classToHtml i
-  | DocInfo.definitionInfo i => definitionToHtml i
-  | DocInfo.instanceInfo i => instanceToHtml i
   | DocInfo.classInductiveInfo i => classInductiveToHtml i
-  | _ => pure #[]
-
+  | i => pure #[]
+  -- rendered doc stirng
+  let docStringHtml ← match doc.getDocString with
+  | some s => docStringToHtml s
+  | none => pure #[]
+  -- extra information like equations and instances
+  let extraInfoHtml ← match doc with
+  | DocInfo.classInfo i => pure #[←classInstancesToHtml i.instances]
+  | DocInfo.definitionInfo i => equationsToHtml i
+  | DocInfo.classInductiveInfo i => pure #[←classInstancesToHtml i.instances]
+  | i => pure #[]
   let attrs := doc.getAttrs
   let attrsHtml :=
     if attrs.size > 0 then
@@ -97,9 +107,22 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
         </div>
         [attrsHtml]
         {←docInfoHeader doc}
-        [docHtml]
+        [docInfoHtml]
+        [docStringHtml]
+        [extraInfoHtml]
       </div>
     </div>
+
+def modDocToHtml (module : Name) (mdoc : ModuleDoc) : HtmlM Html := do
+  pure 
+    <div «class»="mod_doc">
+      [←docStringToHtml mdoc.doc]
+    </div>
+
+def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := do
+  match member with
+  | ModuleMember.docInfo d => docInfoToHtml module d
+  | ModuleMember.modDoc d => modDocToHtml module d
 
 def declarationToNavLink (module : Name) : Html :=
   <div «class»="nav_link">
@@ -162,10 +185,11 @@ def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
     </nav>
 
 def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
-  let docInfos ← module.members.mapM (λ i => docInfoToHtml module.name i)
+  let memberDocs ← module.members.mapM (λ i => moduleMemberToHtml module.name i)
+  let memberNames := filterMapDocInfo module.members |>.map DocInfo.getName
   templateExtends (baseHtmlArray module.name.toString) $ pure #[
-    ←internalNav (module.members.map DocInfo.getName) module.name,
-    Html.element "main" false #[] docInfos
+    ←internalNav memberNames module.name,
+    Html.element "main" false #[] memberDocs
   ]
 
 end Output

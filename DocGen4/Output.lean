@@ -71,7 +71,7 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
 
   let mut declList := #[]
   for (_, mod) in result.moduleInfo.toArray do
-    for decl in mod.members do
+    for decl in filterMapDocInfo mod.members do
       let findHtml := ReaderT.run (findRedirectHtml decl.getName) config
       let findDir := basePath / "find" / decl.getName.toString
       FS.createDirAll findDir
@@ -86,6 +86,7 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   FS.writeFile (basePath / "404.html") notFoundHtml.toString
   FS.writeFile (basePath / "nav.js") navJs
   FS.writeFile (basePath / "search.js") searchJs
+  FS.writeFile (basePath / "mathjax-config.js") mathjaxConfigJs
   for (module, content) in result.moduleInfo.toArray do
     let moduleHtml := ReaderT.run (moduleToHtml content) config
     let path := moduleNameToFile basePath module
