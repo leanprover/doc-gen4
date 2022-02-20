@@ -106,7 +106,7 @@ if (tse != null) {
 // Simple declaration search
 // -------------------------
 
-const declURL = new URL(`${siteRoot}searchable_data.json`, window.location);
+const declURL = new URL(`${siteRoot}searchable-data.json`, window.location);
 const getDecls = (() => {
   let decls;
   return () => {

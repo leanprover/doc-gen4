@@ -18,7 +18,7 @@ def baseHtmlArray (title : String) (site : Array Html) : HtmlM Html := do
         <link rel="stylesheet" href={s!"{←getRoot}style.css"}/>
         <link rel="stylesheet" href={s!"{←getRoot}pygments.css"}/>
         <link rel="shortcut icon" href={s!"{←getRoot}favicon.ico"}/>
-        <link rel="prefetch" href={s!"{←getRoot}searchable_data.json"}/>
+        <link rel="prefetch" href={s!"{←getRoot}searchable-data.json"}/>
         <title>{title}</title>
         <meta charset="UTF-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -44,9 +44,7 @@ def baseHtmlArray (title : String) (site : Array Html) : HtmlM Html := do
       {←navbar}
 
       -- Lean in JS in HTML in Lean...very meta
-      <script>
-        siteRoot = "{←getRoot}";
-      </script>
+      <script src={s!"{←getRoot}site-root.js"}></script>
 
       -- TODO Add more js stuff
       <script src={s!"{←getRoot}nav.js"}></script>
