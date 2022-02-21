@@ -89,7 +89,7 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   FS.writeFile (basePath / "nav.js") navJs
   FS.writeFile (basePath / "search.js") searchJs
   FS.writeFile (basePath / "mathjax-config.js") mathjaxConfigJs
-  FS.writeFile (basePath / "site-root.js") s!"export const SITE_ROOT = \"{config.root}\";";
+  FS.writeFile (basePath / "site-root.js") (siteRootJs.replace "{siteRoot}" config.root) 
 
   FS.writeFile (basePath / "find" / "index.html") findHtml.toString
   FS.writeFile (basePath / "find" / "find.js") findJs
