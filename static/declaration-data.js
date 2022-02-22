@@ -56,8 +56,7 @@ export class DeclarationDataCenter {
       const timestamp = await timestampRes.text();
 
       // try to use cache first
-      let store = await getDeclarationStore();
-      const data = await fetchCachedDeclarationData(store, timestamp);
+      const data = await fetchCachedDeclarationData(timestamp);
       if (data) {
         // if data is defined, use the cached one.
         DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
@@ -79,9 +78,7 @@ export class DeclarationDataCenter {
             },
           ])
         );
-        // get store again in case it's inactive
-        let store = await getDeclarationStore();
-        await cacheDeclarationData(store, timestamp, data);
+        await cacheDeclarationData(timestamp, data);
         DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
       }
     }
@@ -156,7 +153,15 @@ function getMatches(declarations, pattern, maxResults = 30) {
       err = 3;
     }
     if (err !== undefined) {
-      results.push({ name, err, lowerName, lowerDoc, link, docLink, sourceLink });
+      results.push({
+        name,
+        err,
+        lowerName,
+        lowerDoc,
+        link,
+        docLink,
+        sourceLink,
+      });
     }
   }
   return results.sort(({ err: a }, { err: b }) => a - b).slice(0, maxResults);
@@ -166,11 +171,12 @@ function getMatches(declarations, pattern, maxResults = 30) {
 
 /**
  * Get the indexedDB database, automatically initialized.
- * @returns {Promise<IDBObjectStore>}
+ * @returns {Promise<IDBDatabase>}
  */
-function getDeclarationStore() {
+async function getDeclarationDatabase() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(CACHE_DB_NAME, CACHE_DB_VERSION);
+
     request.onerror = function (event) {
       reject(
         new Error(
@@ -181,38 +187,33 @@ function getDeclarationStore() {
     request.onupgradeneeded = function (event) {
       let db = event.target.result;
       // We only need to store one object, so no key path or increment is needed.
-      let objectStore = db.createObjectStore("declaration");
-      objectStore.transaction.oncomplete = function (event) {
-        resolve(objectStore);
-      };
+      db.createObjectStore("declaration");
     };
     request.onsuccess = function (event) {
-      resolve(
-        event.target.result
-          .transaction("declaration", "readwrite")
-          .objectStore("declaration")
-      );
+      resolve(event.target.result);
     };
   });
 }
 
 /**
  * Store data in indexedDB object store.
- * @param {IDBObjectStore} store
  * @param {string} timestamp
  * @param {Map<string, any>} data
  */
-function cacheDeclarationData(store, timestamp, data) {
+async function cacheDeclarationData(timestamp, data) {
+  let db = await getDeclarationDatabase();
+  let store = db
+    .transaction("declaration", "readwrite")
+    .objectStore("declaration");
   return new Promise((resolve, reject) => {
     let clearRequest = store.clear();
-    clearRequest.onsuccess = function (event) {
-      let addRequest = store.add(data, timestamp);
-      addRequest.onsuccess = function (event) {
-        resolve();
-      };
-      addRequest.onerror = function (event) {
-        reject(new Error(`fail to store declaration data`));
-      };
+    let addRequest = store.add(data, timestamp);
+
+    addRequest.onsuccess = function (event) {
+      resolve();
+    };
+    addRequest.onerror = function (event) {
+      reject(new Error(`fail to store declaration data`));
     };
     clearRequest.onerror = function (event) {
       reject(new Error("fail to clear object store"));
@@ -222,11 +223,14 @@ function cacheDeclarationData(store, timestamp, data) {
 
 /**
  * Retrieve data from indexedDB database.
- * @param {IDBObjectStore} store
  * @param {string} timestamp
  * @returns {Promise<Map<string, any>|undefined>}
  */
-async function fetchCachedDeclarationData(store, timestamp) {
+async function fetchCachedDeclarationData(timestamp) {
+  let db = await getDeclarationDatabase();
+  let store = db
+    .transaction("declaration", "readonly")
+    .objectStore("declaration");
   return new Promise((resolve, reject) => {
     let transactionRequest = store.get(timestamp);
     transactionRequest.onsuccess = function (event) {

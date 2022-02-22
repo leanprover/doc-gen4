@@ -80,7 +80,7 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
       let link := root ++ s!"semantic/{decl.getName.hash}.xml#"
       let docLink := Id.run <| ReaderT.run (declNameToLink decl.getName) config
       let sourceLink := Id.run <| ReaderT.run (getSourceUrl mod.name decl.getDeclarationRange) config
-      let obj := Json.mkObj [("name", name), ("doc", doc), ("link", link), ("docLink", docLink), ("sourcLink", sourceLink)]
+      let obj := Json.mkObj [("name", name), ("doc", doc), ("link", link), ("docLink", docLink), ("sourceLink", sourceLink)]
       declList := declList.push obj
       let xml := toString <| Id.run <| ReaderT.run (semanticXml decl) config 
       FS.writeFile (basePath / "semantic" / s!"{decl.getName.hash}.xml") xml

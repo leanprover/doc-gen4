@@ -40,6 +40,8 @@ const pattern = queryParams.get("pattern") ?? fragmentPaths[1]; // if first fail
 const strict = (queryParams.get("strict") ?? "true") === "true"; // default to true
 const view = fragmentPaths[0];
 
+findAndRedirect(pattern, strict, view);
+
 /**
  * Find the result and redirect to the result page.
  * @param {string} pattern the pattern to search for
@@ -59,7 +61,6 @@ async function findAndRedirect(pattern, strict, view) {
     window.location.replace(`${SITE_ROOT}404.html#${pattern ?? ""}`);
   } else {
     // success, redirect to doc or source page, or to the semantic rdf.
-    window.location.replace(isSource ? results[0].sourceLink : results[0].link);
     if (!view) {
       window.location.replace(result.link);
     } else if (view == "doc") {
