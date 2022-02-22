@@ -74,10 +74,10 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   for (_, mod) in result.moduleInfo.toArray do
     for decl in filterMapDocInfo mod.members do
       let name := decl.getName.toString
-      let description := decl.getDocString.getD ""
+      let doc := decl.getDocString.getD ""
       let link := Id.run <| ReaderT.run (declNameToLink decl.getName) config
       let source := Id.run <| ReaderT.run (getSourceUrl mod.name decl.getDeclarationRange) config
-      let obj := Json.mkObj [("name", name), ("description", description), ("link", link), ("source", source)]
+      let obj := Json.mkObj [("name", name), ("doc", doc), ("link", link), ("source", source)]
       declList := declList.push obj
 
   let json := Json.arr declList

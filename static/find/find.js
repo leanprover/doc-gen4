@@ -7,21 +7,19 @@ import { DeclarationDataCenter } from "../declaration-data.js";
 
 async function findRedirect(pattern, isSource) {
   const dataCenter = await DeclarationDataCenter.init();
-  try {
-    let results = dataCenter.search(pattern);
-    window.location.replace(isSource ? results[0].source : results[0].link);
-  } catch {
-    window.location.replace(`${SITE_ROOT}404.html`);
+  let results = dataCenter.search(pattern, true);
+  if (results.length == 0) {
+    // if there is no exact match, redirect to 404 page to use fuzzy match
+    window.location.replace(`${SITE_ROOT}404.html#${pattern ?? ""}`);
+  } else {
+    // redirect to doc or source page.
+    window.location.replace(isSource ? results[0].sourceLink : results[0].link);
   }
 }
 
-let hash = window.location.hash.split("#");
+let hash = window.location.hash.replace("#", "");
 
-if (hash.length == 0) {
-  window.location.replace(`${SITE_ROOT}/404.html`);
-}
-
-if (hash[1].endsWith("/src")) {
+if (hash.endsWith("/src")) {
   findRedirect(hash.replace("/src", ""), true);
 } else {
   findRedirect(hash, false);
