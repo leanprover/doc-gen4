@@ -94,10 +94,10 @@ SEARCH_INPUT.addEventListener("input", async (ev) => {
 
   // update search results
   removeAllChildren(sr);
-  for (const { decl, link } of result) {
+  for (const { name, link } of result) {
     const d = sr.appendChild(document.createElement("a"));
-    d.innerText = decl;
-    d.title = decl;
+    d.innerText = name;
+    d.title = name;
     d.href = link;
   }
   sr.setAttribute("state", "done");

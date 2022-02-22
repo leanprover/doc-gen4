@@ -6,6 +6,9 @@
 
 import { SITE_ROOT } from "./site-root.js";
 
+const CACHE_DB_NAME = "declaration-data";
+const CACHE_DB_VERSION = 1;
+
 /**
  * The DeclarationDataCenter is used for declaration searching.
  *
@@ -40,26 +43,46 @@ export class DeclarationDataCenter {
    */
   static async init() {
     if (!DeclarationDataCenter.singleton) {
+      const timestampUrl = new URL(
+        `${SITE_ROOT}declaration-data.timestamp`,
+        window.location
+      );
       const dataUrl = new URL(
         `${SITE_ROOT}declaration-data.bmp`,
         window.location
       );
-      const response = await fetch(dataUrl);
-      const json = await response.json();
-      // the data is a map of name (original case) to declaration data.
-      const data = new Map(
-        json.map(({ name, doc, link, source: sourceLink }) => [
-          name,
-          {
+
+      const timestampRes = await fetch(timestampUrl);
+      const timestamp = await timestampRes.text();
+
+      // try to use cache first
+      let store = await getDeclarationStore();
+      const data = await fetchCachedDeclarationData(store, timestamp);
+      if (data) {
+        // if data is defined, use the cached one.
+        DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
+      } else {
+        // undefined. then fetch the data from the server.
+        const dataRes = await fetch(dataUrl);
+        const dataJson = await dataRes.json();
+        // the data is a map of name (original case) to declaration data.
+        const data = new Map(
+          dataJson.map(({ name, doc, link, source: sourceLink }) => [
             name,
-            lowerName: name.toLowerCase(),
-            lowerDoc: doc.toLowerCase(),
-            link,
-            sourceLink,
-          },
-        ])
-      );
-      DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
+            {
+              name,
+              lowerName: name.toLowerCase(),
+              lowerDoc: doc.toLowerCase(),
+              link,
+              sourceLink,
+            },
+          ])
+        );
+        // get store again in case it's inactive
+        let store = await getDeclarationStore();
+        await cacheDeclarationData(store, timestamp, data);
+        DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
+      }
     }
     return DeclarationDataCenter.singleton;
   }
@@ -135,4 +158,80 @@ function getMatches(declarations, pattern, maxResults = 30) {
     }
   }
   return results.sort(({ err: a }, { err: b }) => a - b).slice(0, maxResults);
+}
+
+// TODO: refactor the indexedDB part to be more robust
+
+/**
+ * Get the indexedDB database, automatically initialized.
+ * @returns {Promise<IDBObjectStore>}
+ */
+function getDeclarationStore() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(CACHE_DB_NAME, CACHE_DB_VERSION);
+    request.onerror = function (event) {
+      reject(
+        new Error(
+          `fail to open indexedDB ${CACHE_DB_NAME} of version ${CACHE_DB_VERSION}`
+        )
+      );
+    };
+    request.onupgradeneeded = function (event) {
+      let db = event.target.result;
+      // We only need to store one object, so no key path or increment is needed.
+      let objectStore = db.createObjectStore("declaration");
+      objectStore.transaction.oncomplete = function (event) {
+        resolve(objectStore);
+      };
+    };
+    request.onsuccess = function (event) {
+      resolve(
+        event.target.result
+          .transaction("declaration", "readwrite")
+          .objectStore("declaration")
+      );
+    };
+  });
+}
+
+/**
+ * Store data in indexedDB object store.
+ * @param {IDBObjectStore} store
+ * @param {string} timestamp
+ * @param {Map<string, any>} data
+ */
+function cacheDeclarationData(store, timestamp, data) {
+  return new Promise((resolve, reject) => {
+    let clearRequest = store.clear();
+    clearRequest.onsuccess = function (event) {
+      let addRequest = store.add(data, timestamp);
+      addRequest.onsuccess = function (event) {
+        resolve();
+      };
+      addRequest.onerror = function (event) {
+        reject(new Error(`fail to store declaration data`));
+      };
+    };
+    clearRequest.onerror = function (event) {
+      reject(new Error("fail to clear object store"));
+    };
+  });
+}
+
+/**
+ * Retrieve data from indexedDB database.
+ * @param {IDBObjectStore} store
+ * @param {string} timestamp
+ * @returns {Promise<Map<string, any>|undefined>}
+ */
+async function fetchCachedDeclarationData(store, timestamp) {
+  return new Promise((resolve, reject) => {
+    let transactionRequest = store.get(timestamp);
+    transactionRequest.onsuccess = function (event) {
+      resolve(event.result);
+    };
+    transactionRequest.onerror = function (event) {
+      reject(new Error(`fail to store declaration data`));
+    };
+  });
 }
