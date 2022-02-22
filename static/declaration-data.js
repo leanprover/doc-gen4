@@ -67,13 +67,14 @@ export class DeclarationDataCenter {
         const dataJson = await dataRes.json();
         // the data is a map of name (original case) to declaration data.
         const data = new Map(
-          dataJson.map(({ name, doc, link, source: sourceLink }) => [
+          dataJson.map(({ name, doc, link, docLink, sourceLink }) => [
             name,
             {
               name,
               lowerName: name.toLowerCase(),
               lowerDoc: doc.toLowerCase(),
               link,
+              docLink,
               sourceLink,
             },
           ])
@@ -91,7 +92,7 @@ export class DeclarationDataCenter {
    * Search for a declaration.
    * @returns {Array<any>}
    */
-  search(pattern, strict = false) {
+  search(pattern, strict = true) {
     if (!pattern) {
       return [];
     }
@@ -142,6 +143,7 @@ function getMatches(declarations, pattern, maxResults = 30) {
     lowerName,
     lowerDoc,
     link,
+    docLink,
     sourceLink,
   } of declarations.values()) {
     let err = matchCaseSensitive(name, lowerName, patNoSpaces);
@@ -154,7 +156,7 @@ function getMatches(declarations, pattern, maxResults = 30) {
       err = 3;
     }
     if (err !== undefined) {
-      results.push({ name, err, lowerName, lowerDoc, link, sourceLink });
+      results.push({ name, err, lowerName, lowerDoc, link, docLink, sourceLink });
     }
   }
   return results.sort(({ err: a }, { err: b }) => a - b).slice(0, maxResults);

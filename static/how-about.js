@@ -20,14 +20,14 @@ if (HOW_ABOUT) {
   if (pattern) {
     HOW_ABOUT.innerText = "Please wait a second. I'll try to help you.";
     DeclarationDataCenter.init().then((dataCenter) => {
-      let results = dataCenter.search(pattern);
+      let results = dataCenter.search(pattern, false);
       if (results.length > 0) {
         HOW_ABOUT.innerText = "How about one of these instead:";
         const ul = HOW_ABOUT.appendChild(document.createElement("ul"));
-        for (const { name, link } of results) {
+        for (const { name, docLink } of results) {
           const li = ul.appendChild(document.createElement("li"));
           const a = li.appendChild(document.createElement("a"));
-          a.href = link;
+          a.href = docLink;
           a.appendChild(document.createElement("code")).innerText = name;
         }
       } else {

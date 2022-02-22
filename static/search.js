@@ -87,18 +87,18 @@ SEARCH_INPUT.addEventListener("input", async (ev) => {
   // searching
   sr.setAttribute("state", "loading");
   const dataCenter = await DeclarationDataCenter.init();
-  const result = dataCenter.search(text);
+  const result = dataCenter.search(text, false);
 
   // in case user has updated the input.
   if (ev.target.value != text) return;
 
   // update search results
   removeAllChildren(sr);
-  for (const { name, link } of result) {
+  for (const { name, docLink } of result) {
     const d = sr.appendChild(document.createElement("a"));
     d.innerText = name;
     d.title = name;
-    d.href = link;
+    d.href = docLink;
   }
   sr.setAttribute("state", "done");
 });

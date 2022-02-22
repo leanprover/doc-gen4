@@ -10,6 +10,7 @@ import DocGen4.Output.Index
 import DocGen4.Output.Module
 import DocGen4.Output.NotFound
 import DocGen4.Output.Find
+import DocGen4.Output.Semantic
 
 namespace DocGen4
 
@@ -69,18 +70,23 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
   let notFoundHtml := ReaderT.run notFound config
   FS.createDirAll basePath
   FS.createDirAll (basePath / "find")
+  FS.createDirAll (basePath / "semantic")
 
   let mut declList := #[]
   for (_, mod) in result.moduleInfo.toArray do
     for decl in filterMapDocInfo mod.members do
       let name := decl.getName.toString
       let doc := decl.getDocString.getD ""
-      let link := Id.run <| ReaderT.run (declNameToLink decl.getName) config
-      let source := Id.run <| ReaderT.run (getSourceUrl mod.name decl.getDeclarationRange) config
-      let obj := Json.mkObj [("name", name), ("doc", doc), ("link", link), ("source", source)]
+      let link := root ++ s!"semantic/{decl.getName.hash}.xml#"
+      let docLink := Id.run <| ReaderT.run (declNameToLink decl.getName) config
+      let sourceLink := Id.run <| ReaderT.run (getSourceUrl mod.name decl.getDeclarationRange) config
+      let obj := Json.mkObj [("name", name), ("doc", doc), ("link", link), ("docLink", docLink), ("sourcLink", sourceLink)]
       declList := declList.push obj
-
+      let xml := toString <| Id.run <| ReaderT.run (semanticXml decl) config 
+      FS.writeFile (basePath / "semantic" / s!"{decl.getName.hash}.xml") xml
   let json := Json.arr declList
+
+  FS.writeFile (basePath / "semantic" / "docgen4.xml") <| toString <| Id.run <| ReaderT.run schemaXml config 
 
   FS.writeFile (basePath / "index.html") indexHtml.toString
   FS.writeFile (basePath / "404.html") notFoundHtml.toString
