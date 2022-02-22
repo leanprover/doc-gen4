@@ -82,18 +82,23 @@ def htmlOutput (result : AnalyzerResult) (root : String) : IO Unit := do
 
   let json := Json.arr declList
 
-  FS.writeFile (basePath / "searchable_data.bmp") json.compress
   FS.writeFile (basePath / "index.html") indexHtml.toString
-  FS.writeFile (basePath / "style.css") styleCss
   FS.writeFile (basePath / "404.html") notFoundHtml.toString
+  FS.writeFile (basePath / "find" / "index.html") findHtml.toString
+
+  FS.writeFile (basePath / "style.css") styleCss
+
+  let declarationDataPath := basePath / "declaration-data.bmp"
+  FS.writeFile declarationDataPath json.compress
+  FS.writeFile (basePath / "declaration-data.timestamp") <| toString (←declarationDataPath.metadata).modified.sec
+
+  FS.writeFile (basePath / "site-root.js") (siteRootJs.replace "{siteRoot}" config.root) 
+  FS.writeFile (basePath / "declaration-data.js") declarationDataCenterJs
   FS.writeFile (basePath / "nav.js") navJs
+  FS.writeFile (basePath / "find" / "find.js") findJs
+  FS.writeFile (basePath / "how-about.js") howAboutJs
   FS.writeFile (basePath / "search.js") searchJs
   FS.writeFile (basePath / "mathjax-config.js") mathjaxConfigJs
-  FS.writeFile (basePath / "site-root.js") (siteRootJs.replace "{siteRoot}" config.root) 
-
-  FS.writeFile (basePath / "find" / "index.html") findHtml.toString
-  FS.writeFile (basePath / "find" / "find.js") findJs
-
 
   for (module, content) in result.moduleInfo.toArray do
     let moduleHtml := ReaderT.run (moduleToHtml content) config

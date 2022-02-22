@@ -10,7 +10,7 @@ def find : HtmlM Html := do
   pure
     <html lang="en">
       <head>
-        <link rel="preload" href={s!"{←getRoot}searchable_data.bmp"}/>
+        <link rel="preload" href={s!"{←getRoot}declaration-data.bmp"}/>
         <script type="module" async="true" src={s!"./find.js"}></script>
       </head>
       <body></body>

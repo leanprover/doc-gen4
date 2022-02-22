@@ -24,13 +24,15 @@ def baseHtmlArray (title : String) (site : Array Html) : HtmlM Html := do
         <link rel="stylesheet" href={s!"{←getRoot}style.css"}/>
         <link rel="stylesheet" href={s!"{←getRoot}pygments.css"}/>
         <link rel="shortcut icon" href={s!"{←getRoot}favicon.ico"}/>
-        <link rel="prefetch" href={s!"{←getRoot}searchable_data.bmp"}/>
+        <link rel="prefetch" href={s!"{←getRoot}declaration-data.bmp"}/>
 
         <script defer="true" src={s!"{←getRoot}mathjax-config.js"}></script>
         <script defer="true" src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
         <script defer="true" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
         
         <script type="module" src={s!"{←getRoot}nav.js"}></script>
+        <script type="module" src={s!"{←getRoot}search.js"}></script>
+        <script type="module" src={s!"{←getRoot}how-about.js"}></script>
 
       </head>
       

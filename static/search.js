@@ -1,67 +1,104 @@
-import { SITE_ROOT } from "./site-root.js";
+/**
+ * This module is used to handle user's interaction with the search form.
+ */
 
-function isSep(c) {
-    return c === '.' || c === '_';
-}
+import { DeclarationDataCenter } from "./declaration-data.js";
 
-function matchCaseSensitive(declName, lowerDeclName, pat) {
-    let i = 0, j = 0, err = 0, lastMatch = 0
-    while (i < declName.length && j < pat.length) {
-        if (pat[j] === declName[i] || pat[j] === lowerDeclName[i]) {
-            err += (isSep(pat[j]) ? 0.125 : 1) * (i - lastMatch);
-            if (pat[j] !== declName[i]) err += 0.5;
-            lastMatch = i + 1;
-            j++;
-        } else if (isSep(declName[i])) {
-            err += 0.125 * (i + 1 - lastMatch);
-            lastMatch = i + 1;
-        }
-        i++;
-    }
-    err += 0.125 * (declName.length - lastMatch);
-    if (j === pat.length) {
-        return err;
-    }
-}
 
-export function loadDecls(searchableDataCnt) {
-    return searchableDataCnt.map(({name, description, link, source}) => [name, name.toLowerCase(), description.toLowerCase(), link, source]);
-}
+const SEARCH_FORM = document.querySelector("#search_form");
+const SEARCH_INPUT = SEARCH_FORM.querySelector("input[name=q]");
 
-export function getMatches(decls, pat, maxResults = 30) {
-    const lowerPats = pat.toLowerCase().split(/\s/g);
-    const patNoSpaces = pat.replace(/\s/g, '');
-    const results = [];
-    for (const [decl, lowerDecl, lowerDoc, link, source] of decls) {
-        let err = matchCaseSensitive(decl, lowerDecl, patNoSpaces);
+// Create an `div#search_results` to hold all search results.
+let sr = document.createElement("div");
+sr.id = "search_results";
+SEARCH_FORM.appendChild(sr);
 
-        // match all words as substrings of docstring
-        if (!(err < 3) && pat.length > 3 && lowerPats.every(l => lowerDoc.indexOf(l) != -1)) {
-            err = 3;
-        }
-
-        if (err !== undefined) {
-            results.push({decl, err, link, source});
-        }
-    }
-    return results.sort(({err: a}, {err: b}) => a - b).slice(0, maxResults);
-}
-
-const declURL = new URL(`${SITE_ROOT}searchable_data.bmp`, window.location);
-
-export const getDecls = (() => {
-  let decls;
-  return () => {
-    if (!decls) decls = new Promise((resolve, reject) => {
-        const req = new XMLHttpRequest();
-        req.responseType = 'json';
-        req.addEventListener('load', () => resolve(loadDecls(req.response)));
-        req.addEventListener('error', () => reject());
-        req.open('GET', declURL);
-        req.send();
-      })
-    return decls;
+/**
+ * Attach `selected` class to the the selected search result.
+ */
+function handleSearchCursorUpDown(down) {
+  const sel = sr.querySelector(`.selected`);
+  if (sel) {
+    sel.classList.remove("selected");
+    const toSelect = down
+      ? sel.nextSibling || sr.firstChild
+      : sel.previousSibling || sr.lastChild;
+    toSelect && toSelect.classList.add("selected");
+  } else {
+    const toSelect = down ? sr.firstChild : sr.lastChild;
+    toSelect && toSelect.classList.add("selected");
   }
-})()
+}
 
-export const declSearch = async (q) => getMatches(await getDecls(), q);
+/**
+ * Perform search (when enter is pressed).
+ */
+function handleSearchEnter() {
+  const sel =
+  sr.querySelector(`.selected`) ||
+    sr.firstChild;
+  sel.click();
+}
+
+/**
+ * Allow user to navigate search results with up/down arrow keys, and choose with enter.
+ */
+SEARCH_INPUT.addEventListener("keydown", (ev) => {
+  switch (ev.key) {
+    case "Down":
+    case "ArrowDown":
+      ev.preventDefault();
+      handleSearchCursorUpDown(true);
+      break;
+    case "Up":
+    case "ArrowUp":
+      ev.preventDefault();
+      handleSearchCursorUpDown(false);
+      break;
+    case "Enter":
+      ev.preventDefault();
+      handleSearchEnter();
+      break;
+  }
+});
+
+/**
+ * Remove all children of a DOM node.
+ */
+function removeAllChildren(node) {
+  while (node.firstChild) {
+    node.removeChild(node.lastChild);
+  }
+}
+
+/**
+ * Search autocompletion.
+ */
+SEARCH_INPUT.addEventListener("input", async (ev) => {
+  const text = ev.target.value;
+
+  // If no input clear all.
+  if (!text) {
+    sr.removeAttribute("state");
+    removeAllChildren(sr);
+    return;
+  }
+
+  // searching
+  sr.setAttribute("state", "loading");
+  const dataCenter = await DeclarationDataCenter.init();
+  const result = dataCenter.search(text);
+
+  // in case user has updated the input.
+  if (ev.target.value != text) return;
+
+  // update search results
+  removeAllChildren(sr);
+  for (const { decl, link } of result) {
+    const d = sr.appendChild(document.createElement("a"));
+    d.innerText = decl;
+    d.title = decl;
+    d.href = link;
+  }
+  sr.setAttribute("state", "done");
+});
