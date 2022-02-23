@@ -14,7 +14,7 @@ open Lean
 open scoped DocGen4.Jsx
 
 def moduleListFile (file : Name) : HtmlM Html := do
-  pure <div "class"="nav_link" [if (← getCurrentName) == file then #[("visible", "")] else #[]]>
+  pure <div «class»={if (← getCurrentName) == file then "nav_link visible" else "nav_link"}>
     <a href={← moduleNameToLink file}>{file.toString}</a>
   </div>
 
