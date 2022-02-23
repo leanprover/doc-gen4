@@ -20,15 +20,15 @@ def getLakePath : IO FilePath := do
     pure $ lakePath.withExtension System.FilePath.exeExtension
 
 -- Modified from the LSP Server
-def lakeSetupSearchPath (lakePath : System.FilePath) (imports : Array String) : IO Lean.SearchPath := do
-  let args := #["print-paths"] ++ imports
-  let cmdStr := " ".intercalate (toString lakePath :: args.toList)
+def lakeSetupSearchPath (lakePath : System.FilePath) (imports : List String) : IO Lean.SearchPath := do
+  let args := "print-paths" :: imports
+  let cmdStr := " ".intercalate (toString lakePath :: args)
   let lakeProc ← Process.spawn {
     stdin  := Process.Stdio.null
     stdout := Process.Stdio.piped
     stderr := Process.Stdio.piped
     cmd    := lakePath.toString
-    args
+    args := args.toArray
   }
   let stdout := String.trim (← lakeProc.stdout.readToEnd)
   let stderr := String.trim (← lakeProc.stderr.readToEnd)
