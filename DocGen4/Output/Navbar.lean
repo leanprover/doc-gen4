@@ -14,7 +14,7 @@ open Lean
 open scoped DocGen4.Jsx
 
 def moduleListFile (file : Name) : HtmlM Html := do
-  pure <div "class"="nav_link" [if (← getCurrentName) == file then #[("visible", "")] else #[]]>
+  pure <div «class»={if (← getCurrentName) == file then "nav_link visible" else "nav_link"}>
     <a href={← moduleNameToLink file}>{file.toString}</a>
   </div>
 
@@ -29,7 +29,12 @@ partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
   pure
     <details "class"="nav_sect" "data-path"={moduleLink}
       [if (←getCurrentName).any (h.getName.isPrefixOf ·) then #[("open", "")] else #[]]>
-      {Html.element "summary" true #[] #[<a "href"={← moduleNameToLink h.getName}>{h.getName.toString}</a>]}
+      {
+        if (←getResult).moduleInfo.contains h.getName then
+          Html.element "summary" true #[] #[<a "href"={← moduleNameToLink h.getName}>{h.getName.toString}</a>]
+        else
+          <summary>{h.getName.toString}</summary>
+      }
       [dirNodes]
       [fileNodes]
     </details>
