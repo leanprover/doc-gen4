@@ -5,6 +5,7 @@ Authors: Henrik Böving
 -/
 
 import Lean
+import Lake
 import DocGen4.Process
 import Std.Data.HashMap
 
@@ -12,40 +13,25 @@ namespace DocGen4
 
 open Lean System Std IO
 
-def getLakePath : IO FilePath := do
-  match (← IO.getEnv "LAKE") with
-  | some path => pure $ System.FilePath.mk path
-  | none =>
-    let lakePath := (←findSysroot?) / "bin" / "lake"
-    pure $ lakePath.withExtension System.FilePath.exeExtension
-
--- Modified from the LSP Server
-def lakeSetupSearchPath (lakePath : System.FilePath) (imports : List String) : IO Lean.SearchPath := do
-  let args := "print-paths" :: imports
-  let cmdStr := " ".intercalate (toString lakePath :: args)
-  let lakeProc ← Process.spawn {
-    stdin  := Process.Stdio.null
-    stdout := Process.Stdio.piped
-    stderr := Process.Stdio.piped
-    cmd    := lakePath.toString
-    args := args.toArray
-  }
-  let stdout := String.trim (← lakeProc.stdout.readToEnd)
-  let stderr := String.trim (← lakeProc.stderr.readToEnd)
-  match (← lakeProc.wait) with
-  | 0 =>
-    let stdout := stdout.split (· == '\n') |>.getLast!
-    let Except.ok (paths : LeanPaths) ← pure (Json.parse stdout >>= fromJson?)
-      | throw $ userError s!"invalid output from `{cmdStr}`:\n{stdout}\nstderr:\n{stderr}"
-    initSearchPath (← findSysroot?) paths.oleanPath
-    paths.oleanPath.mapM realPathNormalized
-  | 2 => pure []  -- no lakefile.lean
-  | _ => throw $ userError s!"`{cmdStr}` failed:\n{stdout}\nstderr:\n{stderr}"
+def lakeSetup (imports : List String) : IO (Except UInt32 (Lake.Workspace × String)) := do
+  let (leanInstall?, lakeInstall?) ← Lake.findInstall?
+  let res ← StateT.run Lake.Cli.loadWorkspace {leanInstall?, lakeInstall?} |>.toIO'
+  match res with
+  | Except.ok (ws, options) =>
+    let lean := leanInstall?.get!
+    if lean.githash ≠ Lean.githash then
+      IO.println s!"WARNING: This doc-gen was built with Lean: {Lean.githash} but the project is running on: {lean.githash}"
+    let lake := lakeInstall?.get!
+    let ctx ← Lake.mkBuildContext ws lean lake
+    ws.root.buildImportsAndDeps imports |>.run Lake.LogMethods.eio ctx
+    initSearchPath (←findSysroot) ws.leanPaths.oleanPath
+    pure $ Except.ok (ws, lean.githash)
+  | Except.error rc => pure $ Except.error rc
 
 def load (imports : List Name) : IO AnalyzerResult := do
   let env ← importModules (List.map (Import.mk · false) imports) Options.empty
   -- TODO parameterize maxHeartbeats
   IO.println "Processing modules"
-  Prod.fst <$> (Meta.MetaM.toIO process { maxHeartbeats := 100000000, options := ⟨[(`pp.tagAppFns, true)]⟩ } { env := env} {} {})
+  Prod.fst <$> Meta.MetaM.toIO process { maxHeartbeats := 100000000, options := ⟨[(`pp.tagAppFns, true)]⟩ } { env := env} {} {}
 
 end DocGen4
