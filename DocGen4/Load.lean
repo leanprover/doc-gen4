@@ -16,7 +16,7 @@ def getLakePath : IO FilePath := do
   match (← IO.getEnv "LAKE") with
   | some path => pure $ System.FilePath.mk path
   | none =>
-    let lakePath := (←findSysroot?) / "bin" / "lake"
+    let lakePath := (←findSysroot) / "bin" / "lake"
     pure $ lakePath.withExtension System.FilePath.exeExtension
 
 -- Modified from the LSP Server
@@ -37,7 +37,7 @@ def lakeSetupSearchPath (lakePath : System.FilePath) (imports : List String) : I
     let stdout := stdout.split (· == '\n') |>.getLast!
     let Except.ok (paths : LeanPaths) ← pure (Json.parse stdout >>= fromJson?)
       | throw $ userError s!"invalid output from `{cmdStr}`:\n{stdout}\nstderr:\n{stderr}"
-    initSearchPath (← findSysroot?) paths.oleanPath
+    initSearchPath (← findSysroot) paths.oleanPath
     paths.oleanPath.mapM realPathNormalized
   | 2 => pure []  -- no lakefile.lean
   | _ => throw $ userError s!"`{cmdStr}` failed:\n{stdout}\nstderr:\n{stderr}"
