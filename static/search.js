@@ -4,7 +4,6 @@
 
 import { DeclarationDataCenter } from "./declaration-data.js";
 
-
 const SEARCH_FORM = document.querySelector("#search_form");
 const SEARCH_INPUT = SEARCH_FORM.querySelector("input[name=q]");
 
@@ -34,9 +33,7 @@ function handleSearchCursorUpDown(down) {
  * Perform search (when enter is pressed).
  */
 function handleSearchEnter() {
-  const sel =
-  sr.querySelector(`.selected`) ||
-    sr.firstChild;
+  const sel = sr.querySelector(`.selected`) || sr.firstChild;
   sel.click();
 }
 
@@ -72,9 +69,9 @@ function removeAllChildren(node) {
 }
 
 /**
- * Search autocompletion.
+ * Handle user input and perform search.
  */
-SEARCH_INPUT.addEventListener("input", async (ev) => {
+function handleSearch(dataCenter, err, ev) {
   const text = ev.target.value;
 
   // If no input clear all.
@@ -86,19 +83,36 @@ SEARCH_INPUT.addEventListener("input", async (ev) => {
 
   // searching
   sr.setAttribute("state", "loading");
-  const dataCenter = await DeclarationDataCenter.init();
-  const result = dataCenter.search(text, false);
 
-  // in case user has updated the input.
-  if (ev.target.value != text) return;
+  if (dataCenter) {
+    const result = dataCenter.search(text, false);
 
-  // update search results
-  removeAllChildren(sr);
-  for (const { name, docLink } of result) {
+    // in case user has updated the input.
+    if (ev.target.value != text) return;
+  
+    // update search results
+    removeAllChildren(sr);
+    for (const { name, docLink } of result) {
+      const d = sr.appendChild(document.createElement("a"));
+      d.innerText = name;
+      d.title = name;
+      d.href = docLink;
+    }
+  }
+  // handle error
+  else {
+    removeAllChildren(sr);
     const d = sr.appendChild(document.createElement("a"));
-    d.innerText = name;
-    d.title = name;
-    d.href = docLink;
+    d.innerText = `Cannot fetch data, please check your network connection.\n${err}`;
   }
   sr.setAttribute("state", "done");
-});
+}
+
+DeclarationDataCenter.init()
+  .then((dataCenter) => {
+    // Search autocompletion.
+    SEARCH_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev));
+  })
+  .catch(e => {
+    SEARCH_INPUT.addEventListener("input", ev => handleSearch(null, e, ev));
+  });
