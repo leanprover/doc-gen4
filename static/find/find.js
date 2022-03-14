@@ -53,23 +53,27 @@ async function findAndRedirect(pattern, strict, view) {
     window.location.replace(`${SITE_ROOT}404.html`);
   }
   // search for result
-  const dataCenter = await DeclarationDataCenter.init();
-  let result = (dataCenter.search(pattern, strict) ?? [])[0]; // in case return non array
-  // if no result found, redirect to the 404 page
-  if (!result) {
-    // TODO: better url semantic for 404, current implementation will lead to duplicate search for fuzzy match if not found.
-    window.location.replace(`${SITE_ROOT}404.html#${pattern ?? ""}`);
-  } else {
-    // success, redirect to doc or source page, or to the semantic rdf.
-    if (!view) {
-      window.location.replace(result.link);
-    } else if (view == "doc") {
-      window.location.replace(result.docLink);
-    } else if (view == "src") {
-      window.location.replace(result.sourceLink);
+  try {
+    const dataCenter = await DeclarationDataCenter.init();
+    let result = (dataCenter.search(pattern, strict) ?? [])[0]; // in case return non array
+    // if no result found, redirect to the 404 page
+    if (!result) {
+      // TODO: better url semantic for 404, current implementation will lead to duplicate search for fuzzy match if not found.
+      window.location.replace(`${SITE_ROOT}404.html#${pattern ?? ""}`);
     } else {
-      // fallback to doc page
-      window.location.replace(result.docLink);
+      // success, redirect to doc or source page, or to the semantic rdf.
+      if (!view) {
+        window.location.replace(result.link);
+      } else if (view == "doc") {
+        window.location.replace(result.docLink);
+      } else if (view == "src") {
+        window.location.replace(result.sourceLink);
+      } else {
+        // fallback to doc page
+        window.location.replace(result.docLink);
+      }
     }
+  } catch (e) {
+    document.write(`Cannot fetch data, please check your network connection.\n${e}`);
   }
 }

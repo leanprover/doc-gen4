@@ -56,7 +56,7 @@ export class DeclarationDataCenter {
       const timestamp = await timestampRes.text();
 
       // try to use cache first
-      const data = await fetchCachedDeclarationData(timestamp);
+      const data = await fetchCachedDeclarationData(timestamp).catch(_e => null);
       if (data) {
         // if data is defined, use the cached one.
         DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
