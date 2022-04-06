@@ -273,8 +273,13 @@ nav {
     margin-top: 1ex;
 }
 
-.nav details, .nav_link {
+.nav details > * {
     padding-left: 2ex;
+}
+
+.nav summary {
+    cursor: pointer;
+    padding-left: 0;
 }
 
 .nav summary::marker {
@@ -291,6 +296,10 @@ nav {
 
 /* People use way too long declaration names. */
 .internal_nav, .decl_name {
+    overflow-wrap: break-word;
+}
+
+.nav_link {
     overflow-wrap: break-word;
 }
 

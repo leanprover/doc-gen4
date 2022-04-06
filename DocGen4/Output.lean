@@ -4,12 +4,14 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
 import Lean
+import Lake
 import DocGen4.Process
 import DocGen4.Output.Base
 import DocGen4.Output.Index
 import DocGen4.Output.Module
 import DocGen4.Output.NotFound
 import DocGen4.Output.Find
+import DocGen4.Output.Semantic
 
 namespace DocGen4
 
@@ -24,12 +26,8 @@ Three link types from git supported:
 TODO: This function is quite brittle and very github specific, we can
 probably do better.
 -/
-def getGithubBaseUrl : IO String := do
-  let out ← IO.Process.output {cmd := "git", args := #["remote", "get-url", "origin"]}
-  if out.exitCode != 0 then
-    throw <| IO.userError <| "git exited with code " ++ toString out.exitCode
-  let mut url := out.stdout.trimRight
-
+def getGithubBaseUrl (gitUrl : String) : String := Id.run do
+  let mut url := gitUrl
   if url.startsWith "git@" then
     url := url.drop 15
     url := url.dropRight 4
@@ -39,57 +37,106 @@ def getGithubBaseUrl : IO String := do
   else
     pure url
 
-def getCommit : IO String := do
+def getProjectGithubUrl : IO String := do
+  let out ← IO.Process.output {cmd := "git", args := #["remote", "get-url", "origin"]}
+  if out.exitCode != 0 then
+    throw <| IO.userError <| "git exited with code " ++ toString out.exitCode
+  pure out.stdout.trimRight
+
+def getProjectCommit : IO String := do
   let out ← IO.Process.output {cmd := "git", args := #["rev-parse", "HEAD"]}
   if out.exitCode != 0 then
     throw <| IO.userError <| "git exited with code " ++ toString out.exitCode
   pure out.stdout.trimRight
 
-def sourceLinker : IO (Name → Option DeclarationRange → String) := do
-  let baseUrl ← getGithubBaseUrl
-  let commit ← getCommit
-  pure λ name range =>
-    let parts := name.components.map Name.toString
+def sourceLinker (ws : Lake.Workspace) (leanHash : String): IO (Name → Option DeclarationRange → String) := do
+  -- Compute a map from package names to source URL
+  let mut gitMap := Std.mkHashMap
+  let projectBaseUrl := getGithubBaseUrl (←getProjectGithubUrl)
+  let projectCommit ← getProjectCommit
+  gitMap := gitMap.insert ws.root.name (projectBaseUrl, projectCommit)
+  for pkg in ws.packageArray do
+    for dep in pkg.dependencies do
+      let value := match dep.src with
+        | Lake.Source.git url commit => (getGithubBaseUrl url, commit)
+        -- TODO: What do we do here if linking a source is not possible?
+        | _ => ("https://example.com", "master")
+      gitMap := gitMap.insert dep.name value
+
+  pure $ λ module range =>
+    let parts := module.components.map Name.toString
     let path := (parts.intersperse "/").foldl (· ++ ·) ""
-    let r := name.getRoot
-    let basic := if r == `Lean ∨ r == `Init ∨ r == `Std then
-      s!"https://github.com/leanprover/lean4/blob/{githash}/src/{path}.lean"
+    let root := module.getRoot
+    let basic := if root == `Lean ∨ root == `Init ∨ root == `Std then
+      s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/{path}.lean"
     else
-      s!"{baseUrl}/blob/{commit}/{path}.lean"
+      match ws.packageForModule? module with
+      | some pkg =>
+        let (baseUrl, commit) := gitMap.find! pkg.name
+        s!"{baseUrl}/blob/{commit}/{path}.lean"
+      | none => "https://example.com"
 
     match range with
     | some range => s!"{basic}#L{range.pos.line}-L{range.endPos.line}"
     | none => basic
 
-def htmlOutput (result : AnalyzerResult) : IO Unit := do
-  let basePath := FilePath.mk "./build/doc/"
-  let config := { depthToRoot := 0, result := result, currentName := none, sourceLinker := ←sourceLinker}
+def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) : IO Unit := do
+  let config : SiteContext := { depthToRoot := 0, result := result, currentName := none, sourceLinker := ←sourceLinker ws leanHash}
+  let basePath := FilePath.mk "." / "build" / "doc"
+  let indexHtml := ReaderT.run index config 
+  let findHtml := ReaderT.run find config
+  let notFoundHtml := ReaderT.run notFound config
   FS.createDirAll basePath
   FS.createDirAll (basePath / "find")
-  let indexHtml := ReaderT.run index config 
-  let notFoundHtml := ReaderT.run notFound config
+  FS.createDirAll (basePath / "semantic")
 
   let mut declList := #[]
   for (module, mod) in result.moduleInfo.toArray do
     for decl in filterMapDocInfo mod.members do
-      let findDir := basePath / "find" / decl.getName.toString
-      let findFile := (findDir / "index.html")
-      -- path: 'basePath/find/decl.getName.toString'
+-- <<<<<<< HEAD
+      let name := decl.getName.toString
+      -- let findDir := basePath / "find" / ma,e
+      -- let findFile := (findDir / "index.html")
       let config := { config with depthToRoot := 2 }
-      let findHtml := ReaderT.run (findRedirectHtml decl.getName) config
-      FS.createDirAll findDir
-      FS.writeFile findFile findHtml.toString
-      let obj := Json.mkObj [("name", decl.getName.toString), ("description", decl.getDocString.getD "")]
+      -- let findHtml := ReaderT.run (findRedirectHtml decl.getName) config
+      -- FS.createDirAll findDir
+      -- FS.writeFile findFile findHtml.toString
+      -- let obj := Json.mkObj [("name", decl.getName.toString), ("description", decl.getDocString.getD "")]
+-- =======
+      let doc := decl.getDocString.getD ""
+      -- let root := module.getRoot 
+      let root := Id.run <| ReaderT.run (getRoot) config
+      let link :=  root ++ s!"../semantic/{decl.getName.hash}.xml#"
+      let docLink := Id.run <| ReaderT.run (declNameToLink decl.getName) config
+      let sourceLink := Id.run <| ReaderT.run (getSourceUrl mod.name decl.getDeclarationRange) config
+      let obj := Json.mkObj [("name", name), ("doc", doc), ("link", link), ("docLink", docLink), ("sourceLink", sourceLink)]
+-- >>>>>>> upstream/main
       declList := declList.push obj
+      let xml := toString <| Id.run <| ReaderT.run (semanticXml decl) config 
+      FS.writeFile (basePath / "semantic" / s!"{decl.getName.hash}.xml") xml
   let json := Json.arr declList
 
-  FS.writeFile (basePath / "searchable_data.bmp") json.compress
+  FS.writeFile (basePath / "semantic" / "docgen4.xml") <| toString <| Id.run <| ReaderT.run schemaXml config 
+
   FS.writeFile (basePath / "index.html") indexHtml.toString
-  FS.writeFile (basePath / "style.css") styleCss
   FS.writeFile (basePath / "404.html") notFoundHtml.toString
+  FS.writeFile (basePath / "find" / "index.html") findHtml.toString
+
+  FS.writeFile (basePath / "style.css") styleCss
+
+  let declarationDataPath := basePath / "declaration-data.bmp"
+  FS.writeFile declarationDataPath json.compress
+  FS.writeFile (basePath / "declaration-data.timestamp") <| toString (←declarationDataPath.metadata).modified.sec
+
+  let root := Id.run <| ReaderT.run (getRoot) config
+  FS.writeFile (basePath / "site-root.js") (siteRootJs.replace "{siteRoot}" root) 
+  FS.writeFile (basePath / "declaration-data.js") declarationDataCenterJs
   FS.writeFile (basePath / "nav.js") navJs
+  FS.writeFile (basePath / "find" / "find.js") findJs
+  FS.writeFile (basePath / "how-about.js") howAboutJs
   FS.writeFile (basePath / "search.js") searchJs
   FS.writeFile (basePath / "mathjax-config.js") mathjaxConfigJs
+
   for (module, content) in result.moduleInfo.toArray do
     let fileDir := moduleNameToDirectory basePath module
     let filePath := moduleNameToFile basePath module
