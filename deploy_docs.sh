@@ -23,7 +23,7 @@ fi
 
 # generate the docs
 cd $1
-../$2/build/bin/doc-gen4 /mathlib4_docs/ Mathlib
+../$2/build/bin/doc-gen4 Mathlib
 
 if [ "$3" = "true" ]; then
   cd ..
