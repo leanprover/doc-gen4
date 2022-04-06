@@ -91,7 +91,7 @@ def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String
   FS.createDirAll (basePath / "semantic")
 
   let mut declList := #[]
-  for (module, mod) in result.moduleInfo.toArray do
+  for (_, mod) in result.moduleInfo.toArray do
     for decl in filterMapDocInfo mod.members do
       let name := decl.getName.toString
       let config := { config with depthToRoot := 2 }
