@@ -93,24 +93,14 @@ def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String
   let mut declList := #[]
   for (module, mod) in result.moduleInfo.toArray do
     for decl in filterMapDocInfo mod.members do
--- <<<<<<< HEAD
       let name := decl.getName.toString
-      -- let findDir := basePath / "find" / ma,e
-      -- let findFile := (findDir / "index.html")
       let config := { config with depthToRoot := 2 }
-      -- let findHtml := ReaderT.run (findRedirectHtml decl.getName) config
-      -- FS.createDirAll findDir
-      -- FS.writeFile findFile findHtml.toString
-      -- let obj := Json.mkObj [("name", decl.getName.toString), ("description", decl.getDocString.getD "")]
--- =======
       let doc := decl.getDocString.getD ""
-      -- let root := module.getRoot 
       let root := Id.run <| ReaderT.run (getRoot) config
       let link :=  root ++ s!"../semantic/{decl.getName.hash}.xml#"
       let docLink := Id.run <| ReaderT.run (declNameToLink decl.getName) config
       let sourceLink := Id.run <| ReaderT.run (getSourceUrl mod.name decl.getDeclarationRange) config
       let obj := Json.mkObj [("name", name), ("doc", doc), ("link", link), ("docLink", docLink), ("sourceLink", sourceLink)]
--- >>>>>>> upstream/main
       declList := declList.push obj
       let xml := toString <| Id.run <| ReaderT.run (semanticXml decl) config 
       FS.writeFile (basePath / "semantic" / s!"{decl.getName.hash}.xml") xml

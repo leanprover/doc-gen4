@@ -5,7 +5,6 @@ import Cli
 open DocGen4 Lean Cli
 
 def runDocGenCmd (p : Parsed) : IO UInt32 := do
-  -- let root := p.positionalArg! "root" |>.as! String
   let modules : List String := p.variableArgsAs! String |>.toList
   let res ← lakeSetup modules
   match res with
@@ -22,7 +21,6 @@ def docGenCmd : Cmd := `[Cli|
   "A documentation generator for Lean 4."
 
   ARGS:
-    -- root : String; "The root URL to generate the HTML for (will be relative in the future)"
     ...modules : String; "The modules to generate the HTML for"
 ]
 
