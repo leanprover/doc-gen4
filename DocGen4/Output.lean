@@ -118,8 +118,6 @@ def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String
   FS.writeFile declarationDataPath json.compress
   FS.writeFile (basePath / "declaration-data.timestamp") <| toString (←declarationDataPath.metadata).modified.sec
 
-  let root := Id.run <| ReaderT.run (getRoot) config
-  FS.writeFile (basePath / "site-root.js") (siteRootJs.replace "{siteRoot}" root) 
   FS.writeFile (basePath / "declaration-data.js") declarationDataCenterJs
   FS.writeFile (basePath / "nav.js") navJs
   FS.writeFile (basePath / "find" / "find.js") findJs

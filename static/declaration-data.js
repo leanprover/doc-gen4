@@ -4,8 +4,6 @@
  * Please see {@link DeclarationDataCenter} for more information.
  */
 
-import { SITE_ROOT } from "./site-root.js";
-
 const CACHE_DB_NAME = "declaration-data";
 const CACHE_DB_VERSION = 1;
 

@@ -15,7 +15,6 @@
  * fallback to the `#doc` view.
  */
 
-import { SITE_ROOT } from "../site-root.js";
 import { DeclarationDataCenter } from "../declaration-data.js";
 
 /**

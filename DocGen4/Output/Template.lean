@@ -17,7 +17,7 @@ def baseHtmlArray (title : String) (site : Array Html) : HtmlM Html := do
       <head>
 
         <title>{title}</title>
-        
+
         <meta charset="UTF-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
 
@@ -29,13 +29,14 @@ def baseHtmlArray (title : String) (site : Array Html) : HtmlM Html := do
         <script defer="true" src={s!"{←getRoot}mathjax-config.js"}></script>
         <script defer="true" src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
         <script defer="true" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-        
+
+        <script>{s!"const SITE_ROOT={String.quote (←getRoot)};"}</script>
         <script type="module" src={s!"{←getRoot}nav.js"}></script>
         <script type="module" src={s!"{←getRoot}search.js"}></script>
         <script type="module" src={s!"{←getRoot}how-about.js"}></script>
 
       </head>
-      
+
       <body>
 
         <input id="nav_toggle" type="checkbox"/>
@@ -52,7 +53,7 @@ def baseHtmlArray (title : String) (site : Array Html) : HtmlM Html := do
         </header>
 
         [site]
-        
+
         {←navbar}
 
       </body>
