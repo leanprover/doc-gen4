@@ -4,10 +4,10 @@ Document Generator for Lean 4
 ## Usage
 You can call `doc-gen4` from the top of a Lake project like this:
 ```sh
-$ /path/to/doc-gen4 / Module
+$ /path/to/doc-gen4 Module
 ```
-Where the `/` is the root URL the HTML will refer to and `Module` is one or
-more of the top level modules you want to document.
+
+where `Module` is one or more of the top level modules you want to document.
 The tool will then proceed to compile the project using lake (if that hasn't happened yet),
 analyze it and put the result in `./build/doc`.
 You could e.g. host the files locally with the built-in Python webserver:

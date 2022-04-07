@@ -80,8 +80,8 @@ def sourceLinker (ws : Lake.Workspace) (leanHash : String): IO (Name → Option 
     | some range => s!"{basic}#L{range.pos.line}-L{range.endPos.line}"
     | none => basic
 
-def htmlOutput (result : AnalyzerResult) (root : String) (ws : Lake.Workspace) (leanHash: String) : IO Unit := do
-  let config := { root := root, result := result, currentName := none, sourceLinker := ←sourceLinker ws leanHash}
+def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) : IO Unit := do
+  let config : SiteContext := { depthToRoot := 0, result := result, currentName := none, sourceLinker := ←sourceLinker ws leanHash}
   let basePath := FilePath.mk "." / "build" / "doc"
   let indexHtml := ReaderT.run index config 
   let findHtml := ReaderT.run find config
@@ -94,8 +94,10 @@ def htmlOutput (result : AnalyzerResult) (root : String) (ws : Lake.Workspace) (
   for (_, mod) in result.moduleInfo.toArray do
     for decl in filterMapDocInfo mod.members do
       let name := decl.getName.toString
+      let config := { config with depthToRoot := 2 }
       let doc := decl.getDocString.getD ""
-      let link := root ++ s!"semantic/{decl.getName.hash}.xml#"
+      let root := Id.run <| ReaderT.run (getRoot) config
+      let link :=  root ++ s!"../semantic/{decl.getName.hash}.xml#"
       let docLink := Id.run <| ReaderT.run (declNameToLink decl.getName) config
       let sourceLink := Id.run <| ReaderT.run (getSourceUrl mod.name decl.getDeclarationRange) config
       let obj := Json.mkObj [("name", name), ("doc", doc), ("link", link), ("docLink", docLink), ("sourceLink", sourceLink)]
@@ -116,7 +118,8 @@ def htmlOutput (result : AnalyzerResult) (root : String) (ws : Lake.Workspace) (
   FS.writeFile declarationDataPath json.compress
   FS.writeFile (basePath / "declaration-data.timestamp") <| toString (←declarationDataPath.metadata).modified.sec
 
-  FS.writeFile (basePath / "site-root.js") (siteRootJs.replace "{siteRoot}" config.root) 
+  let root := Id.run <| ReaderT.run (getRoot) config
+  FS.writeFile (basePath / "site-root.js") (siteRootJs.replace "{siteRoot}" root) 
   FS.writeFile (basePath / "declaration-data.js") declarationDataCenterJs
   FS.writeFile (basePath / "nav.js") navJs
   FS.writeFile (basePath / "find" / "find.js") findJs
@@ -125,10 +128,14 @@ def htmlOutput (result : AnalyzerResult) (root : String) (ws : Lake.Workspace) (
   FS.writeFile (basePath / "mathjax-config.js") mathjaxConfigJs
 
   for (module, content) in result.moduleInfo.toArray do
+    let fileDir := moduleNameToDirectory basePath module
+    let filePath := moduleNameToFile basePath module
+    -- path: 'basePath/module/components/till/last.html'
+    -- The last component is the file name, so we drop it from the depth to root.
+    let config := { config with depthToRoot := module.components.dropLast.length }
     let moduleHtml := ReaderT.run (moduleToHtml content) config
-    let path := moduleNameToFile basePath module
-    FS.createDirAll $ moduleNameToDirectory basePath module
-    FS.writeFile path moduleHtml.toString
+    FS.createDirAll $ fileDir
+    FS.writeFile filePath moduleHtml.toString
 
 end DocGen4
 
