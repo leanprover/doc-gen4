@@ -84,7 +84,7 @@ def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String
   let config : SiteContext := { depthToRoot := 0, result := result, currentName := none, sourceLinker := ←sourceLinker ws leanHash}
   let basePath := FilePath.mk "." / "build" / "doc"
   let indexHtml := ReaderT.run index config 
-  let findHtml := ReaderT.run find config
+  let findHtml := ReaderT.run find { config with depthToRoot := 1 }
   let notFoundHtml := ReaderT.run notFound config
   FS.createDirAll basePath
   FS.createDirAll (basePath / "find")

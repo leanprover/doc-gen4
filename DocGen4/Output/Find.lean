@@ -11,6 +11,7 @@ def find : HtmlM Html := do
     <html lang="en">
       <head>
         <link rel="preload" href={s!"{←getRoot}declaration-data.bmp"}/>
+        <script>{s!"const SITE_ROOT={String.quote (←getRoot)};"}</script>
         <script type="module" async="true" src={s!"./find.js"}></script>
       </head>
       <body></body>
