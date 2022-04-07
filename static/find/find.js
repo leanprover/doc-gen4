@@ -15,7 +15,6 @@
  * fallback to the `#doc` view.
  */
 
-import { SITE_ROOT } from "../site-root.js";
 import { DeclarationDataCenter } from "../declaration-data.js";
 
 /**
@@ -61,6 +60,7 @@ async function findAndRedirect(pattern, strict, view) {
       // TODO: better url semantic for 404, current implementation will lead to duplicate search for fuzzy match if not found.
       window.location.replace(`${SITE_ROOT}404.html#${pattern ?? ""}`);
     } else {
+      result.docLink = SITE_ROOT + result.docLink;
       // success, redirect to doc or source page, or to the semantic rdf.
       if (!view) {
         window.location.replace(result.link);

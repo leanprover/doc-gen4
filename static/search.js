@@ -96,7 +96,7 @@ function handleSearch(dataCenter, err, ev) {
       const d = sr.appendChild(document.createElement("a"));
       d.innerText = name;
       d.title = name;
-      d.href = docLink;
+      d.href = SITE_ROOT + docLink;
     }
   }
   // handle error
