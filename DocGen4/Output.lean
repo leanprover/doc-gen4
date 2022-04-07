@@ -94,7 +94,7 @@ def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String
   for (_, mod) in result.moduleInfo.toArray do
     for decl in filterMapDocInfo mod.members do
       let name := decl.getName.toString
-      let config := { config with depthToRoot := 2 }
+      let config := { config with depthToRoot := 0 }
       let doc := decl.getDocString.getD ""
       let root := Id.run <| ReaderT.run (getRoot) config
       let link :=  root ++ s!"../semantic/{decl.getName.hash}.xml#"
