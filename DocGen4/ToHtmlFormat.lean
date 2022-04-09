@@ -81,8 +81,8 @@ def jsxText : Parser :=
 @[combinatorFormatter DocGen4.Jsx.jsxText] def jsxText.formatter : Formatter := pure ()
 @[combinatorParenthesizer DocGen4.Jsx.jsxText] def jsxText.parenthesizer : Parenthesizer := pure ()
 
-syntax jsxAttrName := ident <|> strLit
-syntax jsxAttrVal := strLit <|> group("{" term "}")
+syntax jsxAttrName := ident <|> str
+syntax jsxAttrVal := str <|> group("{" term "}")
 syntax jsxSimpleAttr := jsxAttrName "=" jsxAttrVal
 syntax jsxAttrSpread := "[" term "]"
 syntax jsxAttr := jsxSimpleAttr <|> jsxAttrSpread
@@ -103,12 +103,12 @@ def translateAttrs (attrs : Array Syntax) : MacroM Syntax := do
     as ← match attr with
     | `(jsxAttr| $n:jsxAttrName=$v:jsxAttrVal) =>
       let n ← match n with
-        | `(jsxAttrName| $n:strLit) => pure n
+        | `(jsxAttrName| $n:str) => pure n
         | `(jsxAttrName| $n:ident) => pure $ quote (toString n.getId)
         | _ => Macro.throwUnsupported
       let v ← match v with
         | `(jsxAttrVal| {$v}) => pure v
-        | `(jsxAttrVal| $v:strLit) => pure v
+        | `(jsxAttrVal| $v:str) => pure v
         | _ => Macro.throwUnsupported
       `(($as).push ($n, ($v : String)))
     | `(jsxAttr| [$t]) => `($as ++ ($t : Array (String × String)))

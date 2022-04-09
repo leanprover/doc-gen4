@@ -19,7 +19,7 @@ package «doc-gen4» {
     },
     {
       name := `lake
-      src := Source.git "https://github.com/leanprover/lake" "9378575b5575f49a185d50130743a190a9be2f82"
+      src := Source.git "https://github.com/leanprover/lake" "d961d8cfaa1c354c10f3fed55b32de85c205f4ab"
     }
   ]
 }
