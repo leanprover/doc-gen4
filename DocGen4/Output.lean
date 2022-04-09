@@ -83,6 +83,7 @@ def sourceLinker (ws : Lake.Workspace) (leanHash : String): IO (Name → Option 
 def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) : IO Unit := do
   let config : SiteContext := { depthToRoot := 0, result := result, currentName := none, sourceLinker := ←sourceLinker ws leanHash}
   let basePath := FilePath.mk "." / "build" / "doc"
+  let sourcePath := basePath / "src"
   let indexHtml := ReaderT.run index config 
   let findHtml := ReaderT.run find { config with depthToRoot := 1 }
   let notFoundHtml := ReaderT.run notFound config
@@ -126,14 +127,25 @@ def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String
   FS.writeFile (basePath / "mathjax-config.js") mathjaxConfigJs
 
   for (module, content) in result.moduleInfo.toArray do
-    let fileDir := moduleNameToDirectory basePath module
-    let filePath := moduleNameToFile basePath module
+    -- Generate the documentation files
+    let docDir := moduleNameToDirectory basePath module
+    let docPath := moduleNameToFile basePath module
     -- path: 'basePath/module/components/till/last.html'
     -- The last component is the file name, so we drop it from the depth to root.
     let config := { config with depthToRoot := module.components.dropLast.length }
     let moduleHtml := ReaderT.run (moduleToHtml content) config
-    FS.createDirAll $ fileDir
-    FS.writeFile filePath moduleHtml.toString
+    FS.createDirAll $ docDir
+    FS.writeFile docPath moduleHtml.toString
+    -- Generate the leanink-processed source files
+    let srcDir := moduleNameToDirectory sourcePath module
+    let srcPath := moduleNameToFile sourcePath module
+    -- path: 'basePath/src/module/components/till/last.html'
+    -- so there is an extra layer from "src"
+    let config := { config with depthToRoot := module.components.dropLast.length + 1 }
+    -- TODO: use HTML of source
+    let moduleHtml := ReaderT.run (moduleToHtml content) config
+    FS.createDirAll $ srcDir
+    FS.writeFile srcPath moduleHtml.toString
 
 end DocGen4
 
