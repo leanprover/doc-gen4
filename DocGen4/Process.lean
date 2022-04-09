@@ -19,6 +19,7 @@ open Lean Meta PrettyPrinter Std Widget
 structure NameInfo where
   name  : Name
   type : CodeWithInfos
+  doc : Option String
   deriving Inhabited
 
 structure Arg where
@@ -28,7 +29,6 @@ structure Arg where
 
 structure Info extends NameInfo where
   args : Array Arg
-  doc : Option String
   declarationRange : DeclarationRange
   attrs : Array String
   deriving Inhabited
@@ -146,15 +146,19 @@ def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
   }
   pure $ tagExprInfos ctx infos tt
 
+def NameInfo.ofTypedName (n : Name) (t : Expr) : MetaM NameInfo := do
+  let env ← getEnv
+  pure { name := n, type := ←prettyPrintTerm t, doc := ←findDocString? env n}
+
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let env ← getEnv
   let (args, type) := typeToArgsType v.type
-  let type ← prettyPrintTerm type
   let args ← args.mapM (λ (n, e, b) => do pure $ Arg.mk n (←prettyPrintTerm e) b)
   let doc ← findDocString? env v.name
+  let nameInfo ← NameInfo.ofTypedName v.name type
   match ←findDeclarationRanges? v.name with
   -- TODO: Maybe selection range is more relevant? Figure this out in the future
-  | some range => pure $ Info.mk ⟨v.name, type⟩ args doc range.range (←getAllAttributes v.name)
+  | some range => pure $ Info.mk nameInfo args range.range (←getAllAttributes v.name)
   | none => panic! s!"{v.name} is a declaration without position"
 
 def AxiomInfo.ofAxiomVal (v : AxiomVal) : MetaM AxiomInfo := do
@@ -228,16 +232,16 @@ def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
   else
     pure info
 
-def getConstructorType (ctor : Name) : MetaM CodeWithInfos := do
+def getConstructorType (ctor : Name) : MetaM Expr := do
   let env ← getEnv
   match env.find? ctor with
-  | some (ConstantInfo.ctorInfo i) => prettyPrintTerm i.type
+  | some (ConstantInfo.ctorInfo i) => pure i.type
   | _ => panic! s!"Constructor {ctor} was requested but does not exist"
 
 def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let env ← getEnv
-  let ctors ← v.ctors.mapM (λ name => do pure $ NameInfo.mk name (←getConstructorType name))
+  let ctors ← v.ctors.mapM (λ name => do NameInfo.ofTypedName name (←getConstructorType name))
   pure $ InductiveInfo.mk info ctors v.isUnsafe
 
 def dropArgs (type : Expr) (n : Nat) : (Expr × List (Name × Expr)) :=
@@ -251,25 +255,24 @@ def dropArgs (type : Expr) (n : Nat) : (Expr × List (Name × Expr)) :=
 
 def getFieldTypes (struct : Name) (ctor : ConstructorVal) (parents : Nat) : MetaM (Array NameInfo) := do
   let type := ctor.type
-  let (field_function, params) := dropArgs type (ctor.numParams + parents)
-  let (_, fields) := dropArgs field_function (ctor.numFields - parents)
-  let mut field_infos := #[]
+  let (fieldFunction, params) := dropArgs type (ctor.numParams + parents)
+  let (_, fields) := dropArgs fieldFunction (ctor.numFields - parents)
+  let mut fieldInfos := #[]
   for (name, type) in fields do
-    field_infos := field_infos.push { name := struct.append name, type := ←prettyPrintTerm type}
-  pure $ field_infos
+    fieldInfos := fieldInfos.push $ ←NameInfo.ofTypedName (struct.append name) type
+  pure $ fieldInfos
 
 def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let env ← getEnv
   let parents := getParentStructures env v.name
   let ctor := getStructureCtor env v.name
-  let ctorType ← prettyPrintTerm ctor.type
   match getStructureInfo? env v.name with
   | some i =>
     if i.fieldNames.size - parents.size > 0 then
-      pure $ StructureInfo.mk info (←getFieldTypes v.name ctor parents.size) parents ⟨ctor.name, ctorType⟩
+      pure $ StructureInfo.mk info (←getFieldTypes v.name ctor parents.size) parents (←NameInfo.ofTypedName ctor.name ctor.type)
     else
-      pure $ StructureInfo.mk info #[] parents ⟨ctor.name, ctorType⟩
+      pure $ StructureInfo.mk info #[] parents (←NameInfo.ofTypedName ctor.name ctor.type)
   | none => panic! s!"{v.name} is not a structure"
 
 def getInstances (className : Name) : MetaM (Array Name) := do
