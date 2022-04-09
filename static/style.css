@@ -460,7 +460,7 @@ main h2, main h3, main h4, main h5, main h6 {
     margin-left: 4ex; /* extra indentation */
 }
 
-.imports li, code, .decl_header, .attributes, .structure_field,
+.imports li, code, .decl_header, .attributes, .structure_field_info,
         .constructor, .instances li, .equation, #search_results div,
         .structure_ext_ctor {
     font-family: 'Source Code Pro', monospace;
@@ -489,6 +489,11 @@ pre code { padding: 0 0; }
 .structure_field {
     display: block;
     margin-left: 2ex;
+}
+
+.structure_field_doc {
+    text-indent: 0;
+    padding-top: 1ex;
 }
 
 .structure_ext_fields {

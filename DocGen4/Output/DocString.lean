@@ -17,7 +17,7 @@ namespace Output
     let c := s.get i
     if p c then
       let i := s.next i
-      splitAroundAux s p i i (c.toString::s.extract b (i-1)::r)
+      splitAroundAux s p i i (c.toString::s.extract b (i-⟨1⟩)::r)
     else
       splitAroundAux s p b (s.next i) r
 

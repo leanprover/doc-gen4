@@ -10,7 +10,18 @@ open Lean
 def fieldToHtml (f : NameInfo) : HtmlM Html := do
   let shortName := f.name.components'.head!.toString
   let name := f.name.toString
-  pure <li «class»="structure_field" id={name}>{s!"{shortName} "} : [←infoFormatToHtml f.type]</li>
+  if let some doc := f.doc then
+    let renderedDoc ← docStringToHtml doc
+    pure
+      <li id={name} «class»="structure_field">
+        <div «class»="structure_field_doc">[renderedDoc]</div>
+        <div «class»="structure_field_info">{s!"{shortName} "} : [←infoFormatToHtml f.type]</div>
+      </li>
+  else
+    pure
+      <li id={name} «class»="structure_field">
+        <div «class»="structure_field_info">{s!"{shortName} "} : [←infoFormatToHtml f.type]</div>
+      </li>
 
 def structureToHtml (i : StructureInfo) : HtmlM (Array Html) := do
   let structureHtml :=
