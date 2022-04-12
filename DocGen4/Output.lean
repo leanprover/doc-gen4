@@ -82,6 +82,7 @@ def sourceLinker (ws : Lake.Workspace) (leanHash : String): IO (Name → Option 
 
 def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) : IO Unit := do
   let config : SiteContext := { depthToRoot := 0, result := result, currentName := none, sourceLinker := ←sourceLinker ws leanHash}
+  let sourceSearchPath := ((←Lean.findSysroot) / "src" / "lean")::ws.root.srcDir::ws.leanSrcPath
   let basePath := FilePath.mk "." / "build" / "doc"
   let sourcePath := basePath / "src"
   let indexHtml := ReaderT.run index config 
@@ -143,9 +144,10 @@ def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String
     -- so there is an extra layer from "src"
     let config := { config with depthToRoot := module.components.dropLast.length + 1 }
     -- TODO: use HTML of source
-    let moduleHtml := ReaderT.run (moduleToHtml content) config
+    let moduleHtml := match ← Lean.SearchPath.findModuleWithExt sourceSearchPath "lean" module with
+    | some p => p.toString
+    | none => "none"
     FS.createDirAll $ srcDir
-    FS.writeFile srcPath moduleHtml.toString
+    FS.writeFile srcPath moduleHtml
 
 end DocGen4
-
