@@ -68,7 +68,7 @@ instance : ToString ExternEntry where
 instance : ToString ExternAttrData where
   toString data := (data.arity?.map toString |>.getD "") ++ " " ++ String.intercalate " " (data.entries.map toString)
 
-def parametricAttributes : Array ParametricAttrWrapper := #[⟨externAttr⟩, ⟨Compiler.implementedByAttr⟩]
+def parametricAttributes : Array ParametricAttrWrapper := #[⟨externAttr⟩, ⟨Compiler.implementedByAttr⟩, ⟨exportAttr⟩]
 
 def getTags (decl : Name) : MetaM (Array String) := do
   let env ← getEnv
