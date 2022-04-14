@@ -19,11 +19,11 @@ package «doc-gen4» {
     },
     {
       name := `lake
-      src := Source.git "https://github.com/leanprover/lake" "9378575b5575f49a185d50130743a190a9be2f82"
+      src := Source.git "https://github.com/leanprover/lake" "d961d8cfaa1c354c10f3fed55b32de85c205f4ab"
     },
     {
       name := `leanInk
-      src := Source.git "https://github.com/leanprover/LeanInk.git" "31b9bce0d08e282d777a6c88f653d41a18c5b894"
+      src := Source.git "https://github.com/leanprover/LeanInk.git" "6d83daa78c9b753a89a562961c899a660bde6451"
     }
     
   ]

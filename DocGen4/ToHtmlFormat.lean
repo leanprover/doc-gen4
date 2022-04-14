@@ -103,12 +103,12 @@ def translateAttrs (attrs : Array Syntax) : MacroM Syntax := do
     as ← match attr with
     | `(jsxAttr| $n:jsxAttrName=$v:jsxAttrVal) =>
       let n ← match n with
-        | `(jsxAttrName| $n:strLit) => pure n
+        | `(jsxAttrName| $n:str) => pure n
         | `(jsxAttrName| $n:ident) => pure $ quote (toString n.getId)
         | _ => Macro.throwUnsupported
       let v ← match v with
         | `(jsxAttrVal| {$v}) => pure v
-        | `(jsxAttrVal| $v:strLit) => pure v
+        | `(jsxAttrVal| $v:str) => pure v
         | _ => Macro.throwUnsupported
       `(($as).push ($n, ($v : String)))
     | `(jsxAttr| [$t]) => `($as ++ ($t : Array (String × String)))

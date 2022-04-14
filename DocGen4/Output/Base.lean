@@ -66,7 +66,7 @@ def declNameToLink (name : Name) : HtmlM String := do
   pure $ (←moduleNameToLink module) ++ "#" ++ name.toString
 
 def splitWhitespaces (s : String) : (String × String × String) := Id.run do
-  let front := "".pushn ' ' (s.find (!Char.isWhitespace ·))
+  let front := "".pushn ' ' (s.find (!Char.isWhitespace ·)).byteIdx
   let mut s := s.trimLeft
   let back := "".pushn ' ' (s.length - s.offsetOfPos (s.find Char.isWhitespace))
   s:= s.trimRight
