@@ -10,9 +10,9 @@ def runDocGenCmd (p : Parsed) : IO UInt32 := do
   match res with
   | Except.ok (ws, leanHash) =>
     IO.println s!"Loading modules from: {←searchPathRef.get}"
-    let doc ← load $ modules.map Name.mkSimple
-    IO.println "Outputting HTML"
-    htmlOutput doc ws leanHash
+    let analysis ← load $ modules.map Name.mkSimple
+    IO.println "Outputting Documentation"
+    output analysis ws leanHash
     pure 0
   | Except.error rc => pure rc
 
@@ -21,7 +21,7 @@ def docGenCmd : Cmd := `[Cli|
   "A documentation generator for Lean 4."
 
   ARGS:
-    ...modules : String; "The modules to generate the HTML for"
+    ...modules : String; "The modules to generate documentation for"
 ]
 
 def main (args : List String) : IO UInt32 :=

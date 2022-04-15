@@ -185,7 +185,7 @@ def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
       [members.map declarationToNavLink]
     </nav>
 
-def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
+def moduleToDocHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
   let memberDocs ← module.members.mapM (λ i => moduleMemberToHtml module.name i)
   let memberNames := filterMapDocInfo module.members |>.map DocInfo.getName
   templateExtends (baseHtmlArray module.name.toString) $ pure #[

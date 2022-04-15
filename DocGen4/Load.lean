@@ -13,6 +13,9 @@ namespace DocGen4
 
 open Lean System Std IO
 
+/--
+Set up the lake environment, especially the search path and package information.
+-/
 def lakeSetup (imports : List String) : IO (Except UInt32 (Lake.Workspace × String)) := do
   let (leanInstall?, lakeInstall?) ← Lake.findInstall?
   let res ← StateT.run Lake.Cli.loadWorkspace {leanInstall?, lakeInstall?} |>.toIO'
@@ -28,8 +31,11 @@ def lakeSetup (imports : List String) : IO (Except UInt32 (Lake.Workspace × Str
     pure $ Except.ok (ws, lean.githash)
   | Except.error rc => pure $ Except.error rc
 
-def load (imports : List Name) : IO AnalyzerResult := do
-  let env ← importModules (List.map (Import.mk · false) imports) Options.empty
+/--
+A convenience wrapper that loads and processes the specified modules.
+-/
+def load (modules : List Name) : IO AnalyzerResult := do
+  let env ← importModules (List.map (Import.mk · false) modules) Options.empty
   -- TODO parameterize maxHeartbeats
   IO.println "Processing modules"
   Prod.fst <$> Meta.MetaM.toIO process { maxHeartbeats := 100000000, options := ⟨[(`pp.tagAppFns, true)]⟩ } { env := env} {} {}
