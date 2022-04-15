@@ -86,7 +86,6 @@ def output (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) : 
   -- Configurations
   let config : SiteContext := { depthToRoot := 0, result := result, currentName := none, sourceLinker := ←sourceLinker ws leanHash}
   let sourceSearchPath := ((←Lean.findSysroot) / "src" / "lean")::ws.root.srcDir::ws.leanSrcPath
-  let lakefilePath := ws.root.dir / "lakefile.lean"
 
   -- Create common pathes
   let basePath := FilePath.mk "." / "build" / "doc"
@@ -149,7 +148,7 @@ def output (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) : 
     -- so there is an extra layer from "src"
     let config := { config with depthToRoot := name.components.dropLast.length + 1 }
     if let some inputPath ← Lean.SearchPath.findModuleWithExt sourceSearchPath "lean" name then
-      let srcHtml ← ReaderT.run (moduleToSrcHtml module inputPath lakefilePath) config
+      let srcHtml ← ReaderT.run (moduleToSrcHtml module inputPath) config
       FS.createDirAll $ srcDir
       FS.writeFile srcPath srcHtml.toString
     IO.println name
