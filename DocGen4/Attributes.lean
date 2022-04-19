@@ -31,7 +31,9 @@ instance : ValueAttr ParametricAttribute where
 abbrev EnumAttrWrapper := ValueAttrWrapper EnumAttributes
 abbrev ParametricAttrWrapper := ValueAttrWrapper ParametricAttribute
 
-def tagAttributes : Array TagAttribute := #[IR.UnboxResult.unboxAttr, neverExtractAttr, Elab.Term.elabWithoutExpectedTypeAttr, SynthInstance.inferTCGoalsRLAttr, matchPatternAttr]
+def tagAttributes : Array TagAttribute :=
+  #[IR.UnboxResult.unboxAttr, neverExtractAttr, Elab.Term.elabWithoutExpectedTypeAttr,
+    SynthInstance.inferTCGoalsRLAttr, matchPatternAttr]
 
 deriving instance Repr for Compiler.InlineAttributeKind
 deriving instance Repr for Compiler.SpecializeAttributeKind
@@ -68,7 +70,7 @@ instance : ToString ExternEntry where
 instance : ToString ExternAttrData where
   toString data := (data.arity?.map toString |>.getD "") ++ " " ++ String.intercalate " " (data.entries.map toString)
 
-def parametricAttributes : Array ParametricAttrWrapper := #[⟨externAttr⟩, ⟨Compiler.implementedByAttr⟩]
+def parametricAttributes : Array ParametricAttrWrapper := #[⟨externAttr⟩, ⟨Compiler.implementedByAttr⟩, ⟨exportAttr⟩]
 
 def getTags (decl : Name) : MetaM (Array String) := do
   let env ← getEnv
@@ -96,15 +98,36 @@ def getDefaultInstance (decl : Name) (className : Name) : MetaM (Option String) 
       return some $ s!"defaultInstance {prio}"
   pure none
 
-def hasSimp (decl : Name) : MetaM (Bool) := do
+def hasSimp (decl : Name) : MetaM (Option String) := do
   let thms ← simpExtension.getTheorems
-  pure $ thms.isLemma decl
+  pure $
+    if thms.isLemma decl then
+      some "simp"
+    else
+      none
+
+def hasCsimp (decl : Name) : MetaM (Option String) := do
+  let env ← getEnv
+  pure $
+    if Compiler.hasCSimpAttribute env decl then
+      some "csimp"
+    else
+      none
+
+def customAttrs := #[hasSimp, hasCsimp]
+
+def getCustomAttrs (decl : Name) : MetaM (Array String) := do
+  let mut values := #[]
+  for attr in customAttrs do
+    if let some value ← attr decl then
+      values := values.push value
+  pure values
 
 def getAllAttributes (decl : Name) : MetaM (Array String) := do
   let tags ← getTags decl
   let enums ← getEnumValues decl
   let parametric ← getParametricValues decl
-  let simp := if ←hasSimp decl then #["simp"] else #[]
-  pure $ simp ++ tags ++ enums ++ parametric
+  let customs ← getCustomAttrs decl
+  pure $ customs ++ tags ++ enums ++ parametric
 
 end DocGen4
