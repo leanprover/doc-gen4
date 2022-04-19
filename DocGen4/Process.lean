@@ -142,7 +142,8 @@ def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
     options := ← getOptions
     currNamespace := ← getCurrNamespace
     openDecls := ← getOpenDecls
-    fileMap := default
+    fileMap := default,
+    ngen := ← getNGen
   }
   pure $ tagExprInfos ctx infos tt
 
