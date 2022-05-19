@@ -1,5 +1,6 @@
 import DocGen4.Output.Template
 import DocGen4.Output.DocString
+import DocGen4.Process
 
 namespace DocGen4
 namespace Output
@@ -19,7 +20,7 @@ defined in `equationLimit` we stop trying since they:
 - are too ugly to read most of the time
 - take too long
 -/
-def equationsToHtml (i : DefinitionInfo) : HtmlM (Array Html) := do
+def equationsToHtml (i : Process.DefinitionInfo) : HtmlM (Array Html) := do
   if let some eqs := i.equations then
     let equationsHtml ← eqs.mapM equationToHtml
     let filteredEquationsHtml := equationsHtml.filter (λ eq => eq.textLength < equationLimit)

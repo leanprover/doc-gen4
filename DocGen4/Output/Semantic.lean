@@ -1,8 +1,9 @@
 import DocGen4.Output.Template
 import DocGen4.Output.DocString
+import DocGen4.Process
 import Lean.Data.Xml
 
-open Lean Xml
+open Lean Xml DocGen4.Process
 
 namespace DocGen4
 namespace Output

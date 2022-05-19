@@ -37,10 +37,10 @@ def lakeSetup (imports : List String) : IO (Except UInt32 (Lake.Workspace × Str
 Load a list of modules from the current Lean search path into an `Environment`
 to process for documentation.
 -/
-def load (imports : List Name) : IO AnalyzerResult := do
+def load (imports : List Name) : IO Process.AnalyzerResult := do
   let env ← importModules (List.map (Import.mk · false) imports) Options.empty
   -- TODO parameterize maxHeartbeats
   IO.println "Processing modules"
-  Prod.fst <$> Meta.MetaM.toIO process { maxHeartbeats := 100000000, options := ⟨[(`pp.tagAppFns, true)]⟩ } { env := env} {} {}
+  Prod.fst <$> Meta.MetaM.toIO Process.process { maxHeartbeats := 100000000, options := ⟨[(`pp.tagAppFns, true)]⟩ } { env := env} {} {}
 
 end DocGen4

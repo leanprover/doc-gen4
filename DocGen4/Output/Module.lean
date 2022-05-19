@@ -11,13 +11,14 @@ import DocGen4.Output.Definition
 import DocGen4.Output.Instance
 import DocGen4.Output.ClassInductive
 import DocGen4.Output.DocString
+import DocGen4.Process
 import Lean.Data.Xml.Parser
 
 namespace DocGen4
 namespace Output
 
 open scoped DocGen4.Jsx
-open Lean
+open Lean Process
 
 /--
 Render an `Arg` as HTML, adding opacity effects etc. depending on what
@@ -45,7 +46,7 @@ def argToHtml (arg : Arg) : HtmlM Html := do
 Render the structures this structure extends from as HTML so it can be
 added to the top level.
 -/
-def structureInfoHeader (s : StructureInfo) : HtmlM (Array Html) := do
+def structureInfoHeader (s : Process.StructureInfo) : HtmlM (Array Html) := do
   let mut nodes := #[]
   if s.parents.size > 0 then
     nodes := nodes.push <span class="decl_extends">extends</span>
@@ -222,10 +223,10 @@ def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
 /--
 The main entry point to rendering the HTML for an entire module.
 -/
-def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
+def moduleToHtml (module : Process.Module) : HtmlM Html := withReader (setCurrentName module.name) do
   let memberDocs ← module.members.mapM (λ i => moduleMemberToHtml module.name i)
   let memberNames := filterMapDocInfo module.members |>.map DocInfo.getName
-  templateExtends (baseHtmlArray module.name.toString) $ pure #[
+  templateExtends (baseHtmlGenerator module.name.toString) $ pure #[
     ←internalNav memberNames module.name,
     Html.element "main" false #[] memberDocs
   ]

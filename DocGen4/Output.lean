@@ -16,7 +16,7 @@ import DocGen4.Output.SourceLinker
 
 namespace DocGen4
 
-open Lean IO System Output
+open Lean IO System Output Process
 
 /--
 The main entrypoint for outputting the documentation HTML based on an

@@ -10,7 +10,7 @@ import DocGen4.Output.ToHtmlFormat
 namespace DocGen4.Output
 
 open scoped DocGen4.Jsx
-open Lean System Widget Elab
+open Lean System Widget Elab Process
 
 /--
 The context used in the `HtmlM` monad for HTML templating.

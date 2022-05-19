@@ -1,5 +1,6 @@
 import DocGen4.Output.Template
 import DocGen4.Output.Structure
+import DocGen4.Process
 
 namespace DocGen4
 namespace Output
@@ -20,7 +21,7 @@ def classInstancesToHtml (instances : Array Name) : HtmlM Html := do
         </ul>
     </details>
 
-def classToHtml (i : ClassInfo) : HtmlM (Array Html) := do
+def classToHtml (i : Process.ClassInfo) : HtmlM (Array Html) := do
   pure $ (←structureToHtml i.toStructureInfo)
 
 end Output
