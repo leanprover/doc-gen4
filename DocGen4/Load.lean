@@ -13,6 +13,11 @@ namespace DocGen4
 
 open Lean System Std IO
 
+/--
+Sets up a lake workspace for the current project. Furthermore initialize
+the Lean search path with the path to the proper compiler from lean-toolchain
+as well as all the dependencies.
+-/
 def lakeSetup (imports : List String) : IO (Except UInt32 (Lake.Workspace × String)) := do
   let (leanInstall?, lakeInstall?) ← Lake.findInstall?
   let res ← StateT.run Lake.Cli.loadWorkspace {leanInstall?, lakeInstall?} |>.toIO'
@@ -28,6 +33,10 @@ def lakeSetup (imports : List String) : IO (Except UInt32 (Lake.Workspace × Str
     pure $ Except.ok (ws, lean.githash)
   | Except.error rc => pure $ Except.error rc
 
+/--
+Load a list of modules from the current Lean search path into an `Environment`
+to process for documentation.
+-/
 def load (imports : List Name) : IO AnalyzerResult := do
   let env ← importModules (List.map (Import.mk · false) imports) Options.empty
   -- TODO parameterize maxHeartbeats
