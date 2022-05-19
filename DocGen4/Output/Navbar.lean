@@ -18,6 +18,9 @@ def moduleListFile (file : Name) : HtmlM Html := do
     {←moduleToHtmlLink file}
   </div>
 
+/--
+Build the HTML tree representing the module hierarchy.
+-/
 partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
   let children := Array.mk (h.getChildren.toList.map Prod.snd)
   let dirs := children.filter (λ c => c.getChildren.toList.length != 0)
@@ -39,6 +42,9 @@ partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
       [fileNodes]
     </details>
 
+/--
+Return a list of top level modules, linkified and rendered as HTML
+-/
 def moduleList : HtmlM Html := do
   let hierarchy := (←getResult).hierarchy
   let mut list := Array.empty
@@ -46,6 +52,9 @@ def moduleList : HtmlM Html := do
     list := list.push $ ←moduleListDir cs
   pure <div class="module_list">[list]</div>
 
+/--
+The main entry point to rendering the navbar on the left hand side.
+-/
 def navbar : HtmlM Html := do
   pure
     <nav class="nav">
