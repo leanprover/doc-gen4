@@ -11,6 +11,9 @@ namespace Output
 
 open scoped DocGen4.Jsx
 
+/--
+Render the 404 page.
+-/
 def notFound : HtmlM Html := do templateExtends (baseHtml "404") $ pure $
   <main>
     <h1>404 Not Found</h1>
