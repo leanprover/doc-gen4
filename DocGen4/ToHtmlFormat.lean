@@ -81,14 +81,14 @@ def jsxText : Parser :=
 @[combinatorFormatter DocGen4.Jsx.jsxText] def jsxText.formatter : Formatter := pure ()
 @[combinatorParenthesizer DocGen4.Jsx.jsxText] def jsxText.parenthesizer : Parenthesizer := pure ()
 
-syntax jsxAttrName := ident <|> str
+syntax jsxAttrName := rawIdent <|> str
 syntax jsxAttrVal := str <|> group("{" term "}")
 syntax jsxSimpleAttr := jsxAttrName "=" jsxAttrVal
 syntax jsxAttrSpread := "[" term "]"
 syntax jsxAttr := jsxSimpleAttr <|> jsxAttrSpread
 
-syntax "<" ident jsxAttr* "/>" : jsxElement
-syntax "<" ident jsxAttr* ">" jsxChild* "</" ident ">" : jsxElement
+syntax "<" rawIdent jsxAttr* "/>" : jsxElement
+syntax "<" rawIdent jsxAttr* ">" jsxChild* "</" rawIdent ">" : jsxElement
 
 syntax jsxText      : jsxChild
 syntax "{" term "}" : jsxChild

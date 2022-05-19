@@ -33,17 +33,17 @@ def argToHtml (arg : Arg) : HtmlM Html := do
   let inner := Html.element "span" true #[("class", "fn")] nodes
   let html := Html.element "span" false #[("class", "decl_args")] #[inner]
   if implicit then
-    pure <span «class»="impl_arg">{html}</span>
+    pure <span class="impl_arg">{html}</span>
   else
     pure html
 
 def structureInfoHeader (s : StructureInfo) : HtmlM (Array Html) := do
   let mut nodes := #[]
   if s.parents.size > 0 then
-    nodes := nodes.push <span «class»="decl_extends">extends</span>
+    nodes := nodes.push <span class="decl_extends">extends</span>
     let mut parents := #[]
     for parent in s.parents do
-      let link := <a «class»="break_within" href={←declNameToLink parent}>{parent.toString}</a>
+      let link := <a class="break_within" href={←declNameToLink parent}>{parent.toString}</a>
       let inner := Html.element "span" true #[("class", "fn")] #[link]
       let html:= Html.element "span" false #[("class", "decl_parent")] #[inner]
       parents := parents.push html
@@ -52,10 +52,10 @@ def structureInfoHeader (s : StructureInfo) : HtmlM (Array Html) := do
 
 def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
-  nodes := nodes.push <span «class»="decl_kind">{doc.getKindDescription}</span>
+  nodes := nodes.push <span class="decl_kind">{doc.getKindDescription}</span>
   nodes := nodes.push
-    <span «class»="decl_name">
-      <a «class»="break_within" href={←declNameToLink doc.getName}>
+    <span class="decl_name">
+      <a class="break_within" href={←declNameToLink doc.getName}>
         -- TODO: HTMLify the name
         {doc.getName.toString}
       </a>
@@ -69,9 +69,9 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   | DocInfo.classInfo i => nodes := nodes.append (←structureInfoHeader i.toStructureInfo)
   | _ => nodes := nodes
 
-  nodes := nodes.push <span «class»="decl_args">:</span>
+  nodes := nodes.push <span class="decl_args">:</span>
   nodes := nodes.push $ Html.element "div" true #[("class", "decl_type")] (←infoFormatToHtml doc.getType)
-  pure <div «class»="decl_header"> [nodes] </div>
+  pure <div class="decl_header"> [nodes] </div>
 
 def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   -- basic info like headers, types, structure fields, etc.
@@ -101,9 +101,9 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
       #[]
 
   pure
-    <div «class»="decl" id={doc.getName.toString}>
-      <div «class»={doc.getKind}>
-        <div «class»="gh_link">
+    <div class="decl" id={doc.getName.toString}>
+      <div class={doc.getKind}>
+        <div class="gh_link">
           <a href={←getSourceUrl module doc.getDeclarationRange}>source</a>
         </div>
         [attrsHtml]
@@ -116,7 +116,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
 
 def modDocToHtml (module : Name) (mdoc : ModuleDoc) : HtmlM Html := do
   pure 
-    <div «class»="mod_doc">
+    <div class="mod_doc">
       [←docStringToHtml mdoc.doc]
     </div>
 
@@ -126,8 +126,8 @@ def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := d
   | ModuleMember.modDoc d => modDocToHtml module d
 
 def declarationToNavLink (module : Name) : Html :=
-  <div «class»="nav_link">
-    <a «class»="break_within" href={s!"#{module.toString}"}>{module.toString}</a>
+  <div class="nav_link">
+    <a class="break_within" href={s!"#{module.toString}"}>{module.toString}</a>
   </div>
 
 -- TODO: Similar functions are used all over the place, we should dedup them
@@ -165,10 +165,10 @@ def importsHtml (moduleName : Name) : HtmlM (Array Html) := do
 
 def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
   pure
-    <nav «class»="internal_nav">
-      <h3><a «class»="break_within" href="#top">{moduleName.toString}</a></h3>
-      <p «class»="gh_nav_link"><a href={←getSourceUrl moduleName none}>source</a></p>
-      <div «class»="imports">
+    <nav class="internal_nav">
+      <h3><a class="break_within" href="#top">{moduleName.toString}</a></h3>
+      <p class="gh_nav_link"><a href={←getSourceUrl moduleName none}>source</a></p>
+      <div class="imports">
         <details>
           <summary>Imports</summary>
           <ul>
