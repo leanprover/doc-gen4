@@ -19,6 +19,10 @@ namespace Output
 open scoped DocGen4.Jsx
 open Lean
 
+/--
+Render an `Arg` as HTML, adding opacity effects etc. depending on what
+type of binder it has.
+-/
 def argToHtml (arg : Arg) : HtmlM Html := do
   let (l, r, implicit) := match arg.binderInfo with
   | BinderInfo.default => ("(", ")", false)
@@ -37,19 +41,27 @@ def argToHtml (arg : Arg) : HtmlM Html := do
   else
     pure html
 
+/--
+Render the structures this structure extends from as HTML so it can be
+added to the top level.
+-/
 def structureInfoHeader (s : StructureInfo) : HtmlM (Array Html) := do
   let mut nodes := #[]
   if s.parents.size > 0 then
     nodes := nodes.push <span class="decl_extends">extends</span>
     let mut parents := #[]
     for parent in s.parents do
-      let link := <a class="break_within" href={←declNameToLink parent}>{parent.toString}</a>
+      let link ← declNameToHtmlBreakWithinLink parent
       let inner := Html.element "span" true #[("class", "fn")] #[link]
       let html:= Html.element "span" false #[("class", "decl_parent")] #[inner]
       parents := parents.push html
     nodes := nodes.append (parents.toList.intersperse (Html.text ", ")).toArray
   pure nodes
 
+/--
+Render the general header of a declaration containing its declaration type
+and name.
+-/
 def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
   nodes := nodes.push <span class="decl_kind">{doc.getKindDescription}</span>
@@ -63,7 +75,6 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   for arg in doc.getArgs do
     nodes := nodes.push (←argToHtml arg)
 
-  -- TODO: dedup this
   match doc with
   | DocInfo.structureInfo i => nodes := nodes.append (←structureInfoHeader i)
   | DocInfo.classInfo i => nodes := nodes.append (←structureInfoHeader i.toStructureInfo)
@@ -73,6 +84,9 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   nodes := nodes.push $ Html.element "div" true #[("class", "decl_type")] (←infoFormatToHtml doc.getType)
   pure <div class="decl_header"> [nodes] </div>
 
+/--
+The main entry point for rendering a single declaration inside a given module.
+-/
 def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   -- basic info like headers, types, structure fields, etc.
   let docInfoHtml ← match doc with
@@ -114,12 +128,20 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
       </div>
     </div>
 
+/--
+Rendering a module doc string, that is the ones with an ! after the opener
+as HTML.
+-/
 def modDocToHtml (module : Name) (mdoc : ModuleDoc) : HtmlM Html := do
   pure 
     <div class="mod_doc">
       [←docStringToHtml mdoc.doc]
     </div>
 
+/--
+Render a module member, that is either a module doc string or a declaration
+as HTML.
+-/
 def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := do
   match member with
   | ModuleMember.docInfo d => docInfoToHtml module d
@@ -130,10 +152,9 @@ def declarationToNavLink (module : Name) : Html :=
     <a class="break_within" href={s!"#{module.toString}"}>{module.toString}</a>
   </div>
 
--- TODO: Similar functions are used all over the place, we should dedup them
-def moduleToNavLink (module : Name) : HtmlM Html := do
-  pure <a href={←moduleNameToLink module}>{module.toString}</a>
-
+/--
+Returns the list of all imports this module does.
+-/
 def getImports (module : Name) : HtmlM (Array Name) := do
   let res ← getResult
   let some idx := res.moduleNames.findIdx? (. == module) | unreachable!
@@ -144,6 +165,17 @@ def getImports (module : Name) : HtmlM (Array Name) := do
       imports := imports.push (res.moduleNames.get! i)
   pure imports
 
+/--
+Sort the list of all modules this one is importing, linkify it
+and return the HTML.
+-/
+def importsHtml (moduleName : Name) : HtmlM (Array Html) := do
+  let imports := (←getImports moduleName) |>.qsort Name.lt
+  imports.mapM (λ i => do pure <li>{←moduleToHtmlLink i}</li>)
+
+/--
+Returns a list of all modules this module is imported by.
+-/
 def getImportedBy (module : Name) : HtmlM (Array Name) := do
   let res ← getResult
   let some idx := res.moduleNames.findIdx? (. == module) | unreachable!
@@ -154,15 +186,17 @@ def getImportedBy (module : Name) : HtmlM (Array Name) := do
       impBy := impBy.push (res.moduleNames.get! i)
   pure impBy
 
+/--
+Sort the list of all modules this one is imported by, linkify it
+and return the HTML.
+-/
 def importedByHtml (moduleName : Name) : HtmlM (Array Html) := do
   let imports := (←getImportedBy moduleName) |>.qsort Name.lt
-  imports.mapM (λ i => do pure <li>{←moduleToNavLink i}</li>)
+  imports.mapM (λ i => do pure <li>{←moduleToHtmlLink i}</li>)
 
-
-def importsHtml (moduleName : Name) : HtmlM (Array Html) := do
-  let imports := (←getImports moduleName) |>.qsort Name.lt
-  imports.mapM (λ i => do pure <li>{←moduleToNavLink i}</li>)
-
+/--
+Render the internal nav bar (the thing on the right on all module pages).
+-/
 def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
   pure
     <nav class="internal_nav">
@@ -185,6 +219,9 @@ def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
       [members.map declarationToNavLink]
     </nav>
 
+/--
+The main entry point to rendering the HTML for an entire module.
+-/
 def moduleToHtml (module : Module) : HtmlM Html := withReader (setCurrentName module.name) do
   let memberDocs ← module.members.mapM (λ i => moduleMemberToHtml module.name i)
   let memberNames := filterMapDocInfo module.members |>.map DocInfo.getName

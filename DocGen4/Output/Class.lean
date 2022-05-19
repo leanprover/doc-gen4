@@ -8,7 +8,7 @@ open scoped DocGen4.Jsx
 open Lean
 
 def classInstanceToHtml (name : Name) : HtmlM Html := do
-  pure <li><a href={←declNameToLink name}>{name.toString}</a></li>
+  pure <li>{←declNameToHtmlLink name}</li>
 
 def classInstancesToHtml (instances : Array Name) : HtmlM Html := do
   let instancesHtml ← instances.mapM classInstanceToHtml

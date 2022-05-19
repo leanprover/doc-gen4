@@ -15,7 +15,7 @@ open scoped DocGen4.Jsx
 
 def moduleListFile (file : Name) : HtmlM Html := do
   pure <div class={if (← getCurrentName) == file then "nav_link visible" else "nav_link"}>
-    <a href={← moduleNameToLink file}>{file.toString}</a>
+    {←moduleToHtmlLink file}
   </div>
 
 partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
@@ -31,7 +31,7 @@ partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
       [if (←getCurrentName).any (h.getName.isPrefixOf ·) then #[("open", "")] else #[]]>
       {
         if (←getResult).moduleInfo.contains h.getName then
-          Html.element "summary" true #[] #[<a "href"={← moduleNameToLink h.getName}>{h.getName.toString}</a>]
+          Html.element "summary" true #[] #[←moduleToHtmlLink h.getName]
         else
           <summary>{h.getName.toString}</summary>
       }

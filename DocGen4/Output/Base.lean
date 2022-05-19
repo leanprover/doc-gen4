@@ -68,6 +68,12 @@ def moduleNameToLink (n : Name) : HtmlM String := do
   pure $ (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 /--
+Returns the HTML doc-gen4 link to a module name.
+-/
+def moduleToHtmlLink (module : Name) : HtmlM Html := do
+  pure <a href={←moduleNameToLink module}>{module.toString}</a>
+
+/--
 Returns the path to the HTML file that contains information about a module.
 -/
 def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
@@ -103,6 +109,21 @@ def declNameToLink (name : Name) : HtmlM String := do
   let res ← getResult
   let module := res.moduleNames[res.name2ModIdx.find! name]
   pure $ (←moduleNameToLink module) ++ "#" ++ name.toString
+
+/--
+Returns the HTML doc-gen4 link to a declaration name.
+-/
+def declNameToHtmlLink (name : Name) : HtmlM Html := do
+  let link ← declNameToLink name
+  pure <a href={←declNameToLink name}>{name.toString}</a>
+
+/--
+Returns the HTML doc-gen4 link to a declaration name with "break_within"
+set as class.
+-/
+def declNameToHtmlBreakWithinLink (name : Name) : HtmlM Html := do
+  let link ← declNameToLink name
+  pure <a class="break_within" href={←declNameToLink name}>{name.toString}</a>
 
 /--
 In Lean syntax declarations the following pattern is quite common:
