@@ -27,7 +27,7 @@ partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
   let fileNodes ← (files.mapM moduleListFile)
   let moduleLink ← moduleNameToLink h.getName
   pure
-    <details "class"="nav_sect" "data-path"={moduleLink}
+    <details class="nav_sect" "data-path"={moduleLink}
       [if (←getCurrentName).any (h.getName.isPrefixOf ·) then #[("open", "")] else #[]]>
       {
         if (←getResult).moduleInfo.contains h.getName then
@@ -44,7 +44,7 @@ def moduleList : HtmlM Html := do
   let mut list := Array.empty
   for (n, cs) in hierarchy.getChildren do
     list := list.push $ ←moduleListDir cs
-  pure <div "class"="module_list">[list]</div>
+  pure <div class="module_list">[list]</div>
 
 def navbar : HtmlM Html := do
   pure

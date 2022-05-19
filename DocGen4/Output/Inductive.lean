@@ -12,7 +12,7 @@ def ctorToHtml (i : NameInfo) : HtmlM Html := do
   pure <li class="constructor" id={name}>{shortName} : [←infoFormatToHtml i.type]</li>
 
 def inductiveToHtml (i : InductiveInfo) : HtmlM (Array Html) := do
-  let constructorsHtml := <ul "class"="constructors">[← i.ctors.toArray.mapM ctorToHtml]</ul>
+  let constructorsHtml := <ul class="constructors">[← i.ctors.toArray.mapM ctorToHtml]</ul>
   pure #[constructorsHtml]
 
 end Output
