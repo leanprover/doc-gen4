@@ -16,8 +16,12 @@ import DocGen4.Output.SourceLinker
 
 namespace DocGen4
 
-open Lean Std IO System Output
+open Lean IO System Output
 
+/--
+The main entrypoint for outputting the documentation HTML based on an
+`AnalyzerResult`.
+-/
 def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) : IO Unit := do
   let config : SiteContext := { depthToRoot := 0, result := result, currentName := none, sourceLinker := ←sourceLinker ws leanHash}
   let basePath := FilePath.mk "." / "build" / "doc"
