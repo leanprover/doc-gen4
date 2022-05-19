@@ -9,8 +9,8 @@ import Lean.PrettyPrinter
 import Std.Data.HashMap
 import Lean.Meta.SynthInstance
 
-import DocGen4.Hierarchy
-import DocGen4.Attributes
+import DocGen4.Process.Hierarchy
+import DocGen4.Process.Attributes
 
 namespace DocGen4
 

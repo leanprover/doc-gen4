@@ -5,7 +5,7 @@ Authors: Henrik Böving
 -/
 import DocGen4.Process
 import DocGen4.IncludeStr
-import DocGen4.ToHtmlFormat
+import DocGen4.Output.ToHtmlFormat
 
 namespace DocGen4
 namespace Output

@@ -4,7 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
 import Lean
-import DocGen4.ToHtmlFormat
+import DocGen4.Output.ToHtmlFormat
 import DocGen4.Output.Base
 
 namespace DocGen4
