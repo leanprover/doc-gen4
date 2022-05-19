@@ -14,7 +14,7 @@ open Lean
 open scoped DocGen4.Jsx
 
 def moduleListFile (file : Name) : HtmlM Html := do
-  pure <div «class»={if (← getCurrentName) == file then "nav_link visible" else "nav_link"}>
+  pure <div class={if (← getCurrentName) == file then "nav_link visible" else "nav_link"}>
     <a href={← moduleNameToLink file}>{file.toString}</a>
   </div>
 
@@ -48,17 +48,17 @@ def moduleList : HtmlM Html := do
 
 def navbar : HtmlM Html := do
   pure
-    <nav «class»="nav">
+    <nav class="nav">
       <h3>General documentation</h3>
-      <div «class»="nav_link"><a href={s!"{←getRoot}"}>index</a></div>
+      <div class="nav_link"><a href={s!"{←getRoot}"}>index</a></div>
       /-
       TODO: Add these in later
-      <div «class»="nav_link"><a href={s!"{←getRoot}tactics.html"}>tactics</a></div>
-      <div «class»="nav_link"><a href={s!"{←getRoot}commands.html"}>commands</a></div>
-      <div «class»="nav_link"><a href={s!"{←getRoot}hole_commands.html"}>hole commands</a></div>
-      <div «class»="nav_link"><a href={s!"{←getRoot}attributes.html"}>attributes</a></div>
-      <div «class»="nav_link"><a href={s!"{←getRoot}notes.html"}>notes</a></div>
-      <div «class»="nav_link"><a href={s!"{←getRoot}references.html"}>references</a></div>
+      <div class="nav_link"><a href={s!"{←getRoot}tactics.html"}>tactics</a></div>
+      <div class="nav_link"><a href={s!"{←getRoot}commands.html"}>commands</a></div>
+      <div class="nav_link"><a href={s!"{←getRoot}hole_commands.html"}>hole commands</a></div>
+      <div class="nav_link"><a href={s!"{←getRoot}attributes.html"}>attributes</a></div>
+      <div class="nav_link"><a href={s!"{←getRoot}notes.html"}>notes</a></div>
+      <div class="nav_link"><a href={s!"{←getRoot}references.html"}>references</a></div>
       -/
       <h3>Library</h3>
       {← moduleList}

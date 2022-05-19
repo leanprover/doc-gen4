@@ -11,7 +11,7 @@ open Lean Widget
 def equationLimit : Nat := 200
 
 def equationToHtml (c : CodeWithInfos) : HtmlM Html := do
-  pure <li «class»="equation">[←infoFormatToHtml c]</li>
+  pure <li class="equation">[←infoFormatToHtml c]</li>
 
 def equationsToHtml (i : DefinitionInfo) : HtmlM (Array Html) := do
   if let some eqs := i.equations then
@@ -21,8 +21,8 @@ def equationsToHtml (i : DefinitionInfo) : HtmlM (Array Html) := do
       pure #[
         <details>
           <summary>Equations</summary>
-          <ul «class»="equations">
-            <li «class»="equation">One or more equations did not get rendered due to their size.</li>
+          <ul class="equations">
+            <li class="equation">One or more equations did not get rendered due to their size.</li>
             [filteredEquationsHtml]
           </ul>
         </details>
@@ -31,7 +31,7 @@ def equationsToHtml (i : DefinitionInfo) : HtmlM (Array Html) := do
       pure #[
         <details>
           <summary>Equations</summary>
-          <ul «class»="equations">
+          <ul class="equations">
             [filteredEquationsHtml]
           </ul>
         </details>

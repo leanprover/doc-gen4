@@ -42,8 +42,8 @@ def baseHtmlArray (title : String) (site : Array Html) : HtmlM Html := do
         <input id="nav_toggle" type="checkbox"/>
 
         <header>
-          <h1><label «for»="nav_toggle"></label>Documentation</h1>
-          <p «class»="header_filename break_within">{title}</p>
+          <h1><label for="nav_toggle"></label>Documentation</h1>
+          <p class="header_filename break_within">{title}</p>
           -- TODO: Replace this form with our own search
           <form action="https://google.com/search" method="get" id="search_form">
             <input type="hidden" name="sitesearch" value="https://leanprover-community.github.io/mathlib_docs"/>
