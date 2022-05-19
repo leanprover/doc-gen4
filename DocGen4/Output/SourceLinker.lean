@@ -5,12 +5,14 @@ namespace DocGen4.Output
 
 open Lean
 
-/-
+/--
+Turns a Github git remote URL into an HTTPS Github URL.
 Three link types from git supported:
 - https://github.com/org/repo
 - https://github.com/org/repo.git
 - git@github.com:org/repo.git
-TODO: This function is quite brittle and very github specific, we can
+
+TODO: This function is quite brittle and very Github specific, we can
 probably do better.
 -/
 def getGithubBaseUrl (gitUrl : String) : String := Id.run do
@@ -24,18 +26,29 @@ def getGithubBaseUrl (gitUrl : String) : String := Id.run do
   else
     pure url
 
+/--
+Obtain the Github URL of a project by parsing the origin remote.
+-/
 def getProjectGithubUrl : IO String := do
   let out ← IO.Process.output {cmd := "git", args := #["remote", "get-url", "origin"]}
   if out.exitCode != 0 then
     throw <| IO.userError <| "git exited with code " ++ toString out.exitCode
   pure out.stdout.trimRight
 
+/--
+Obtain the git commit hash of the project that is currently getting analyzed.
+-/
 def getProjectCommit : IO String := do
   let out ← IO.Process.output {cmd := "git", args := #["rev-parse", "HEAD"]}
   if out.exitCode != 0 then
     throw <| IO.userError <| "git exited with code " ++ toString out.exitCode
   pure out.stdout.trimRight
 
+/--
+Given a lake workspace with all the dependencies as well as the hash of the
+compiler release to work with this provides a function to turn names of
+declarations into (optionally positional) Github URLs.
+-/
 def sourceLinker (ws : Lake.Workspace) (leanHash : String): IO (Name → Option DeclarationRange → String) := do
   -- Compute a map from package names to source URL
   let mut gitMap := Std.mkHashMap
