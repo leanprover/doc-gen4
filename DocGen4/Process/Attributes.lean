@@ -3,17 +3,31 @@ import Lean
 namespace DocGen4
 
 open Lean Meta
-
 -- The following is probably completely overengineered but I love it
+
+/--
+Captures the notion of a value based attributes, `attrKind` is things like
+`EnumAttributes`.
+-/
 class ValueAttr (attrKind : Type → Type) where
+  /--
+  Given a certain value based attribute, an `Environment` and the `Name` of
+  a declaration returns the value of the attribute on this declaration if present.
+  -/
   getValue {α : Type} [Inhabited α] [ToString α] : attrKind α → Environment → Name → Option String
 
+/--
+Contains a specific attribute declaration of a certain attribute kind (enum based, parametric etc.).
+-/
 structure ValueAttrWrapper (attrKind : Type → Type) [ValueAttr attrKind] where
   {α : Type}
   attr : attrKind α
   [str : ToString α]
   [inhab : Inhabited α]
 
+/--
+Obtain the value of an enum attribute for a certain name.
+-/
 def enumGetValue {α : Type} [Inhabited α] [ToString α] (attr : EnumAttributes α) (env : Environment) (decl : Name) : Option String := OptionM.run do
   let val ← EnumAttributes.getValue attr env decl
   some (toString val)
@@ -21,6 +35,9 @@ def enumGetValue {α : Type} [Inhabited α] [ToString α] (attr : EnumAttributes
 instance : ValueAttr EnumAttributes where
   getValue := enumGetValue
 
+/--
+Obtain the value of a parametric attribute for a certain name.
+-/
 def parametricGetValue {α : Type} [Inhabited α] [ToString α] (attr : ParametricAttribute α) (env : Environment) (decl : Name) : Option String := OptionM.run do
   let val ← ParametricAttribute.getParam attr env decl
   some (attr.attr.name.toString ++ " " ++ toString val)
@@ -31,6 +48,9 @@ instance : ValueAttr ParametricAttribute where
 abbrev EnumAttrWrapper := ValueAttrWrapper EnumAttributes
 abbrev ParametricAttrWrapper := ValueAttrWrapper ParametricAttribute
 
+/--
+The list of all tag based attributes doc-gen knows about and can recover.
+-/
 def tagAttributes : Array TagAttribute :=
   #[IR.UnboxResult.unboxAttr, neverExtractAttr, Elab.Term.elabWithoutExpectedTypeAttr,
     SynthInstance.inferTCGoalsRLAttr, matchPatternAttr]
@@ -54,6 +74,9 @@ instance : ToString SpecializeAttributeKind where
     | SpecializeAttributeKind.specialize => "specialize"
     | SpecializeAttributeKind.nospecialize => "nospecialize"
 
+/--
+The list of all enum based attributes doc-gen knows about and can recover.
+-/
 def enumAttributes : Array EnumAttrWrapper := #[⟨Compiler.inlineAttrs⟩, ⟨Compiler.specializeAttrs⟩]
 
 instance : ToString ExternEntry where
@@ -70,6 +93,10 @@ instance : ToString ExternEntry where
 instance : ToString ExternAttrData where
   toString data := (data.arity?.map toString |>.getD "") ++ " " ++ String.intercalate " " (data.entries.map toString)
 
+/--
+The list of all parametric attributes (that is, attributes with any kind of information attached)
+doc-gen knows about and can recover.
+-/
 def parametricAttributes : Array ParametricAttrWrapper := #[⟨externAttr⟩, ⟨Compiler.implementedByAttr⟩, ⟨exportAttr⟩]
 
 def getTags (decl : Name) : MetaM (Array String) := do
@@ -114,6 +141,10 @@ def hasCsimp (decl : Name) : MetaM (Option String) := do
     else
       none
 
+/--
+The list of custom attributes, that don't fit in the parametric or enum
+attribute kinds, doc-gen konws about and can recover.
+-/
 def customAttrs := #[hasSimp, hasCsimp]
 
 def getCustomAttrs (decl : Name) : MetaM (Array String) := do
@@ -123,6 +154,10 @@ def getCustomAttrs (decl : Name) : MetaM (Array String) := do
       values := values.push value
   pure values
 
+/--
+The main entry point for recovering all attribute values for a given
+declaration.
+-/
 def getAllAttributes (decl : Name) : MetaM (Array String) := do
   let tags ← getTags decl
   let enums ← getEnumValues decl

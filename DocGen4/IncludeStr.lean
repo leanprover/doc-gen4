@@ -27,6 +27,11 @@ partial def traverseDir (f : FilePath) (p : FilePath → IO Bool) : IO (Option F
 
 syntax (name := includeStr) "include_str" str : term
 
+/--
+Provides a way to include the contents of a file at compile time as a String.
+This is used to include things like the CSS and JS in the binary so we
+don't have to carry them around as files.
+-/
 @[termElab includeStr] def includeStrImpl : TermElab := λ stx expectedType? => do
   let str := stx[1].isStrLit?.get!
   let srcPath := (FilePath.mk (← read).fileName)

@@ -1,5 +1,6 @@
 import DocGen4.Output.Template
 import DocGen4.Output.DocString
+import DocGen4.Process
 
 namespace DocGen4
 namespace Output
@@ -7,7 +8,10 @@ namespace Output
 open scoped DocGen4.Jsx
 open Lean
 
-def fieldToHtml (f : NameInfo) : HtmlM Html := do
+/--
+Render a single field consisting of its documentation, its name and its type as HTML.
+-/
+def fieldToHtml (f : Process.NameInfo) : HtmlM Html := do
   let shortName := f.name.components'.head!.toString
   let name := f.name.toString
   if let some doc := f.doc then
@@ -23,7 +27,10 @@ def fieldToHtml (f : NameInfo) : HtmlM Html := do
         <div class="structure_field_info">{s!"{shortName} "} : [←infoFormatToHtml f.type]</div>
       </li>
 
-def structureToHtml (i : StructureInfo) : HtmlM (Array Html) := do
+/--
+Render all information about a structure as HTML.
+-/
+def structureToHtml (i : Process.StructureInfo) : HtmlM (Array Html) := do
   let structureHtml :=
     if Name.isSuffixOf `mk i.ctor.name then
       (<ul class="structure_fields" id={i.ctor.name.toString}>

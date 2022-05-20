@@ -3,7 +3,7 @@ import DocGen4.Output.Template
 import Lean.Data.Parsec
 import Unicode.General.GeneralCategory
 
-open Lean Unicode  Xml Parser Parsec
+open Lean Unicode  Xml Parser Parsec DocGen4.Process
 
 namespace DocGen4
 namespace Output
