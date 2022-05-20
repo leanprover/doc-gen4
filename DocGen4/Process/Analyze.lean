@@ -15,23 +15,52 @@ namespace DocGen4.Process
 
 open Lean Meta Std
 
+/--
+Member of a module, either a declaration or some module doc string.
+-/
 inductive ModuleMember where
 | docInfo (info : DocInfo) : ModuleMember
 | modDoc (doc : ModuleDoc) : ModuleMember
 deriving Inhabited
 
+/--
+A Lean module.
+-/
 structure Module where
+  /--
+  Name of the module.
+  -/
   name : Name
-  -- Sorted according to their line numbers
+  /--
+  All members of the module, sorted according to their line numbers.
+  -/
   members : Array ModuleMember
   deriving Inhabited
 
+/--
+The result of running a full doc-gen analysis on a project.
+-/
 structure AnalyzerResult where
+  /--
+  The map from module names to indices of the `moduleNames` array.
+  -/
   name2ModIdx : HashMap Name ModuleIdx
+  /--
+  The list of all modules, accessible nicely via `name2ModIdx`.
+  -/
   moduleNames : Array Name
+  /--
+  A map from module names to information about these modules.
+  -/
   moduleInfo : HashMap Name Module
+  /--
+  The module hierarchy as a tree structure.
+  -/
   hierarchy : Hierarchy
-  -- Indexed by ModIdx
+  /--
+  An adjacency matrix for the import relation between modules, indexed
+  my the values in `name2ModIdx`.
+  -/
   importAdj : Array (Array Bool)
   deriving Inhabited
 
@@ -41,6 +70,9 @@ def getDeclarationRange : ModuleMember → DeclarationRange
 | docInfo i => i.getDeclarationRange
 | modDoc i => i.declarationRange
 
+/--
+An order for module members, based on their declaration range.
+-/
 def order (l r : ModuleMember) : Bool :=
   Position.lt l.getDeclarationRange.pos r.getDeclarationRange.pos
 
@@ -54,6 +86,10 @@ def getDocString : ModuleMember → Option String
 
 end ModuleMember
 
+/--
+Run the doc-gen analysis on all modules that are loaded into the `Environment`
+of this `MetaM` run.
+-/
 def process : MetaM AnalyzerResult := do
   let env ← getEnv
   let mut res := mkHashMap env.header.moduleNames.size
