@@ -28,7 +28,7 @@ structure ValueAttrWrapper (attrKind : Type → Type) [ValueAttr attrKind] where
 /--
 Obtain the value of an enum attribute for a certain name.
 -/
-def enumGetValue {α : Type} [Inhabited α] [ToString α] (attr : EnumAttributes α) (env : Environment) (decl : Name) : Option String := OptionM.run do
+def enumGetValue {α : Type} [Inhabited α] [ToString α] (attr : EnumAttributes α) (env : Environment) (decl : Name) : Option String := do
   let val ← EnumAttributes.getValue attr env decl
   some (toString val)
 
@@ -38,7 +38,7 @@ instance : ValueAttr EnumAttributes where
 /--
 Obtain the value of a parametric attribute for a certain name.
 -/
-def parametricGetValue {α : Type} [Inhabited α] [ToString α] (attr : ParametricAttribute α) (env : Environment) (decl : Name) : Option String := OptionM.run do
+def parametricGetValue {α : Type} [Inhabited α] [ToString α] (attr : ParametricAttribute α) (env : Environment) (decl : Name) : Option String := do
   let val ← ParametricAttribute.getParam attr env decl
   some (attr.attr.name.toString ++ " " ++ toString val)
 

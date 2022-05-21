@@ -15,11 +15,11 @@ package «doc-gen4» {
     },
     {
       name := `Cli
-      src := Source.git "https://github.com/mhuisi/lean4-cli" "1f8663e3dafdcc11ff476d74ef9b99ae5bdaedd3"
+      src := Source.git "https://github.com/mhuisi/lean4-cli" "dbbcfdd1780612d7455d7e78af1f4a3562f45beb"
     },
     {
       name := `lake
-      src := Source.git "https://github.com/leanprover/lake" "d961d8cfaa1c354c10f3fed55b32de85c205f4ab"
+      src := Source.git "https://github.com/leanprover/lake" "463c4f02a399dd296f9fa00b45a95792b70b6e48"
     }
   ]
 }
