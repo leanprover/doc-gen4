@@ -167,7 +167,7 @@ inductive DocInfo where
 Turns an `Expr` into a pretty printed `CodeWithInfos`.
 -/
 def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
-  let (fmt, infos) ← formatInfos expr
+  let (fmt, infos) ←  PrettyPrinter.ppExprWithInfos expr
   let tt := TaggedText.prettyTagged fmt
   let ctx := {
     env := ← getEnv
