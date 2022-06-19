@@ -76,7 +76,7 @@ structure TheoremInfo extends Info
   deriving Inhabited
 
 /--
-Information about a `constant` declaration.
+Information about an `opaque` declaration.
 -/
 structure OpaqueInfo extends Info where
   /--
@@ -84,7 +84,7 @@ structure OpaqueInfo extends Info where
   -/
   value : CodeWithInfos
   /--
-  A value of partial is interpreted as this constant being part of a partial def
+  A value of partial is interpreted as this opaque being part of a partial def
   since the actual definition for a partial def is hidden behind an inaccessible value.
   -/
   unsafeInformation : DefinitionSafety

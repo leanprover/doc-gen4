@@ -32,9 +32,9 @@ Provides a way to include the contents of a file at compile time as a String.
 This is used to include things like the CSS and JS in the binary so we
 don't have to carry them around as files.
 -/
-@[termElab includeStr] def includeStrImpl : TermElab := λ stx expectedType? => do
+@[termElab includeStr] def includeStrImpl : TermElab := λ stx _ => do
   let str := stx[1].isStrLit?.get!
-  let srcPath := (FilePath.mk (← read).fileName)
+  let srcPath := FilePath.mk $ ←getFileName
   let currentDir ← IO.currentDir
   -- HACK: Currently we cannot get current file path in VSCode, we have to traversely find the matched subdirectory in the current directory.
   if let some path ← match srcPath.parent with

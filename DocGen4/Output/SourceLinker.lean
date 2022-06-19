@@ -63,7 +63,7 @@ def sourceLinker (ws : Lake.Workspace) (leanHash : String): IO (Name → Option 
   for pkg in ws.packageArray do
     for dep in pkg.dependencies do
       let value := match dep.src with
-        | Lake.Source.git url commit => (getGithubBaseUrl url, commit)
+        | Lake.Source.git url commit => (getGithubBaseUrl url, commit.getD "main")
         -- TODO: What do we do here if linking a source is not possible?
         | _ => ("https://example.com", "master")
       gitMap := gitMap.insert dep.name value
@@ -75,7 +75,7 @@ def sourceLinker (ws : Lake.Workspace) (leanHash : String): IO (Name → Option 
     let basic := if root == `Lean ∨ root == `Init ∨ root == `Std then
       s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/{path}.lean"
     else
-      match ws.packageForModule? module with
+      match ws.packageArray.find? (·.isLocalModule module) with
       | some pkg =>
         let (baseUrl, commit) := gitMap.find! pkg.name
         s!"{baseUrl}/blob/{commit}/{path}.lean"

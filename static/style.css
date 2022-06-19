@@ -376,7 +376,7 @@ main h2, main h3, main h4, main h5, main h6 {
     border-top: 2px solid #8fe388;
 }
 
-.axiom, .constant {
+.axiom, .opaque {
     border-left: 10px solid #f44708;
     border-top: 2px solid #f44708;
 }
@@ -417,7 +417,7 @@ main h2, main h3, main h4, main h5, main h6 {
     box-shadow: 0 0 0 1px hsla(115, 62%, calc(100% - 5%*(var(--fn) + 1)));
     border-radius: 5px;
 }
-.axiom .fn:hover, .constant .fn:hover {
+.axiom .fn:hover, .opaque .fn:hover {
     background-color: hsla(16, 94%, calc(100% - 5%*var(--fn)));
     box-shadow: 0 0 0 1px hsla(16, 94%, calc(100% - 5%*(var(--fn) + 1)));
     border-radius: 5px;
@@ -543,8 +543,14 @@ a:hover {
 
 .gh_link {
     float: right;
+    margin-left: 10px;
+}
+
+.ink_link {
+    float: right;
     margin-left: 20px;
 }
+
 
 .docfile h2, .note h2 {
     margin-block-start: 3px;
