@@ -13,6 +13,7 @@ import DocGen4.Output.NotFound
 import DocGen4.Output.Find
 import DocGen4.Output.Semantic
 import DocGen4.Output.SourceLinker
+import DocGen4.LeanInk.Output
 
 namespace DocGen4
 
@@ -22,15 +23,27 @@ open Lean IO System Output Process
 The main entrypoint for outputting the documentation HTML based on an
 `AnalyzerResult`.
 -/
-def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) : IO Unit := do
-  let config : SiteContext := { depthToRoot := 0, result := result, currentName := none, sourceLinker := ←sourceLinker ws leanHash}
+def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) (inkPath : Option System.FilePath) : IO Unit := do
+  let config := {
+    depthToRoot := 0,
+    result := result,
+    currentName := none,
+    sourceLinker := ←sourceLinker ws leanHash
+    leanInkEnabled := inkPath.isSome
+  }
   let basePath := FilePath.mk "." / "build" / "doc"
+  let srcBasePath := basePath / "src"
   let indexHtml := ReaderT.run index config 
   let findHtml := ReaderT.run find { config with depthToRoot := 1 }
   let notFoundHtml := ReaderT.run notFound config
+  -- Rendering the entire lean compiler takes time....
+  --let sourceSearchPath := ((←Lean.findSysroot) / "src" / "lean") :: ws.root.srcDir :: ws.leanSrcPath
+  let sourceSearchPath := ws.root.srcDir :: ws.leanSrcPath
+
   FS.createDirAll basePath
   FS.createDirAll (basePath / "find")
   FS.createDirAll (basePath / "semantic")
+  FS.createDirAll srcBasePath
 
   let mut declList := #[]
   for (_, mod) in result.moduleInfo.toArray do
@@ -46,6 +59,14 @@ def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String
       declList := declList.push obj
       let xml := toString <| Id.run <| ReaderT.run (semanticXml decl) config 
       FS.writeFile (basePath / "semantic" / s!"{decl.getName.hash}.xml") xml
+    if let some inkPath := inkPath then
+      if let some inputPath ← Lean.SearchPath.findModuleWithExt sourceSearchPath "lean" mod.name then
+        IO.println s!"Inking: {mod.name.toString}"
+        let srcHtml ← ReaderT.run (LeanInk.moduleToHtml mod inkPath inputPath) config
+        let srcDir := moduleNameToDirectory srcBasePath mod.name
+        let srcPath := moduleNameToFile srcBasePath mod.name
+        FS.createDirAll srcDir
+        FS.writeFile srcPath srcHtml.toString
   let json := Json.arr declList
 
   FS.writeFile (basePath / "semantic" / "docgen4.xml") <| toString <| Id.run <| ReaderT.run schemaXml config 
