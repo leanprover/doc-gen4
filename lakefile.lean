@@ -15,7 +15,7 @@ require CMark from git
   "https://github.com/xubaiw/CMark.lean" @ "b3848a9c7781b3a0dda4d78b62a7f15a7941462d"
 
 require Unicode from git
-  "https://github.com/hargonix/Unicode.lean" @ "6a9614063815061150e34503db1140f09ea9edb6"
+  "https://github.com/hargonix/Unicode.lean" @ "603450c82cf5066c6db6df0e8ee115f93d71f5fb"
 
 require Cli from git
   "https://github.com/hargonix/lean4-cli" @ "f8fe306d00b31cdfcf5d24e6c0d050e34bec6bb0"
