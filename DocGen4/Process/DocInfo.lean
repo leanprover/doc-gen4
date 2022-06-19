@@ -46,7 +46,7 @@ def getName : DocInfo → Name
 def getKind : DocInfo → String
 | axiomInfo _ => "axiom"
 | theoremInfo _ => "theorem"
-| opaqueInfo _ => "constant"
+| opaqueInfo _ => "opaque"
 | definitionInfo _ => "def"
 | instanceInfo _ => "instance"
 | inductiveInfo _ => "inductive"
@@ -165,8 +165,8 @@ def getKindDescription : DocInfo → String
 | theoremInfo _ => "theorem"
 | opaqueInfo i =>
   match i.unsafeInformation with
-  | DefinitionSafety.safe => "constant"
-  | DefinitionSafety.unsafe => "unsafe constant"
+  | DefinitionSafety.safe => "opaque"
+  | DefinitionSafety.unsafe => "unsafe opaque"
   | DefinitionSafety.partial => "partial def"
 | definitionInfo i => Id.run do
   if i.hints.isAbbrev then

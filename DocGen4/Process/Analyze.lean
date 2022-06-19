@@ -78,7 +78,7 @@ def order (l r : ModuleMember) : Bool :=
 
 def getName : ModuleMember → Name
 | docInfo i => i.getName
-| modDoc i => Name.anonymous
+| modDoc _ => Name.anonymous
 
 def getDocString : ModuleMember → Option String
 | docInfo i => i.getDocString
@@ -102,7 +102,13 @@ def process : MetaM AnalyzerResult := do
 
   for cinfo in env.constants.toList do
     try
-      let analysis := Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant cinfo) { maxHeartbeats := 5000000, options := ⟨[(`pp.tagAppFns, true)]⟩ } { env := env} {} {}
+      let config := {
+        maxHeartbeats := 5000000,
+        options := ←getOptions,
+        fileName := ←getFileName,
+        fileMap := ←getFileMap
+      }
+      let analysis := Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant cinfo) config { env := env} {} {}
       if let some dinfo ← analysis then
         let some modidx := env.getModuleIdxFor? dinfo.getName | unreachable!
         let moduleName := env.allImportedModuleNames.get! modidx
