@@ -82,6 +82,7 @@ def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String
   FS.writeFile (srcBasePath / "alectryon.css") alectryonCss
   FS.writeFile (srcBasePath / "alectryon.js") alectryonJs
   FS.writeFile (srcBasePath / "docutils_basic.css") docUtilsCss
+  FS.writeFile (srcBasePath / "pygments.css") pygmentsCss
 
   for (modName, module) in result.moduleInfo.toArray do
     let fileDir := moduleNameToDirectory basePath modName

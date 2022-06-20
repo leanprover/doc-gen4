@@ -115,6 +115,7 @@ are used in documentation generation, notably JS and CSS ones.
   def alectryonCss : String := include_str "../../static/alectryon/alectryon.css"
   def alectryonJs : String := include_str "../../static/alectryon/alectryon.js"
   def docUtilsCss : String  := include_str "../../static/alectryon/docutils_basic.css"
+  def pygmentsCss : String  := include_str "../../static/alectryon/pygments.css"
 end Static
 
 /--

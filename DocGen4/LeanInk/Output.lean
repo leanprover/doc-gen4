@@ -33,15 +33,22 @@ def TypeInfo.toHtml (tyi : TypeInfo) : AlectryonM Html := do
           <blockquote class="alectryon-goal">
             <div class="goal-hyps">
               <span class="hyp-type">
-                <var>{tyi.name}</var>
-                <b>: </b>
-                <span>{tyi.type}</span>
+                <var>{tyi.name}<//var>
+                <b>: <//b>
+                <span>{tyi.type}<//span>
               <//span>
             <//div>
           <//blockquote>
         <//div>
       <//small>
     <//div>
+
+def Token.processSemantic (t : Token) : Html :=
+  match t.semanticType with
+  | some "Name.Attribute" => <span class="na">{t.raw}<//span>
+  | some "Name.Variable" => <span class="nv">{t.raw}<//span>
+  | some "Keyword" => <span class="k">{t.raw}<//span>
+  | _ => Html.text t.raw
 
 def Token.toHtml (t : Token) : AlectryonM Html := do
   -- Right now t.link is always none from LeanInk, ignore it
@@ -50,10 +57,11 @@ def Token.toHtml (t : Token) : AlectryonM Html := do
   if let some tyi := t.typeinfo then
     parts := parts.push $ ←tyi.toHtml
 
-  parts := parts.push $ Html.text t.raw
+  parts := parts.push t.processSemantic
+
   pure
     -- TODO: Show rest of token
-    <span class="alectryon-token" foo={t.link.getD "none"} bar={t.docstring.getD "none"}>
+    <span class="alectryon-token">
       [parts]
     <//span>
 
@@ -173,6 +181,7 @@ def baseHtml (content : Array Html) : AlectryonM Html := do
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
 
         <link rel="stylesheet" href={s!"{←getRoot}src/alectryon.css"}/>
+        <link rel="stylesheet" href={s!"{←getRoot}src/pygments.css"}/>
         <link rel="stylesheet" href={s!"{←getRoot}src/docutils_basic.css"}/>
         <link rel="shortcut icon" href={s!"{←getRoot}favicon.ico"}/>
 
