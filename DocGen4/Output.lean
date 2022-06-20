@@ -59,14 +59,6 @@ def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String
       declList := declList.push obj
       let xml := toString <| Id.run <| ReaderT.run (semanticXml decl) config 
       FS.writeFile (basePath / "semantic" / s!"{decl.getName.hash}.xml") xml
-    if let some inkPath := inkPath then
-      if let some inputPath ← Lean.SearchPath.findModuleWithExt sourceSearchPath "lean" mod.name then
-        IO.println s!"Inking: {mod.name.toString}"
-        let srcHtml ← ReaderT.run (LeanInk.moduleToHtml mod inkPath inputPath) config
-        let srcDir := moduleNameToDirectory srcBasePath mod.name
-        let srcPath := moduleNameToFile srcBasePath mod.name
-        FS.createDirAll srcDir
-        FS.writeFile srcPath srcHtml.toString
   let json := Json.arr declList
 
   FS.writeFile (basePath / "semantic" / "docgen4.xml") <| toString <| Id.run <| ReaderT.run schemaXml config 
@@ -87,16 +79,30 @@ def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String
   FS.writeFile (basePath / "how-about.js") howAboutJs
   FS.writeFile (basePath / "search.js") searchJs
   FS.writeFile (basePath / "mathjax-config.js") mathjaxConfigJs
+  FS.writeFile (srcBasePath / "alectryon.css") alectryonCss
+  FS.writeFile (srcBasePath / "alectryon.js") alectryonJs
+  FS.writeFile (srcBasePath / "docutils_basic.css") docUtilsCss
 
-  for (module, content) in result.moduleInfo.toArray do
-    let fileDir := moduleNameToDirectory basePath module
-    let filePath := moduleNameToFile basePath module
+  for (modName, module) in result.moduleInfo.toArray do
+    let fileDir := moduleNameToDirectory basePath modName
+    let filePath := moduleNameToFile basePath modName
     -- path: 'basePath/module/components/till/last.html'
     -- The last component is the file name, so we drop it from the depth to root.
-    let config := { config with depthToRoot := module.components.dropLast.length }
-    let moduleHtml := ReaderT.run (moduleToHtml content) config
+    let config := { config with depthToRoot := modName.components.dropLast.length }
+    let moduleHtml := ReaderT.run (moduleToHtml module) config
     FS.createDirAll $ fileDir
     FS.writeFile filePath moduleHtml.toString
+    if let some inkPath := inkPath then
+      if let some inputPath ← Lean.SearchPath.findModuleWithExt sourceSearchPath "lean" module.name then
+        IO.println s!"Inking: {modName.toString}"
+        -- path: 'basePath/src/module/components/till/last.html'
+        -- The last component is the file name, however we are in src/ here so dont drop it this time
+        let config := { config with depthToRoot := modName.components.length }
+        let srcHtml ← ReaderT.run (LeanInk.moduleToHtml module inkPath inputPath) config
+        let srcDir := moduleNameToDirectory srcBasePath modName
+        let srcPath := moduleNameToFile srcBasePath modName
+        FS.createDirAll srcDir
+        FS.writeFile srcPath srcHtml.toString
 
 end DocGen4
 
