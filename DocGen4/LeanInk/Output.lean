@@ -25,15 +25,50 @@ def getNextButtonLabel : AlectryonM String := do
   set { val with counter := newCounter }
   pure s!"plain-lean4-lean-chk{val.counter}"
 
-def TypeInfo.toHtml : TypeInfo → AlectryonM Html := sorry
+def TypeInfo.toHtml (tyi : TypeInfo) : AlectryonM Html := do
+  pure
+    <div class="alectryon-type-info-wrapper">
+      <small class="alectryon-type-info">
+        <div class="alectryon-goals">
+          <blockquote class="alectryon-goal">
+            <div class="goal-hyps">
+              <span class="hyp-type">
+                <var>{tyi.name}</var>
+                <b>: </b>
+                <span>{tyi.type}</span>
+              <//span>
+            <//div>
+          <//blockquote>
+        <//div>
+      <//small>
+    <//div>
 
 def Token.toHtml (t : Token) : AlectryonM Html := do
-  -- TODO: Show rest of token
-  pure $ Html.text t.raw
+  -- Right now t.link is always none from LeanInk, ignore it
+  -- TODO: render docstring
+  let mut parts := #[]
+  if let some tyi := t.typeinfo then
+    parts := parts.push $ ←tyi.toHtml
 
-def Contents.toHtml : Contents → AlectryonM (Array Html)
-  | .string value => pure #[Html.text value]
-  | .experimentalTokens values => values.mapM Token.toHtml
+  parts := parts.push $ Html.text t.raw
+  pure
+    -- TODO: Show rest of token
+    <span class="alectryon-token" foo={t.link.getD "none"} bar={t.docstring.getD "none"}>
+      [parts]
+    <//span>
+
+def Contents.toHtml : Contents → AlectryonM Html
+  | .string value =>
+    pure
+      <span class="alectryon-wsp">
+        {value}
+      <//span>
+  | .experimentalTokens values => do
+    let values ← values.mapM Token.toHtml
+    pure
+      <span class="alectryon-wsp">
+        [values]
+      <//span>
 
 def Hypothesis.toHtml (h : Hypothesis) : AlectryonM Html := do
   let mut hypParts := #[<var>[h.names.intersperse ", " |>.map Html.text |>.toArray]<//var>]
@@ -108,7 +143,7 @@ def Sentence.toHtml (s : Sentence) : AlectryonM Html := do
     <span class="alectryon-sentence">
       <input class="alectryon-toggle" id={buttonLabel} style="display: none" type="checkbox"/>
       <label class="alectryon-input" for={buttonLabel}>
-        [←s.contents.toHtml]
+        {←s.contents.toHtml}
       <//label>
       <small class="alectryon-output">
         [messages]
@@ -116,11 +151,7 @@ def Sentence.toHtml (s : Sentence) : AlectryonM Html := do
       <//small>
     <//span>
 
-def Text.toHtml (t : Text) : AlectryonM Html := do
-  pure
-    <span class="alectryon-wsp">
-      [←t.contents.toHtml]
-    <//span>
+def Text.toHtml (t : Text) : AlectryonM Html := t.contents.toHtml
 
 def Fragment.toHtml : Fragment → AlectryonM Html
   | .text value => value.toHtml
