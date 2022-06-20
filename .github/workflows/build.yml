@@ -25,6 +25,14 @@ jobs:
         run: |
           lake build
 
+      - name: Checkout and compile LeanInk
+        run: |
+          cd ../
+          git clone https://github.com/hargonix/LeanInk
+          cd LeanInk
+          git checkout doc-gen
+          lake build
+
       - name: Checkout and compile mathlib4
         run: |
           cd ../
@@ -40,7 +48,7 @@ jobs:
             deploy="false"
           fi
           cd ../
-          ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "$deploy"
+          ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "$deploy" "LeanInk"
         env:
           MATHLIB4_DOCS_KEY: ${{ secrets.MATHLIB4_DOCS_KEY }}
           github_repo: ${{ github.repository }}

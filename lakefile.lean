@@ -24,4 +24,4 @@ require lake from git
   "https://github.com/leanprover/lake" @ "12e2463b35829368a59d18a5504dd2f73ac1621d"
 
 require leanInk from git
-  "https://github.com/leanprover/LeanInk" @ "0a160d91458c1873937449a7c78d25b34b8686df"
+  "https://github.com/hargonix/LeanInk" @ "doc-gen"

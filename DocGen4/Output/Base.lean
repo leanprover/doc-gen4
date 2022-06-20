@@ -33,6 +33,10 @@ structure SiteContext where
   A function to link declaration names to their source URLs, usually Github ones.
   -/
   sourceLinker : Name → Option DeclarationRange → String
+  /--
+  Whether LeanInk is enabled
+  -/
+  leanInkEnabled : Bool
 
 def setCurrentName (name : Name) (ctx : SiteContext) := {ctx with currentName := some name}
 
@@ -52,6 +56,7 @@ def getRoot : HtmlM String := do
 def getResult : HtmlM AnalyzerResult := do pure (←read).result
 def getCurrentName : HtmlM (Option Name) := do pure (←read).currentName
 def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do pure $ (←read).sourceLinker module range
+def leanInkEnabled? : HtmlM Bool := do pure (←read).leanInkEnabled
 
 /--
 If a template is meant to be extended because it for example only provides the
@@ -74,6 +79,13 @@ def moduleToHtmlLink (module : Name) : HtmlM Html := do
   pure <a href={←moduleNameToLink module}>{module.toString}</a>
 
 /--
+Returns the LeanInk link to a module name.
+-/
+def moduleNameToInkLink (n : Name) : HtmlM String := do
+  let parts := "src" :: n.components.map Name.toString
+  pure $ (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+
+/--
 Returns the path to the HTML file that contains information about a module.
 -/
 def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
@@ -87,7 +99,6 @@ def moduleNameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
   let parts := n.components.dropLast.map Name.toString
   basePath / parts.foldl (· / ·) (FilePath.mk ".")
 
-
 section Static
 /-!
 The following section contains all the statically included files that
@@ -100,6 +111,11 @@ are used in documentation generation, notably JS and CSS ones.
   def searchJs : String := include_str "../../static/search.js"
   def findJs : String := include_str "../../static/find/find.js"
   def mathjaxConfigJs : String := include_str "../../static/mathjax-config.js"
+  
+  def alectryonCss : String := include_str "../../static/alectryon/alectryon.css"
+  def alectryonJs : String := include_str "../../static/alectryon/alectryon.js"
+  def docUtilsCss : String  := include_str "../../static/alectryon/docutils_basic.css"
+  def pygmentsCss : String  := include_str "../../static/alectryon/pygments.css"
 end Static
 
 /--
@@ -114,15 +130,21 @@ def declNameToLink (name : Name) : HtmlM String := do
 Returns the HTML doc-gen4 link to a declaration name.
 -/
 def declNameToHtmlLink (name : Name) : HtmlM Html := do
-  let link ← declNameToLink name
   pure <a href={←declNameToLink name}>{name.toString}</a>
+
+/--
+Returns the LeanInk link to a declaration name.
+-/
+def declNameToInkLink (name : Name) : HtmlM String := do
+  let res ← getResult
+  let module := res.moduleNames[res.name2ModIdx.find! name]
+  pure $ (←moduleNameToInkLink module) ++ "#" ++ name.toString
 
 /--
 Returns the HTML doc-gen4 link to a declaration name with "break_within"
 set as class.
 -/
 def declNameToHtmlBreakWithinLink (name : Name) : HtmlM Html := do
-  let link ← declNameToLink name
   pure <a class="break_within" href={←declNameToLink name}>{name.toString}</a>
 
 /--
