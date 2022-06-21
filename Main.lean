@@ -5,7 +5,6 @@ import Cli
 open DocGen4 Lean Cli
 
 def runDocGenCmd (p : Parsed) : IO UInt32 := do
-  IO.println s!"{p}"
   let modules : List String := p.variableArgsAs! String |>.toList
   let res ← lakeSetup modules
   match res with

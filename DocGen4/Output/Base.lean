@@ -183,13 +183,13 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
          match t with
          | TaggedText.text t =>
            let (front, t, back) := splitWhitespaces $ Html.escape t
-           let elem := Html.element "a" true #[("href", ←declNameToLink name)] #[t]
+           let elem := <a href={←declNameToLink name}>{t}</a>
            pure #[Html.text front, elem, Html.text back]
          | _ =>
            -- TODO: Is this ever reachable?
-           pure #[Html.element "a" true #[("href", ←declNameToLink name)] (←infoFormatToHtml t)]
+           pure #[<a href={←declNameToLink name}>[←infoFormatToHtml t]</a>]
       | _ =>
-         pure #[Html.element "span" true #[("class", "fn")] (←infoFormatToHtml t)]
-    | _ => pure #[Html.element "span" true #[("class", "fn")] (←infoFormatToHtml t)]
+         pure #[<span class="fn">[←infoFormatToHtml t]</span>]
+    | _ => pure #[<span class="fn">[←infoFormatToHtml t]</span>]
 
 end DocGen4.Output

@@ -35,7 +35,7 @@ def argToHtml (arg : Arg) : HtmlM Html := do
   let mut nodes := #[Html.text s!"{l}{arg.name.toString} : "]
   nodes := nodes.append (←infoFormatToHtml arg.type)
   nodes := nodes.push r
-  let inner := Html.element "span" true #[("class", "fn")] nodes
+  let inner := <span class="fn">[nodes]</span>
   let html := Html.element "span" false #[("class", "decl_args")] #[inner]
   if implicit then
     pure <span class="impl_arg">{html}</span>
@@ -53,7 +53,7 @@ def structureInfoHeader (s : Process.StructureInfo) : HtmlM (Array Html) := do
     let mut parents := #[]
     for parent in s.parents do
       let link ← declNameToHtmlBreakWithinLink parent
-      let inner := Html.element "span" true #[("class", "fn")] #[link]
+      let inner := <span class="fn">{link}</span>
       let html:= Html.element "span" false #[("class", "decl_parent")] #[inner]
       parents := parents.push html
     nodes := nodes.append (parents.toList.intersperse (Html.text ", ")).toArray
@@ -65,7 +65,7 @@ and name.
 -/
 def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
-  nodes := nodes.push <span class="decl_kind">{doc.getKindDescription}</span>
+  nodes := nodes.push $ Html.element "span" false #[("class", "decl_kind")] #[doc.getKindDescription]
   nodes := nodes.push
     <span class="decl_name">
       <a class="break_within" href={←declNameToLink doc.getName}>
@@ -82,7 +82,7 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   | _ => nodes := nodes
 
   nodes := nodes.push <span class="decl_args">:</span>
-  nodes := nodes.push $ Html.element "div" true #[("class", "decl_type")] (←infoFormatToHtml doc.getType)
+  nodes := nodes.push <div class="decl_type">[←infoFormatToHtml doc.getType]</div>
   pure <div class="decl_header"> [nodes] </div>
 
 /--

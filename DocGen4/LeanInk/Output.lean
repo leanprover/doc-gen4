@@ -33,21 +33,21 @@ def TypeInfo.toHtml (tyi : TypeInfo) : AlectryonM Html := do
           <blockquote class="alectryon-goal">
             <div class="goal-hyps">
               <span class="hyp-type">
-                <var>{tyi.name}<//var>
-                <b>: <//b>
-                <span>{tyi.type}<//span>
-              <//span>
-            <//div>
-          <//blockquote>
-        <//div>
-      <//small>
-    <//div>
+                <var>{tyi.name}</var>
+                <b>: </b>
+                <span>{tyi.type}</span>
+              </span>
+            </div>
+          </blockquote>
+        </div>
+      </small>
+    </div>
 
 def Token.processSemantic (t : Token) : Html :=
   match t.semanticType with
-  | some "Name.Attribute" => <span class="na">{t.raw}<//span>
-  | some "Name.Variable" => <span class="nv">{t.raw}<//span>
-  | some "Keyword" => <span class="k">{t.raw}<//span>
+  | some "Name.Attribute" => <span class="na">{t.raw}</span>
+  | some "Name.Variable" => <span class="nv">{t.raw}</span>
+  | some "Keyword" => <span class="k">{t.raw}</span>
   | _ => Html.text t.raw
 
 def Token.toHtml (t : Token) : AlectryonM Html := do
@@ -63,39 +63,39 @@ def Token.toHtml (t : Token) : AlectryonM Html := do
     -- TODO: Show rest of token
     <span class="alectryon-token">
       [parts]
-    <//span>
+    </span>
 
 def Contents.toHtml : Contents → AlectryonM Html
   | .string value =>
     pure
       <span class="alectryon-wsp">
         {value}
-      <//span>
+      </span>
   | .experimentalTokens values => do
     let values ← values.mapM Token.toHtml
     pure
       <span class="alectryon-wsp">
         [values]
-      <//span>
+      </span>
 
 def Hypothesis.toHtml (h : Hypothesis) : AlectryonM Html := do
-  let mut hypParts := #[<var>[h.names.intersperse ", " |>.map Html.text |>.toArray]<//var>]
+  let mut hypParts := #[<var>[h.names.intersperse ", " |>.map Html.text |>.toArray]</var>]
   if h.body != "" then
     hypParts := hypParts.push
       <span class="hyp-body">
-        <b>:= <//b>
-        <span>{h.body}<//span>
-      <//span>
+        <b>:= </b>
+        <span>{h.body}</span>
+      </span>
   hypParts := hypParts.push
       <span class="hyp-type">
-        <b>: <//b>
-        <span >{h.type}<//span>
-      <//span>
+        <b>: </b>
+        <span >{h.type}</span>
+      </span>
 
   pure
     <span>
       [hypParts]
-    <//span>
+    </span>
 
 def Goal.toHtml (g : Goal) : AlectryonM Html := do
   let mut hypotheses := #[]
@@ -107,21 +107,21 @@ def Goal.toHtml (g : Goal) : AlectryonM Html := do
     <blockquote class="alectryon-goal">
       <div class="goal-hyps">
         [hypotheses]
-      <//div>
+      </div>
       <span class="goal-separator">
-        <hr><span class="goal-name">{g.name}<//span><//hr>
-      <//span>
+        <hr><span class="goal-name">{g.name}</span></hr>
+      </span>
       <div class="goal-conclusion">
         {g.conclusion}
-      <//div>
-    <//blockquote>
+      </div>
+    </blockquote>
 
 def Message.toHtml (m : Message) : AlectryonM Html := do
   pure
     <blockquote class="alectryon-message">
       -- TODO: This might have to be done in a fancier way
       {m.contents}
-    <//blockquote>
+    </blockquote>
 
 def Sentence.toHtml (s : Sentence) : AlectryonM Html := do
   let messages :=
@@ -129,7 +129,7 @@ def Sentence.toHtml (s : Sentence) : AlectryonM Html := do
       #[
         <div class="alectryon-messages">
           [←s.messages.mapM Message.toHtml]
-        <//div>
+        </div>
       ]
     else
       #[]
@@ -140,7 +140,7 @@ def Sentence.toHtml (s : Sentence) : AlectryonM Html := do
       #[
         <div class="alectryon-goals">
           [←s.goals.mapM Goal.toHtml]
-        <//div>
+        </div>
       ]
     else
       #[]
@@ -152,12 +152,12 @@ def Sentence.toHtml (s : Sentence) : AlectryonM Html := do
       <input class="alectryon-toggle" id={buttonLabel} style="display: none" type="checkbox"/>
       <label class="alectryon-input" for={buttonLabel}>
         {←s.contents.toHtml}
-      <//label>
+      </label>
       <small class="alectryon-output">
         [messages]
         [goals]
-      <//small>
-    <//span>
+      </small>
+    </span>
 
 def Text.toHtml (t : Text) : AlectryonM Html := t.contents.toHtml
 
@@ -168,10 +168,10 @@ def Fragment.toHtml : Fragment → AlectryonM Html
 def baseHtml (content : Array Html) : AlectryonM Html := do
   let banner :=
     <div «class»="alectryon-banner">
-      Built with <a href="https://github.com/leanprover/doc-gen4">doc-gen4<//a>, running Lean4.
-      Bubbles (<span class="alectryon-bubble"><//span>) indicate interactive fragments: hover for details, tap to reveal contents.
-      Use <kbd>Ctrl+↑<//kbd> <kbd>Ctrl+↓<//kbd> to navigate, <kbd>Ctrl+🖱️<//kbd> to focus.
-      On Mac, use <kbd>Cmd<//kbd> instead of <kbd>Ctrl<//kbd>.
+      Built with <a href="https://github.com/leanprover/doc-gen4">doc-gen4</a>, running Lean4.
+      Bubbles (<span class="alectryon-bubble"></span>) indicate interactive fragments: hover for details, tap to reveal contents.
+      Use <kbd>Ctrl+↑</kbd> <kbd>Ctrl+↓</kbd> to navigate, <kbd>Ctrl+🖱️</kbd> to focus.
+      On Mac, use <kbd>Cmd</kbd> instead of <kbd>Ctrl</kbd>.
     </div>
 
   pure

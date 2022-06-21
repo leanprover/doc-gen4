@@ -89,7 +89,6 @@ syntax jsxAttr := jsxSimpleAttr <|> jsxAttrSpread
 
 syntax "<" rawIdent jsxAttr* "/>" : jsxElement
 syntax "<" rawIdent jsxAttr* ">" jsxChild* "</" rawIdent ">" : jsxElement
-syntax "<" rawIdent jsxAttr* ">" jsxChild* "<//" rawIdent ">" : jsxElement
 
 syntax jsxText      : jsxChild
 syntax "{" term "}" : jsxChild
@@ -135,9 +134,6 @@ macro_rules
   | `(<$n $attrs* />) => do
     `(Html.element $(quote (toString n.getId)) true $(← translateAttrs attrs) #[])
   | `(<$n $attrs* >$children*</$m>) => do
-    let (tag, children) ← htmlHelper n children m
-    `(Html.element $(quote tag) false $(← translateAttrs attrs) $children)
-  | `(<$n $attrs* >$children*<//$m>) => do
     let (tag, children) ← htmlHelper n children m
     `(Html.element $(quote tag) true $(← translateAttrs attrs) $children)
 
