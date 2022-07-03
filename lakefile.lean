@@ -12,16 +12,16 @@ lean_exe «doc-gen4» {
 }
 
 require CMark from git
-  "https://github.com/xubaiw/CMark.lean" @ "b3848a9c7781b3a0dda4d78b62a7f15a7941462d"
+  "https://github.com/xubaiw/CMark.lean" @ "192939e27263b0932700ade3442e1bf2ce67c3a6"
 
 require Unicode from git
-  "https://github.com/hargonix/Unicode.lean" @ "603450c82cf5066c6db6df0e8ee115f93d71f5fb"
+  "https://github.com/hargonix/Unicode.lean" @ "b73232aeefd6391951f9bd256e3dc4ec937c7238"
 
 require Cli from git
-  "https://github.com/hargonix/lean4-cli" @ "f8fe306d00b31cdfcf5d24e6c0d050e34bec6bb0"
+  "https://github.com/mhuisi/lean4-cli" @ "f7590ce072b0321752a7b9942892d0104dee4036"
 
 require lake from git
-  "https://github.com/leanprover/lake" @ "12e2463b35829368a59d18a5504dd2f73ac1621d"
+  "https://github.com/leanprover/lake" @ "401e738e4ca989ced8d9bb0cf7f66be9133fc435"
 
 require leanInk from git
   "https://github.com/hargonix/LeanInk" @ "doc-gen"

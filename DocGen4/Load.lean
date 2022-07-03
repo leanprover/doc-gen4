@@ -23,13 +23,13 @@ def lakeSetup (imports : List String) : IO (Except UInt32 (Lake.Workspace × Str
   let (leanInstall?, lakeInstall?) ← Lake.findInstall?
   match Lake.Cli.mkLakeConfig {leanInstall?, lakeInstall?} with
   | Except.ok config =>
-    let ws ← Lake.LogT.run Lake.MonadLog.eio (Lake.loadWorkspace config)
+    let ws : Lake.Workspace ← Lake.loadWorkspace config |>.run Lake.MonadLog.eio
     let lean := config.leanInstall
     if lean.githash ≠ Lean.githash then
       IO.println s!"WARNING: This doc-gen was built with Lean: {Lean.githash} but the project is running on: {lean.githash}"
     let lake := config.lakeInstall
     let ctx ← Lake.mkBuildContext ws lean lake
-    ws.root.buildImportsAndDeps imports |>.run Lake.MonadLog.eio ctx
+    (ws.root.buildImportsAndDeps imports *> pure ()) |>.run Lake.MonadLog.eio ctx
     initSearchPath (←findSysroot) ws.leanPaths.oleanPath
     pure $ Except.ok (ws, lean.githash)
   | Except.error err =>
