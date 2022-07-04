@@ -30,7 +30,11 @@ def lakeSetup (imports : List String) : IO (Except UInt32 (Lake.Workspace × Str
     let lake := config.lakeInstall
     let ctx ← Lake.mkBuildContext ws lean lake
     (ws.root.buildImportsAndDeps imports *> pure ()) |>.run Lake.MonadLog.eio ctx
-    initSearchPath (←findSysroot) ws.leanPaths.oleanPath
+    let mut sp : Lean.SearchPath := []
+    sp ← addSearchPathFromEnv sp
+    sp := lake.oleanDir :: lean.oleanDir :: sp
+    sp := ws.oleanPath ++ sp
+    searchPathRef.set sp
     pure $ Except.ok (ws, lean.githash)
   | Except.error err =>
     throw $ IO.userError err.toString
