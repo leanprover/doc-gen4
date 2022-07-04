@@ -97,9 +97,9 @@ syntax jsxElement   : jsxChild
 
 scoped syntax:max jsxElement : term
 
-def translateAttrs (attrs : Array Syntax) : MacroM Syntax := do
+def translateAttrs (attrs : Array (TSyntax `DocGen4.Jsx.jsxAttr)) : MacroM (TSyntax `term) := do
   let mut as ← `(#[])
-  for attr in attrs do
+  for attr in attrs.map TSyntax.raw do
     as ← match attr with
     | `(jsxAttr| $n:jsxAttrName=$v:jsxAttrVal) =>
       let n ← match n with
@@ -115,13 +115,13 @@ def translateAttrs (attrs : Array Syntax) : MacroM Syntax := do
     | _ => Macro.throwUnsupported
   return as
 
-private def htmlHelper (n : Syntax) (children : Array Syntax) (m : Syntax) : MacroM (String × Syntax):= do
+private def htmlHelper (n : Syntax) (children : Array Syntax) (m : Syntax) : MacroM (String × (TSyntax `term)):= do
   unless n.getId == m.getId do
     withRef m <| Macro.throwError s!"Leading and trailing part of tags don't match: '{n}', '{m}'"
   let mut cs ← `(#[])
   for child in children do
     cs ← match child with
-    | `(jsxChild|$t:jsxText)    => `(($cs).push (Html.text $(quote t[0].getAtomVal!)))
+    | `(jsxChild|$t:jsxText)    => `(($cs).push (Html.text $(quote t.raw[0].getAtomVal!)))
     -- TODO(WN): elab as list of children if type is `t Html` where `Foldable t`
     | `(jsxChild|{$t})          => `(($cs).push ($t : Html))
     | `(jsxChild|[$t])          => `($cs ++ ($t : Array Html))
@@ -132,7 +132,9 @@ private def htmlHelper (n : Syntax) (children : Array Syntax) (m : Syntax) : Mac
 
 macro_rules
   | `(<$n $attrs* />) => do
-    `(Html.element $(quote (toString n.getId)) true $(← translateAttrs attrs) #[])
+    let kind := quote (toString n.getId)
+    let attrs ← translateAttrs attrs
+    `(Html.element $kind true $attrs #[])
   | `(<$n $attrs* >$children*</$m>) => do
     let (tag, children) ← htmlHelper n children m
     `(Html.element $(quote tag) true $(← translateAttrs attrs) $children)
