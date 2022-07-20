@@ -21,18 +21,17 @@ as well as all the dependencies.
 -/
 def lakeSetup (imports : List String) : IO (Except UInt32 (Lake.Workspace × String)) := do
   let (leanInstall?, lakeInstall?) ← Lake.findInstall?
-  match Lake.Cli.mkLakeConfig {leanInstall?, lakeInstall?} with
-  | Except.ok config =>
+  match ←(EIO.toIO' $ Lake.mkLoadConfig {leanInstall?, lakeInstall?}) with
+  | .ok config =>
     let ws : Lake.Workspace ← Lake.loadWorkspace config |>.run Lake.MonadLog.eio
-    let lean := config.leanInstall
-    if lean.githash ≠ Lean.githash then
-      IO.println s!"WARNING: This doc-gen was built with Lean: {Lean.githash} but the project is running on: {lean.githash}"
-    let lake := config.lakeInstall
-    let ctx ← Lake.mkBuildContext ws lean lake
+    let libraryLeanGitHash := ws.env.lean.githash
+    if libraryLeanGitHash ≠ Lean.githash then
+      IO.println s!"WARNING: This doc-gen was built with Lean: {Lean.githash} but the project is running on: {libraryLeanGitHash}"
+    let ctx ← Lake.mkBuildContext ws
     (ws.root.buildImportsAndDeps imports *> pure ()) |>.run Lake.MonadLog.eio ctx
     initSearchPath (←findSysroot) ws.leanPaths.oleanPath
-    pure $ Except.ok (ws, lean.githash)
-  | Except.error err =>
+    pure $ Except.ok (ws, libraryLeanGitHash)
+  | .error err =>
     throw $ IO.userError err.toString
 
 /--

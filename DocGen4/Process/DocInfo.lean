@@ -114,7 +114,7 @@ def isBlackListed (declName : Name) : MetaM Bool := do
 def isProjFn (declName : Name) : MetaM Bool := do
   let env ← getEnv
   match declName with
-  | Name.str parent name _ =>
+  | Name.str parent name =>
     if isStructure env parent then
       match getStructureInfo? env parent with
       | some i =>

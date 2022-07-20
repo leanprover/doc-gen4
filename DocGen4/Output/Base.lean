@@ -123,7 +123,7 @@ Returns the doc-gen4 link to a declaration name.
 -/
 def declNameToLink (name : Name) : HtmlM String := do
   let res ← getResult
-  let module := res.moduleNames[res.name2ModIdx.find! name]
+  let module := res.moduleNames[res.name2ModIdx.find! name |>.toNat]!
   pure $ (←moduleNameToLink module) ++ "#" ++ name.toString
 
 /--
@@ -137,7 +137,7 @@ Returns the LeanInk link to a declaration name.
 -/
 def declNameToInkLink (name : Name) : HtmlM String := do
   let res ← getResult
-  let module := res.moduleNames[res.name2ModIdx.find! name]
+  let module := res.moduleNames[res.name2ModIdx.find! name |>.toNat]!
   pure $ (←moduleNameToInkLink module) ++ "#" ++ name.toString
 
 /--
@@ -179,7 +179,7 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
     match a.info.val.info with
     | Info.ofTermInfo i =>
       match i.expr.consumeMData with
-      | Expr.const name _ _ =>
+      | Expr.const name _ =>
          match t with
          | TaggedText.text t =>
            let (front, t, back) := splitWhitespaces $ Html.escape t
