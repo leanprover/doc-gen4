@@ -38,7 +38,7 @@ def lakeSetup (imports : List String) : IO (Except UInt32 (Lake.Workspace × Str
 Load a list of modules from the current Lean search path into an `Environment`
 to process for documentation.
 -/
-def load (imports : List Name) : IO Process.AnalyzerResult := do
+def load (imports : List Name) (transitiveModules : Bool) : IO (Process.AnalyzerResult × Hierarchy) := do
   let env ← importModules (List.map (Import.mk · false) imports) Options.empty
   IO.println "Processing modules"
   let config := {
@@ -49,6 +49,6 @@ def load (imports : List Name) : IO Process.AnalyzerResult := do
     fileName := default,
     fileMap := default,
   }
-  Prod.fst <$> Meta.MetaM.toIO Process.process config { env := env} {} {}
+  Prod.fst <$> Meta.MetaM.toIO (Process.process imports transitiveModules) config { env := env } {} {}
 
 end DocGen4

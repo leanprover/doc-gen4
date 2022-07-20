@@ -14,7 +14,7 @@ open scoped DocGen4.Jsx
 /--
 The HTML template used for all pages.
 -/
-def baseHtmlGenerator (title : String) (site : Array Html) : HtmlM Html := do
+def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := do
   pure
     <html lang="en">
       <head>
@@ -66,7 +66,7 @@ def baseHtmlGenerator (title : String) (site : Array Html) : HtmlM Html := do
 /--
 A comfortability wrapper around `baseHtmlGenerator`.
 -/
-def baseHtml (title : String) (site : Html) : HtmlM Html := baseHtmlGenerator title #[site]
+def baseHtml (title : String) (site : Html) : BaseHtmlM Html := baseHtmlGenerator title #[site]
 
 end Output
 end DocGen4

@@ -11,86 +11,91 @@ import DocGen4.Output.Index
 import DocGen4.Output.Module
 import DocGen4.Output.NotFound
 import DocGen4.Output.Find
-import DocGen4.Output.Semantic
 import DocGen4.Output.SourceLinker
 import DocGen4.LeanInk.Output
+import Std.Data.HashMap
 
 namespace DocGen4
 
-open Lean IO System Output Process
+open Lean IO System Output Process Std
 
-/--
-The main entrypoint for outputting the documentation HTML based on an
-`AnalyzerResult`.
--/
-def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) (inkPath : Option System.FilePath) : IO Unit := do
-  let config := {
-    depthToRoot := 0,
-    result := result,
-    currentName := none,
-    sourceLinker := ←sourceLinker ws leanHash
-    leanInkEnabled := inkPath.isSome
-  }
+def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let basePath := FilePath.mk "." / "build" / "doc"
   let srcBasePath := basePath / "src"
-  let indexHtml := ReaderT.run index config 
-  let findHtml := ReaderT.run find { config with depthToRoot := 1 }
-  let notFoundHtml := ReaderT.run notFound config
-  -- Rendering the entire lean compiler takes time....
-  --let sourceSearchPath := ((←Lean.findSysroot) / "src" / "lean") :: ws.root.srcDir :: ws.leanSrcPath
-  let sourceSearchPath := ws.root.srcDir :: ws.leanSrcPath
+  let declarationDataPath := basePath / "declaration-data.bmp"
 
+  -- Base structure
   FS.createDirAll basePath
   FS.createDirAll (basePath / "find")
-  FS.createDirAll (basePath / "semantic")
   FS.createDirAll srcBasePath
 
-  let mut declList := #[]
-  for (_, mod) in result.moduleInfo.toArray do
-    for decl in filterMapDocInfo mod.members do
-      let name := decl.getName.toString
-      let config := { config with depthToRoot := 0 }
-      let doc := decl.getDocString.getD ""
-      let root := Id.run <| ReaderT.run (getRoot) config
-      let link :=  root ++ s!"../semantic/{decl.getName.hash}.xml#"
-      let docLink := Id.run <| ReaderT.run (declNameToLink decl.getName) config
-      let sourceLink := Id.run <| ReaderT.run (getSourceUrl mod.name decl.getDeclarationRange) config
-      let obj := Json.mkObj [("name", name), ("doc", doc), ("link", link), ("docLink", docLink), ("sourceLink", sourceLink)]
-      declList := declList.push obj
-      let xml := toString <| Id.run <| ReaderT.run (semanticXml decl) config 
-      FS.writeFile (basePath / "semantic" / s!"{decl.getName.hash}.xml") xml
-  let json := Json.arr declList
-
-  FS.writeFile (basePath / "semantic" / "docgen4.xml") <| toString <| Id.run <| ReaderT.run schemaXml config 
-
+  -- The three HTML files we always need
+  let indexHtml := ReaderT.run index config
   FS.writeFile (basePath / "index.html") indexHtml.toString
+
+  let notFoundHtml := ReaderT.run notFound config
   FS.writeFile (basePath / "404.html") notFoundHtml.toString
+
+  let findHtml := ReaderT.run find { config with depthToRoot := 1 }
   FS.writeFile (basePath / "find" / "index.html") findHtml.toString
 
+  -- The root JSON for find
+  let topLevelModules := config.hierarchy.getChildren.toArray.map (Json.str ∘ toString ∘ Prod.fst)
+  FS.writeFile declarationDataPath (Json.arr topLevelModules).compress
+
+  -- All the static stuff
   FS.writeFile (basePath / "style.css") styleCss
-
-  let declarationDataPath := basePath / "declaration-data.bmp"
-  FS.writeFile declarationDataPath json.compress
-  FS.writeFile (basePath / "declaration-data.timestamp") <| toString (←declarationDataPath.metadata).modified.sec
-
   FS.writeFile (basePath / "declaration-data.js") declarationDataCenterJs
   FS.writeFile (basePath / "nav.js") navJs
   FS.writeFile (basePath / "find" / "find.js") findJs
   FS.writeFile (basePath / "how-about.js") howAboutJs
   FS.writeFile (basePath / "search.js") searchJs
   FS.writeFile (basePath / "mathjax-config.js") mathjaxConfigJs
+
+  -- All the static stuff for LeanInk
   FS.writeFile (srcBasePath / "alectryon.css") alectryonCss
   FS.writeFile (srcBasePath / "alectryon.js") alectryonJs
   FS.writeFile (srcBasePath / "docutils_basic.css") docUtilsCss
   FS.writeFile (srcBasePath / "pygments.css") pygmentsCss
+
+
+def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) (inkPath : Option System.FilePath) : IO Unit := do
+  let config : SiteContext := {
+    result := result,
+    sourceLinker := ←sourceLinker ws leanHash
+    leanInkEnabled := inkPath.isSome
+  }
+  let basePath := FilePath.mk "." / "build" / "doc"
+  let srcBasePath := basePath / "src"
+  -- Rendering the entire lean compiler takes time....
+  --let sourceSearchPath := ((←Lean.findSysroot) / "src" / "lean") :: ws.root.srcDir :: ws.leanSrcPath
+  let sourceSearchPath := ws.root.srcDir :: ws.leanSrcPath
+
+  let mut declMap := HashMap.empty
+  for (_, mod) in result.moduleInfo.toArray do
+    let topLevelMod := mod.name.getRoot
+    let mut jsonDecls := #[]
+    for decl in filterMapDocInfo mod.members do
+      let name := decl.getName.toString
+      let doc := decl.getDocString.getD ""
+      let docLink := declNameToLink decl.getName |>.run config baseConfig
+      IO.println s!"DOC: {docLink}"
+      let sourceLink := getSourceUrl mod.name decl.getDeclarationRange |>.run config baseConfig
+      let json := Json.mkObj [("name", name), ("doc", doc), ("docLink", docLink), ("sourceLink", sourceLink)]
+      jsonDecls := jsonDecls.push json
+    let currentModDecls := declMap.findD topLevelMod #[]
+    declMap := declMap.insert topLevelMod (currentModDecls ++ jsonDecls)
+
+  for (topLevelMod, decls) in declMap.toList do
+    FS.writeFile (basePath / s!"declaration-data-{topLevelMod}.bmp") (Json.arr decls).compress
 
   for (modName, module) in result.moduleInfo.toArray do
     let fileDir := moduleNameToDirectory basePath modName
     let filePath := moduleNameToFile basePath modName
     -- path: 'basePath/module/components/till/last.html'
     -- The last component is the file name, so we drop it from the depth to root.
-    let config := { config with depthToRoot := modName.components.dropLast.length }
-    let moduleHtml := ReaderT.run (moduleToHtml module) config
+    let baseConfig := { baseConfig with depthToRoot := modName.components.dropLast.length }
+    let moduleHtml := moduleToHtml module |>.run config baseConfig
     FS.createDirAll $ fileDir
     FS.writeFile filePath moduleHtml.toString
     if let some inkPath := inkPath then
@@ -98,12 +103,28 @@ def htmlOutput (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String
         IO.println s!"Inking: {modName.toString}"
         -- path: 'basePath/src/module/components/till/last.html'
         -- The last component is the file name, however we are in src/ here so dont drop it this time
-        let config := { config with depthToRoot := modName.components.length }
-        let srcHtml ← ReaderT.run (LeanInk.moduleToHtml module inkPath inputPath) config
+        let baseConfig := { baseConfig with depthToRoot := modName.components.length }
+        let srcHtml ← LeanInk.moduleToHtml module inkPath inputPath |>.run config baseConfig
         let srcDir := moduleNameToDirectory srcBasePath modName
         let srcPath := moduleNameToFile srcBasePath modName
         FS.createDirAll srcDir
         FS.writeFile srcPath srcHtml.toString
+
+def getSimpleBaseContext (hierarchy : Hierarchy) : SiteBaseContext :=
+  {
+    depthToRoot := 0,
+    currentName := none,
+    hierarchy
+  }
+
+/--
+The main entrypoint for outputting the documentation HTML based on an
+`AnalyzerResult`.
+-/
+def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Workspace) (leanHash: String) (inkPath : Option System.FilePath) : IO Unit := do
+  let baseConfig := getSimpleBaseContext hierarchy
+  htmlOutputSetup baseConfig
+  htmlOutputResults baseConfig result ws leanHash inkPath
 
 end DocGen4
 

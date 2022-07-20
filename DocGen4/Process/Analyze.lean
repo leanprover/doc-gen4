@@ -6,14 +6,20 @@ Authors: Henrik Böving
 
 import Lean
 import Std.Data.HashMap
+import Std.Data.HashSet
 
 import DocGen4.Process.Base
 import DocGen4.Process.Hierarchy
 import DocGen4.Process.DocInfo
 
+open Std
+
+def HashSet.fromArray [BEq α] [Hashable α] (xs : Array α) : HashSet α :=
+  xs.foldr (flip .insert) .empty
+
 namespace DocGen4.Process
 
-open Lean Meta Std
+open Lean Meta
 
 /--
 Member of a module, either a declaration or some module doc string.
@@ -54,10 +60,6 @@ structure AnalyzerResult where
   -/
   moduleInfo : HashMap Name Module
   /--
-  The module hierarchy as a tree structure.
-  -/
-  hierarchy : Hierarchy
-  /--
   An adjacency matrix for the import relation between modules, indexed
   my the values in `name2ModIdx`.
   -/
@@ -86,21 +88,33 @@ def getDocString : ModuleMember → Option String
 
 end ModuleMember
 
+def getRelevantModules (imports : List Name) : MetaM (HashSet Name) := do
+  let env ← getEnv
+  let mut relevant := .empty
+  for module in env.header.moduleNames do
+    if module.getRoot ∈ imports then
+      relevant := relevant.insert module
+  pure relevant
+
 /--
 Run the doc-gen analysis on all modules that are loaded into the `Environment`
 of this `MetaM` run.
 -/
-def process : MetaM AnalyzerResult := do
+def process (imports : List Name) (transitiveModules : Bool) : MetaM (AnalyzerResult × Hierarchy) := do
   let env ← getEnv
-  let mut res := mkHashMap env.header.moduleNames.size
-  for module in env.header.moduleNames do
-    let modDocs := match getModuleDoc? env module with
-    | none => #[]
-    | some ds => ds
-    |>.map (λ doc => ModuleMember.modDoc doc)
+  let relevantNames := if transitiveModules then (HashSet.fromArray env.header.moduleNames) else (←getRelevantModules imports)
+  let mut res := mkHashMap relevantNames.size
+  for module in relevantNames.toArray do
+    let modDocs := getModuleDoc? env module |>.getD #[] |>.map .modDoc
     res := res.insert module (Module.mk module modDocs)
 
-  for cinfo in env.constants.toList do
+  for (name, cinfo) in env.constants.toList do
+    let some modidx := env.getModuleIdxFor? name | unreachable!
+    let moduleName := env.allImportedModuleNames.get! modidx
+    -- skip irrelevant names
+    if !relevantNames.contains moduleName.getRoot then
+      continue
+
     try
       let config := {
         maxHeartbeats := 5000000,
@@ -108,14 +122,13 @@ def process : MetaM AnalyzerResult := do
         fileName := ←getFileName,
         fileMap := ←getFileMap
       }
-      let analysis := Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant cinfo) config { env := env} {} {}
+      let analysis := Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant (name, cinfo)) config { env := env} {} {}
       if let some dinfo ← analysis then
-        let some modidx := env.getModuleIdxFor? dinfo.getName | unreachable!
         let moduleName := env.allImportedModuleNames.get! modidx
         let module := res.find! moduleName
         res := res.insert moduleName {module with members := module.members.push (ModuleMember.docInfo dinfo)}
     catch e =>
-      IO.println s!"WARNING: Failed to obtain information for: {cinfo.fst}: {←e.toMessageData.toString}"
+      IO.println s!"WARNING: Failed to obtain information for: {name}: {←e.toMessageData.toString}"
 
   -- TODO: This is definitely not the most efficient way to store this data
   let mut adj := Array.mkArray res.size (Array.mkArray res.size false)
@@ -128,13 +141,14 @@ def process : MetaM AnalyzerResult := do
       let some importIdx := env.getModuleIdx? imp.module | unreachable!
       adj := adj.set! modIdx (adj.get! modIdx |>.set! importIdx true)
 
-  pure {
+  let hierarchy := Hierarchy.fromArray relevantNames.toArray
+  let analysis := {
     name2ModIdx := env.const2ModIdx,
     moduleNames := env.header.moduleNames,
     moduleInfo := res,
-    hierarchy := Hierarchy.fromArray env.header.moduleNames,
     importAdj := adj
   }
+  pure (analysis, hierarchy)
 
 def filterMapDocInfo (ms : Array ModuleMember) : Array DocInfo :=
   ms.filterMap filter
