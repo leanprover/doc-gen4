@@ -21,14 +21,16 @@ open Lean IO System Output Process Std
 
 def basePath := FilePath.mk "." / "build" / "doc"
 def srcBasePath := basePath / "src"
+def declarationsBasePath := basePath / "declarations"
 
 def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let findBasePath := basePath / "find"
 
   -- Base structure
   FS.createDirAll basePath
-  FS.createDirAll (basePath / "find")
+  FS.createDirAll findBasePath
   FS.createDirAll srcBasePath
+  FS.createDirAll declarationsBasePath
 
   -- All the doc-gen static stuff
   let indexHtml := ReaderT.run index config |>.toString
@@ -86,6 +88,7 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
   }
 
   FS.createDirAll basePath
+  FS.createDirAll declarationsBasePath
 
   -- Rendering the entire lean compiler takes time....
   --let sourceSearchPath := ((←Lean.findSysroot) / "src" / "lean") :: ws.root.srcDir :: ws.leanSrcPath
@@ -99,7 +102,7 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     declMap := declMap.insert topLevelMod (currentModDecls ++ jsonDecls)
 
   for (topLevelMod, decls) in declMap.toList do
-    FS.writeFile (basePath / s!"declaration-data-{topLevelMod}.bmp") (Json.arr decls).compress
+    FS.writeFile (declarationsBasePath / s!"declaration-data-{topLevelMod}.bmp") (Json.arr decls).compress
 
   for (modName, module) in result.moduleInfo.toArray do
     let fileDir := moduleNameToDirectory basePath modName
@@ -133,13 +136,13 @@ def htmlOutputFinalize (baseConfig : SiteBaseContext) : IO Unit := do
   htmlOutputSetup baseConfig
 
   let mut topLevelModules := #[]
-  for entry in ←System.FilePath.readDir basePath do
+  for entry in ←System.FilePath.readDir declarationsBasePath do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
       let module := entry.fileName.drop "declaration-data-".length |>.dropRight ".bmp".length
       topLevelModules := topLevelModules.push (Json.str module)
 
   -- The root JSON for find
-  FS.writeFile (basePath / "declaration-data.bmp") (Json.arr topLevelModules).compress
+  FS.writeFile (declarationsBasePath / "declaration-data.bmp") (Json.arr topLevelModules).compress
 
 /--
 The main entrypoint for outputting the documentation HTML based on an

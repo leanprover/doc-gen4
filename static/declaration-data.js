@@ -10,7 +10,7 @@ const CACHE_DB_KEY = "DECLARATIONS_KEY";
 
 async function fetchModuleData(module) {
   const moduleDataUrl = new URL(
-    `${SITE_ROOT}declaration-data-${module}.bmp`,
+    `${SITE_ROOT}/declarations/declaration-data-${module}.bmp`,
     window.location
   );
   const moduleData = await fetch(moduleDataUrl);
@@ -53,7 +53,7 @@ export class DeclarationDataCenter {
   static async init() {
     if (!DeclarationDataCenter.singleton) {
       const dataListUrl = new URL(
-        `${SITE_ROOT}declaration-data.bmp`,
+        `${SITE_ROOT}/declarations/declaration-data.bmp`,
         window.location
       );
 
