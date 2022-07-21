@@ -27,6 +27,9 @@ namespace HierarchyMap
 def toList : HierarchyMap → List (Name × Hierarchy)
 | t => t.revFold (fun ps k v => (k, v)::ps) []
 
+def toArray : HierarchyMap → Array (Name × Hierarchy)
+| t => t.fold (fun ps k v => ps ++ #[(k, v)] ) #[]
+
 def hForIn [Monad m] (t : HierarchyMap) (init : σ) (f : (Name × Hierarchy) → σ → m (ForInStep σ)) : m σ :=
   t.forIn init (fun a b acc => f (a, b) acc)
 
@@ -58,7 +61,7 @@ partial def insert! (h : Hierarchy) (n : Name) : Hierarchy := Id.run $ do
     | none =>
       node hn h.isFile (cs.insert Name.cmp n $ empty n true)
     | some (node _ true _) => h
-    | some hierarchy@(node _ false ccs) =>
+    | some (node _ false ccs) =>
         cs := cs.erase Name.cmp n
         node hn h.isFile (cs.insert Name.cmp n $ node n true ccs)
   else

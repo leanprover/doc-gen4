@@ -14,7 +14,7 @@ open scoped DocGen4.Jsx
 /--
 Render the 404 page.
 -/
-def notFound : HtmlM Html := do templateExtends (baseHtml "404") $ pure $
+def notFound : BaseHtmlM Html := do templateExtends (baseHtml "404") $ pure $
   <main>
     <h1>404 Not Found</h1>
     <p> Unfortunately, the page you were looking for is no longer here. </p>

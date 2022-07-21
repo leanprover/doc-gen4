@@ -13,7 +13,7 @@ namespace Output
 open Lean
 open scoped DocGen4.Jsx
 
-def moduleListFile (file : Name) : HtmlM Html := do
+def moduleListFile (file : Name) : BaseHtmlM Html := do
   pure <div class={if (← getCurrentName) == file then "nav_link visible" else "nav_link"}>
     {←moduleToHtmlLink file}
   </div>
@@ -21,7 +21,7 @@ def moduleListFile (file : Name) : HtmlM Html := do
 /--
 Build the HTML tree representing the module hierarchy.
 -/
-partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
+partial def moduleListDir (h : Hierarchy) : BaseHtmlM Html := do
   let children := Array.mk (h.getChildren.toList.map Prod.snd)
   let dirs := children.filter (λ c => c.getChildren.toList.length != 0)
   let files := children.filter (λ c => Hierarchy.isFile c ∧ c.getChildren.toList.length = 0)
@@ -30,7 +30,7 @@ partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
   let fileNodes ← (files.mapM moduleListFile)
   let moduleLink ← moduleNameToLink h.getName
   let summary :=
-    if (←getResult).moduleInfo.contains h.getName then
+    if h.isFile then
       <summary>{←moduleToHtmlLink h.getName}</summary>
     else
       <summary>{h.getName.toString}</summary>
@@ -45,17 +45,17 @@ partial def moduleListDir (h : Hierarchy) : HtmlM Html := do
 /--
 Return a list of top level modules, linkified and rendered as HTML
 -/
-def moduleList : HtmlM Html := do
-  let hierarchy := (←getResult).hierarchy
+def moduleList : BaseHtmlM Html := do
+  let hierarchy ← getHierarchy
   let mut list := Array.empty
-  for (n, cs) in hierarchy.getChildren do
+  for (_, cs) in hierarchy.getChildren do
     list := list.push $ ←moduleListDir cs
   pure <div class="module_list">[list]</div>
 
 /--
 The main entry point to rendering the navbar on the left hand side.
 -/
-def navbar : HtmlM Html := do
+def navbar : BaseHtmlM Html := do
   pure
     <nav class="nav">
       <h3>General documentation</h3>

@@ -208,14 +208,15 @@ open Lean
 open LeanInk.Annotation.Alectryon
 open scoped DocGen4.Jsx
 
-def moduleToHtml (module : Process.Module) (inkPath : System.FilePath) (sourceFilePath : System.FilePath) : HtmlT IO Html := withReader (setCurrentName module.name) do
+def moduleToHtml (module : Process.Module) (inkPath : System.FilePath) (sourceFilePath : System.FilePath) : HtmlT IO Html := withTheReader SiteBaseContext (setCurrentName module.name) do
   let json ← runInk inkPath sourceFilePath
   let fragments := fromJson? json
   match fragments with
   | .ok fragments =>
     let render := StateT.run (LeanInk.Annotation.Alectryon.renderFragments fragments) { counter := 0 }
     let ctx ← read
-    let (html, _) := ReaderT.run render ctx
+    let baseCtx ← readThe SiteBaseContext
+    let (html, _) := render |>.run ctx baseCtx
     pure html
   | .error err => throw $ IO.userError s!"Error while parsing LeanInk Output: {err}"
 

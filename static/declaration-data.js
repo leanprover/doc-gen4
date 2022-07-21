@@ -6,6 +6,17 @@
 
 const CACHE_DB_NAME = "declaration-data";
 const CACHE_DB_VERSION = 1;
+const CACHE_DB_KEY = "DECLARATIONS_KEY";
+
+async function fetchModuleData(module) {
+  const moduleDataUrl = new URL(
+    `${SITE_ROOT}declaration-data-${module}.bmp`,
+    window.location
+  );
+  const moduleData = await fetch(moduleDataUrl);
+  const moduleDataJson = await moduleData.json();
+  return moduleDataJson;
+}
 
 /**
  * The DeclarationDataCenter is used for declaration searching.
@@ -41,42 +52,39 @@ export class DeclarationDataCenter {
    */
   static async init() {
     if (!DeclarationDataCenter.singleton) {
-      const timestampUrl = new URL(
-        `${SITE_ROOT}declaration-data.timestamp`,
-        window.location
-      );
-      const dataUrl = new URL(
+      const dataListUrl = new URL(
         `${SITE_ROOT}declaration-data.bmp`,
         window.location
       );
 
-      const timestampRes = await fetch(timestampUrl);
-      const timestamp = await timestampRes.text();
-
       // try to use cache first
-      const data = await fetchCachedDeclarationData(timestamp).catch(_e => null);
+      const data = await fetchCachedDeclarationData().catch(_e => null);
       if (data) {
         // if data is defined, use the cached one.
         DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
       } else {
         // undefined. then fetch the data from the server.
-        const dataRes = await fetch(dataUrl);
-        const dataJson = await dataRes.json();
+        const dataListRes = await fetch(dataListUrl);
+        const dataListJson = await dataListRes.json();
+
+        // TODO: this is probably kind of inefficient
+        const dataJsonUnflattened = await Promise.all(dataListJson.map(fetchModuleData));
+
+        const dataJson = dataJsonUnflattened.flat();
         // the data is a map of name (original case) to declaration data.
         const data = new Map(
-          dataJson.map(({ name, doc, link, docLink, sourceLink }) => [
+          dataJson.map(({ name, doc, docLink, sourceLink }) => [
             name,
             {
               name,
               lowerName: name.toLowerCase(),
               lowerDoc: doc.toLowerCase(),
-              link,
               docLink,
               sourceLink,
             },
           ])
         );
-        await cacheDeclarationData(timestamp, data);
+        await cacheDeclarationData(data);
         DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
       }
     }
@@ -137,7 +145,6 @@ function getMatches(declarations, pattern, maxResults = 30) {
     name,
     lowerName,
     lowerDoc,
-    link,
     docLink,
     sourceLink,
   } of declarations.values()) {
@@ -156,7 +163,6 @@ function getMatches(declarations, pattern, maxResults = 30) {
         err,
         lowerName,
         lowerDoc,
-        link,
         docLink,
         sourceLink,
       });
@@ -195,17 +201,16 @@ async function getDeclarationDatabase() {
 
 /**
  * Store data in indexedDB object store.
- * @param {string} timestamp
  * @param {Map<string, any>} data
  */
-async function cacheDeclarationData(timestamp, data) {
+async function cacheDeclarationData(data) {
   let db = await getDeclarationDatabase();
   let store = db
     .transaction("declaration", "readwrite")
     .objectStore("declaration");
   return new Promise((resolve, reject) => {
     let clearRequest = store.clear();
-    let addRequest = store.add(data, timestamp);
+    let addRequest = store.add(data, CACHE_DB_KEY);
 
     addRequest.onsuccess = function (event) {
       resolve();
@@ -221,16 +226,15 @@ async function cacheDeclarationData(timestamp, data) {
 
 /**
  * Retrieve data from indexedDB database.
- * @param {string} timestamp
  * @returns {Promise<Map<string, any>|undefined>}
  */
-async function fetchCachedDeclarationData(timestamp) {
+async function fetchCachedDeclarationData() {
   let db = await getDeclarationDatabase();
   let store = db
     .transaction("declaration", "readonly")
     .objectStore("declaration");
   return new Promise((resolve, reject) => {
-    let transactionRequest = store.get(timestamp);
+    let transactionRequest = store.get(CACHE_DB_KEY);
     transactionRequest.onsuccess = function (event) {
       resolve(event.result);
     };

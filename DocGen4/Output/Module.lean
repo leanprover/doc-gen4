@@ -233,10 +233,10 @@ def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
 /--
 The main entry point to rendering the HTML for an entire module.
 -/
-def moduleToHtml (module : Process.Module) : HtmlM Html := withReader (setCurrentName module.name) do
+def moduleToHtml (module : Process.Module) : HtmlM Html := withTheReader SiteBaseContext (setCurrentName module.name) do
   let memberDocs ← module.members.mapM (λ i => moduleMemberToHtml module.name i)
   let memberNames := filterMapDocInfo module.members |>.map DocInfo.getName
-  templateExtends (baseHtmlGenerator module.name.toString) $ pure #[
+  templateLiftExtends (baseHtmlGenerator module.name.toString) $ pure #[
     ←internalNav memberNames module.name,
     Html.element "main" false #[] memberDocs
   ]

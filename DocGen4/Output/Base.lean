@@ -13,13 +13,14 @@ open scoped DocGen4.Jsx
 open Lean System Widget Elab Process
 
 /--
-The context used in the `HtmlM` monad for HTML templating.
+The context used in the `BaseHtmlM` monad for HTML templating.
 -/
-structure SiteContext where
+structure SiteBaseContext where
+
   /--
-  The full analysis result from the Process module.
+  The module hierarchy as a tree structure.
   -/
-  result : AnalyzerResult
+  hierarchy : Hierarchy
   /--
   How far away we are from the page root, used for relative links to the root.
   -/
@@ -29,6 +30,15 @@ structure SiteContext where
   pages that don't have a module name.
   -/
   currentName : Option Name
+
+/--
+The context used in the `HtmlM` monad for HTML templating.
+-/
+structure SiteContext where
+  /--
+  The full analysis result from the Process module.
+  -/
+  result : AnalyzerResult
   /--
   A function to link declaration names to their source URLs, usually Github ones.
   -/
@@ -38,50 +48,63 @@ structure SiteContext where
   -/
   leanInkEnabled : Bool
 
-def setCurrentName (name : Name) (ctx : SiteContext) := {ctx with currentName := some name}
+def setCurrentName (name : Name) (ctx : SiteBaseContext) := {ctx with currentName := some name}
 
-abbrev HtmlT := ReaderT SiteContext
+abbrev BaseHtmlT := ReaderT SiteBaseContext
+abbrev BaseHtmlM := BaseHtmlT Id
+
+abbrev HtmlT (m) := ReaderT SiteContext (BaseHtmlT m)
 abbrev HtmlM := HtmlT Id
+
+def HtmlT.run (x : HtmlT m α) (ctx : SiteContext) (baseCtx : SiteBaseContext) : m α :=
+  ReaderT.run x ctx |>.run baseCtx
+
+def HtmlM.run (x : HtmlM α) (ctx : SiteContext) (baseCtx : SiteBaseContext) : α :=
+  ReaderT.run x ctx |>.run baseCtx |>.run
 
 /--
 Obtains the root URL as a relative one to the current depth.
 -/
-def getRoot : HtmlM String := do
+def getRoot : BaseHtmlM String := do
   let rec go: Nat -> String
   | 0 => "./"
   | Nat.succ n' => "../" ++ go n'
-  let d <- SiteContext.depthToRoot <$> read
+  let d <- SiteBaseContext.depthToRoot <$> read
   return (go d)
 
+def getHierarchy : BaseHtmlM Hierarchy := do pure (←read).hierarchy
+def getCurrentName : BaseHtmlM (Option Name) := do pure (←read).currentName
 def getResult : HtmlM AnalyzerResult := do pure (←read).result
-def getCurrentName : HtmlM (Option Name) := do pure (←read).currentName
 def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do pure $ (←read).sourceLinker module range
 def leanInkEnabled? : HtmlM Bool := do pure (←read).leanInkEnabled
 
 /--
 If a template is meant to be extended because it for example only provides the
 header but no real content this is the way to fill the template with content.
+This is untyped so HtmlM and BaseHtmlM can be mixed.
 -/
-def templateExtends {α β : Type} (base : α → HtmlM β) (new : HtmlM α) : HtmlM β :=
+def templateExtends {α β} {m} [Bind m] (base : α → m β) (new : m α) : m β :=
   new >>= base
 
+def templateLiftExtends {α β} {m n} [Bind m] [MonadLift n m] (base : α → n β) (new : m α) : m β :=
+  new >>= (monadLift ∘ base)
 /--
 Returns the doc-gen4 link to a module name.
 -/
-def moduleNameToLink (n : Name) : HtmlM String := do
+def moduleNameToLink (n : Name) : BaseHtmlM String := do
   let parts := n.components.map Name.toString
   pure $ (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 /--
 Returns the HTML doc-gen4 link to a module name.
 -/
-def moduleToHtmlLink (module : Name) : HtmlM Html := do
+def moduleToHtmlLink (module : Name) : BaseHtmlM Html := do
   pure <a href={←moduleNameToLink module}>{module.toString}</a>
 
 /--
 Returns the LeanInk link to a module name.
 -/
-def moduleNameToInkLink (n : Name) : HtmlM String := do
+def moduleNameToInkLink (n : Name) : BaseHtmlM String := do
   let parts := "src" :: n.components.map Name.toString
   pure $ (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
