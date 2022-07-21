@@ -20,18 +20,6 @@ def getTopLevelModules (p : Parsed) : IO (List String) :=  do
     throw $ IO.userError "No topLevelModules provided."
   pure topLevelModules
 
-def runInitCmd (p : Parsed) : IO UInt32 := do
-  let topLevelModules ← getTopLevelModules p
-  let res ← lakeSetup topLevelModules
-  match res with
-  | Except.ok _ =>
-    let modules := topLevelModules.map Name.mkSimple
-    let hierarchy ← loadInit modules
-    let baseConfig := getSimpleBaseContext hierarchy
-    htmlOutputSetup baseConfig
-    pure 0
-  | Except.error rc => pure rc
-
 def runSingleCmd (p : Parsed) : IO UInt32 := do
     let topLevelModules ← getTopLevelModules p
     let relevantModules := [p.positionalArg! "module" |>.as! String]
