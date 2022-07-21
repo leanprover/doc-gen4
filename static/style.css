@@ -491,6 +491,11 @@ pre code { padding: 0 0; }
     margin-left: 2ex;
 }
 
+.inductive_ctor_doc  {
+    text-indent: 2ex;
+    padding-top: 1ex;
+}
+
 .structure_field_doc {
     text-indent: 0;
     padding-top: 1ex;
