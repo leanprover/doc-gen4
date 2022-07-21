@@ -17,29 +17,7 @@ The HTML template used for all pages.
 def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := do
   pure
     <html lang="en">
-      <head>
-
-        <title>{title}</title>
-
-        <meta charset="UTF-8"/>
-        <meta name="viewport" content="width=device-width, initial-scale=1"/>
-
-        <link rel="stylesheet" href={s!"{←getRoot}style.css"}/>
-        <link rel="stylesheet" href={s!"{←getRoot}pygments.css"}/>
-        <link rel="shortcut icon" href={s!"{←getRoot}favicon.ico"}/>
-        <link rel="prefetch" href={s!"{←getRoot}declaration-data.bmp"}/>
-
-        <script defer="true" src={s!"{←getRoot}mathjax-config.js"}></script>
-        <script defer="true" src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-        <script defer="true" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-
-        <script>{s!"const SITE_ROOT={String.quote (←getRoot)};"}</script>
-        <script type="module" src={s!"{←getRoot}nav.js"}></script>
-        <script type="module" src={s!"{←getRoot}search.js"}></script>
-        <script type="module" src={s!"{←getRoot}how-about.js"}></script>
-
-      </head>
-
+      {←baseHtmlHead title}
       <body>
 
         <input id="nav_toggle" type="checkbox"/>
@@ -57,7 +35,9 @@ def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := d
 
         [site]
 
-        {←navbar}
+        <nav class="nav">
+          <iframe src={s!"{←getRoot}/navbar.html"} class="navframe" frameBorder="0"></iframe>
+        </nav>
 
       </body>
 

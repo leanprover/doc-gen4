@@ -57,21 +57,26 @@ The main entry point to rendering the navbar on the left hand side.
 -/
 def navbar : BaseHtmlM Html := do
   pure
-    <nav class="nav">
-      <h3>General documentation</h3>
-      <div class="nav_link"><a href={s!"{←getRoot}"}>index</a></div>
-      /-
-      TODO: Add these in later
-      <div class="nav_link"><a href={s!"{←getRoot}tactics.html"}>tactics</a></div>
-      <div class="nav_link"><a href={s!"{←getRoot}commands.html"}>commands</a></div>
-      <div class="nav_link"><a href={s!"{←getRoot}hole_commands.html"}>hole commands</a></div>
-      <div class="nav_link"><a href={s!"{←getRoot}attributes.html"}>attributes</a></div>
-      <div class="nav_link"><a href={s!"{←getRoot}notes.html"}>notes</a></div>
-      <div class="nav_link"><a href={s!"{←getRoot}references.html"}>references</a></div>
-      -/
-      <h3>Library</h3>
-      {← moduleList}
-    </nav>
+    <html lang="en">
+      {←baseHtmlHead "Navbar"}
+      <body>
+        <nav class="nav">
+          <h3>General documentation</h3>
+          <div class="nav_link"><a href={s!"{←getRoot}"}>index</a></div>
+          /-
+          TODO: Add these in later
+          <div class="nav_link"><a href={s!"{←getRoot}tactics.html"}>tactics</a></div>
+          <div class="nav_link"><a href={s!"{←getRoot}commands.html"}>commands</a></div>
+          <div class="nav_link"><a href={s!"{←getRoot}hole_commands.html"}>hole commands</a></div>
+          <div class="nav_link"><a href={s!"{←getRoot}attributes.html"}>attributes</a></div>
+          <div class="nav_link"><a href={s!"{←getRoot}notes.html"}>notes</a></div>
+          <div class="nav_link"><a href={s!"{←getRoot}references.html"}>references</a></div>
+          -/
+          <h3>Library</h3>
+          {← moduleList}
+        </nav>
+      </body>
+    </html>
 
 end Output
 end DocGen4

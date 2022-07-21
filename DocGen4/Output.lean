@@ -35,6 +35,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   -- All the doc-gen static stuff
   let indexHtml := ReaderT.run index config |>.toString
   let notFoundHtml := ReaderT.run notFound config |>.toString
+  let navbarHtml := ReaderT.run navbar config |>.toString
   let docGenStatic := #[
     ("style.css", styleCss),
     ("declaration-data.js", declarationDataCenterJs),
@@ -43,7 +44,8 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
     ("search.js", searchJs),
     ("mathjax-config.js", mathjaxConfigJs),
     ("index.html", indexHtml),
-    ("404.html", notFoundHtml)
+    ("404.html", notFoundHtml),
+    ("navbar.html", navbarHtml)
   ]
   for (fileName, content) in docGenStatic do
     FS.writeFile (basePath / fileName) content
