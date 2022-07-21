@@ -58,7 +58,12 @@ The main entry point to rendering the navbar on the left hand side.
 def navbar : BaseHtmlM Html := do
   pure
     <html lang="en">
-      {←baseHtmlHead "Navbar"}
+      <head>
+        [←baseHtmlHeadDeclarations]
+
+        <base target="_parent" />
+      </head>
+
       <body>
         <nav class="nav">
           <h3>General documentation</h3>

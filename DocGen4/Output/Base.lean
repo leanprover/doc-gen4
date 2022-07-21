@@ -215,29 +215,14 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
          pure #[<span class="fn">[←infoFormatToHtml t]</span>]
     | _ => pure #[<span class="fn">[←infoFormatToHtml t]</span>]
 
-def baseHtmlHead (title : String) : BaseHtmlM Html := do
-  pure
-    <head>
-      <title>{title}</title>
-
-      <meta charset="UTF-8"/>
-      <meta name="viewport" content="width=device-width, initial-scale=1"/>
-
-      <link rel="stylesheet" href={s!"{←getRoot}style.css"}/>
-      <link rel="stylesheet" href={s!"{←getRoot}pygments.css"}/>
-      <link rel="shortcut icon" href={s!"{←getRoot}favicon.ico"}/>
-      <link rel="prefetch" href={s!"{←getRoot}declaration-data.bmp"}/>
-
-      <script defer="true" src={s!"{←getRoot}mathjax-config.js"}></script>
-      <script defer="true" src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-      <script defer="true" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-
-      <script>{s!"const SITE_ROOT={String.quote (←getRoot)};"}</script>
-      <script type="module" src={s!"{←getRoot}nav.js"}></script>
-      <script type="module" src={s!"{←getRoot}search.js"}></script>
-      <script type="module" src={s!"{←getRoot}how-about.js"}></script>
-
-      <base target="_parent" />
-    </head>
+def baseHtmlHeadDeclarations : BaseHtmlM (Array Html) := do
+  pure #[
+    <meta charset="UTF-8"/>,
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>,
+    <link rel="stylesheet" href={s!"{←getRoot}style.css"}/>,
+    <link rel="stylesheet" href={s!"{←getRoot}pygments.css"}/>,
+    <link rel="shortcut icon" href={s!"{←getRoot}favicon.ico"}/>,
+    <link rel="prefetch" href={s!"{←getRoot}declaration-data.bmp"}/>
+  ]
 
 end DocGen4.Output
