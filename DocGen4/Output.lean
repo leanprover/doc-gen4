@@ -54,10 +54,6 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   for (fileName, content) in findStatic do
     FS.writeFile (findBasePath / fileName) content
 
-  -- The root JSON for find
-  let topLevelModules := config.hierarchy.getChildren.toArray.map (Json.str ∘ toString ∘ Prod.fst)
-  FS.writeFile (basePath / "declaration-data.bmp") (Json.arr topLevelModules).compress
-
   let alectryonStatic := #[
     ("alectryon.css", alectryonCss),
     ("alectryon.js", alectryonJs),
@@ -132,6 +128,16 @@ def getSimpleBaseContext (hierarchy : Hierarchy) : SiteBaseContext :=
     hierarchy
   }
 
+def finalizeDeclarationData : IO Unit := do
+  let mut topLevelModules := #[]
+  for entry in ←System.FilePath.readDir basePath do
+    if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
+      let module := entry.fileName.drop "declaration-data-".length |>.dropRight ".bmp".length
+      topLevelModules := topLevelModules.push (Json.str module)
+
+  -- The root JSON for find
+  FS.writeFile (basePath / "declaration-data.bmp") (Json.arr topLevelModules).compress
+
 /--
 The main entrypoint for outputting the documentation HTML based on an
 `AnalyzerResult`.
@@ -140,6 +146,7 @@ def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Work
   let baseConfig := getSimpleBaseContext hierarchy
   htmlOutputSetup baseConfig
   htmlOutputResults baseConfig result ws inkPath
+  finalizeDeclarationData
 
 end DocGen4
 

@@ -34,12 +34,19 @@ def lakeSetup (imports : List String) : IO (Except UInt32 Lake.Workspace) := do
   | .error err =>
     throw $ IO.userError err.toString
 
+def envOfImports (imports : List Name) : IO Environment := do
+ importModules (imports.map (Import.mk · false)) Options.empty
+
+def loadInit (imports : List Name) : IO Hierarchy := do
+ let env ← envOfImports imports
+ pure $ Hierarchy.fromArray env.header.moduleNames
+
 /--
 Load a list of modules from the current Lean search path into an `Environment`
 to process for documentation.
 -/
-def load (imports : List Name) (transitiveModules : Bool) : IO (Process.AnalyzerResult × Hierarchy) := do
-  let env ← importModules (List.map (Import.mk · false) imports) Options.empty
+def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy) := do
+  let env ← envOfImports task.getLoad
   IO.println "Processing modules"
   let config := {
     -- TODO: parameterize maxHeartbeats
@@ -49,6 +56,7 @@ def load (imports : List Name) (transitiveModules : Bool) : IO (Process.Analyzer
     fileName := default,
     fileMap := default,
   }
-  Prod.fst <$> Meta.MetaM.toIO (Process.process imports transitiveModules) config { env := env } {} {}
+
+  Prod.fst <$> Meta.MetaM.toIO (Process.process task) config { env := env } {} {}
 
 end DocGen4
