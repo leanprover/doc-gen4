@@ -84,8 +84,9 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     sourceLinker := ←sourceLinker ws
     leanInkEnabled := inkPath.isSome
   }
-  let basePath := FilePath.mk "." / "build" / "doc"
-  let srcBasePath := basePath / "src"
+
+  FS.createDirAll basePath
+
   -- Rendering the entire lean compiler takes time....
   --let sourceSearchPath := ((←Lean.findSysroot) / "src" / "lean") :: ws.root.srcDir :: ws.leanSrcPath
   let sourceSearchPath := ws.root.srcDir :: ws.leanSrcPath
@@ -128,7 +129,9 @@ def getSimpleBaseContext (hierarchy : Hierarchy) : SiteBaseContext :=
     hierarchy
   }
 
-def finalizeDeclarationData : IO Unit := do
+def htmlOutputFinalize (baseConfig : SiteBaseContext) : IO Unit := do
+  htmlOutputSetup baseConfig
+
   let mut topLevelModules := #[]
   for entry in ←System.FilePath.readDir basePath do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
@@ -144,9 +147,8 @@ The main entrypoint for outputting the documentation HTML based on an
 -/
 def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Workspace) (inkPath : Option System.FilePath) : IO Unit := do
   let baseConfig := getSimpleBaseContext hierarchy
-  htmlOutputSetup baseConfig
   htmlOutputResults baseConfig result ws inkPath
-  finalizeDeclarationData
+  htmlOutputFinalize baseConfig
 
 end DocGen4
 
