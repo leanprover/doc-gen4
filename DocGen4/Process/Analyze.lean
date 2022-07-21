@@ -12,14 +12,9 @@ import DocGen4.Process.Base
 import DocGen4.Process.Hierarchy
 import DocGen4.Process.DocInfo
 
-open Std
-
-def HashSet.fromArray [BEq α] [Hashable α] (xs : Array α) : HashSet α :=
-  xs.foldr (flip .insert) .empty
-
 namespace DocGen4.Process
 
-open Lean Meta
+open Lean Meta Std
 
 /--
 Member of a module, either a declaration or some module doc string.

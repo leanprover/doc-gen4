@@ -34,16 +34,9 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
     | Except.error rc => pure rc
 
 def runIndexCmd (p : Parsed) : IO UInt32 := do
-  let topLevelModules ← getTopLevelModules p
-  let res ← lakeSetup topLevelModules
-  match res with
-  | Except.ok _ =>
-    let modules := topLevelModules.map String.toName
-    let hierarchy ← loadInit modules
-    let baseConfig := getSimpleBaseContext hierarchy
-    htmlOutputIndex baseConfig
-    pure 0
-  | Except.error rc => pure rc
+  let hierarchy ← Hierarchy.fromDirectory basePath
+  let baseConfig := getSimpleBaseContext hierarchy
+  htmlOutputIndex baseConfig
   pure 0
 
 def runDocGenCmd (p : Parsed) : IO UInt32 := do
