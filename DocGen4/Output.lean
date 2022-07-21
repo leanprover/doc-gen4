@@ -132,7 +132,7 @@ def getSimpleBaseContext (hierarchy : Hierarchy) : SiteBaseContext :=
     hierarchy
   }
 
-def htmlOutputFinalize (baseConfig : SiteBaseContext) : IO Unit := do
+def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   htmlOutputSetup baseConfig
 
   let mut topLevelModules := #[]
@@ -151,7 +151,7 @@ The main entrypoint for outputting the documentation HTML based on an
 def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Workspace) (inkPath : Option System.FilePath) : IO Unit := do
   let baseConfig := getSimpleBaseContext hierarchy
   htmlOutputResults baseConfig result ws inkPath
-  htmlOutputFinalize baseConfig
+  htmlOutputIndex baseConfig
 
 end DocGen4
 

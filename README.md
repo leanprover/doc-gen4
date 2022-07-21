@@ -38,10 +38,10 @@ generate documentation for its first argument module.
 Furthermore one can use the `--ink` flag here to also generate LeanInk
 documentation in addition.
 
-The second and last stage is the finalize one which zips up some
+The second and last stage is the index one which zips up some
 information relevant for the search:
 ```sh
-$ doc-gen4 finalize Mathlib
+$ doc-gen4 index Mathlib
 ```
 Now `build/doc` should contain the same files with the same context as if one had run
 ```
