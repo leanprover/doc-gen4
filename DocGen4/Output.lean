@@ -19,45 +19,68 @@ namespace DocGen4
 
 open Lean IO System Output Process Std
 
+def basePath := FilePath.mk "." / "build" / "doc"
+def srcBasePath := basePath / "src"
+
 def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
-  let basePath := FilePath.mk "." / "build" / "doc"
-  let srcBasePath := basePath / "src"
-  let declarationDataPath := basePath / "declaration-data.bmp"
+  let findBasePath := basePath / "find"
 
   -- Base structure
   FS.createDirAll basePath
   FS.createDirAll (basePath / "find")
   FS.createDirAll srcBasePath
 
-  -- The three HTML files we always need
-  let indexHtml := ReaderT.run index config
-  FS.writeFile (basePath / "index.html") indexHtml.toString
+  -- All the doc-gen static stuff
+  let indexHtml := ReaderT.run index config |>.toString
+  let notFoundHtml := ReaderT.run notFound config |>.toString
+  let docGenStatic := #[
+    ("style.css", styleCss),
+    ("declaration-data.js", declarationDataCenterJs),
+    ("nav.js", navJs),
+    ("how-about.js", howAboutJs),
+    ("search.js", searchJs),
+    ("mathjax-config.js", mathjaxConfigJs),
+    ("index.html", indexHtml),
+    ("404.html", notFoundHtml)
+  ]
+  for (fileName, content) in docGenStatic do
+    FS.writeFile (basePath / fileName) content
 
-  let notFoundHtml := ReaderT.run notFound config
-  FS.writeFile (basePath / "404.html") notFoundHtml.toString
-
-  let findHtml := ReaderT.run find { config with depthToRoot := 1 }
-  FS.writeFile (basePath / "find" / "index.html") findHtml.toString
+  let findHtml := ReaderT.run find { config with depthToRoot := 1 } |>.toString
+  let findStatic := #[
+    ("index.html", findHtml),
+    ("find.js", findJs)
+  ]
+  for (fileName, content) in findStatic do
+    FS.writeFile (findBasePath / fileName) content
 
   -- The root JSON for find
   let topLevelModules := config.hierarchy.getChildren.toArray.map (Json.str ∘ toString ∘ Prod.fst)
-  FS.writeFile declarationDataPath (Json.arr topLevelModules).compress
+  FS.writeFile (basePath / "declaration-data.bmp") (Json.arr topLevelModules).compress
 
-  -- All the static stuff
-  FS.writeFile (basePath / "style.css") styleCss
-  FS.writeFile (basePath / "declaration-data.js") declarationDataCenterJs
-  FS.writeFile (basePath / "nav.js") navJs
-  FS.writeFile (basePath / "find" / "find.js") findJs
-  FS.writeFile (basePath / "how-about.js") howAboutJs
-  FS.writeFile (basePath / "search.js") searchJs
-  FS.writeFile (basePath / "mathjax-config.js") mathjaxConfigJs
+  let alectryonStatic := #[
+    ("alectryon.css", alectryonCss),
+    ("alectryon.js", alectryonJs),
+    ("docutils_basic.css", docUtilsCss),
+    ("pygments.css", pygmentsCss)
+  ]
 
-  -- All the static stuff for LeanInk
-  FS.writeFile (srcBasePath / "alectryon.css") alectryonCss
-  FS.writeFile (srcBasePath / "alectryon.js") alectryonJs
-  FS.writeFile (srcBasePath / "docutils_basic.css") docUtilsCss
-  FS.writeFile (srcBasePath / "pygments.css") pygmentsCss
+  for (fileName, content) in alectryonStatic do
+    FS.writeFile (srcBasePath / fileName) content
 
+def DocInfo.toJson (module : Name) (info : DocInfo) : HtmlM Json := do
+  let name := info.getName.toString
+  let doc := info.getDocString.getD ""
+  let docLink ← declNameToLink info.getName
+  let sourceLink ← getSourceUrl module info.getDeclarationRange
+  pure $ Json.mkObj [("name", name), ("doc", doc), ("docLink", docLink), ("sourceLink", sourceLink)]
+
+def Process.Module.toJson (module : Module) : HtmlM (Array Json) := do
+    let mut jsonDecls := #[]
+    for decl in filterMapDocInfo module.members do
+      let json ← DocInfo.toJson module.name decl
+      jsonDecls := jsonDecls.push json
+    pure jsonDecls
 
 def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) (inkPath : Option System.FilePath) : IO Unit := do
   let config : SiteContext := {
@@ -74,15 +97,7 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
   let mut declMap := HashMap.empty
   for (_, mod) in result.moduleInfo.toArray do
     let topLevelMod := mod.name.getRoot
-    let mut jsonDecls := #[]
-    for decl in filterMapDocInfo mod.members do
-      let name := decl.getName.toString
-      let doc := decl.getDocString.getD ""
-      let docLink := declNameToLink decl.getName |>.run config baseConfig
-      IO.println s!"DOC: {docLink}"
-      let sourceLink := getSourceUrl mod.name decl.getDeclarationRange |>.run config baseConfig
-      let json := Json.mkObj [("name", name), ("doc", doc), ("docLink", docLink), ("sourceLink", sourceLink)]
-      jsonDecls := jsonDecls.push json
+    let jsonDecls := Module.toJson mod |>.run config baseConfig
     let currentModDecls := declMap.findD topLevelMod #[]
     declMap := declMap.insert topLevelMod (currentModDecls ++ jsonDecls)
 
