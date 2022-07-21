@@ -27,16 +27,13 @@ For example `mathlib4` consists out of 4 modules, the 3 Lean compiler ones and i
 - `Lean`
 - `Mathlib`
 The first build stage is to run doc-gen for all modules separately:
-1. `doc-gen4 single Init Mathlib`
-2. `doc-gen4 single Std Mathlib`
-3. `doc-gen4 single Lean Mathlib`
-4. `doc-gen4 single Mathlib Mathlib`
-We have to pass the `Mathlib` top level module on each invocation here so
-it can generate the navbar on the left hand side properly, it will only
-generate documentation for its first argument module.
-
-Furthermore one can use the `--ink` flag here to also generate LeanInk
-documentation in addition.
+1. `doc-gen4 single Init`
+2. `doc-gen4 single Std`
+3. `doc-gen4 single Lean`
+4. `doc-gen4 single Mathlib`
+Note that you can also just make a call to submodules so `Mathlib.Algebra`
+will work standalone as well. Furthermore one can use the `--ink` flag
+here to also generate LeanInk documentation in addition.
 
 The second and last stage is the index one which zips up some
 information relevant for the search:

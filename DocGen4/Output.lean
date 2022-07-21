@@ -82,6 +82,11 @@ def Process.Module.toJson (module : Module) : HtmlM (Array Json) := do
       jsonDecls := jsonDecls.push json
     pure jsonDecls
 
+def htmlOutputDeclarationDatas (result : AnalyzerResult) : HtmlT IO Unit := do
+  for (_, mod) in result.moduleInfo.toArray do
+    let jsonDecls ← Module.toJson mod
+    FS.writeFile (declarationsBasePath / s!"declaration-data-{mod.name}.bmp") (Json.arr jsonDecls).compress
+
 def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (ws : Lake.Workspace) (inkPath : Option System.FilePath) : IO Unit := do
   let config : SiteContext := {
     result := result,
@@ -96,15 +101,7 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
   --let sourceSearchPath := ((←Lean.findSysroot) / "src" / "lean") :: ws.root.srcDir :: ws.leanSrcPath
   let sourceSearchPath := ws.root.srcDir :: ws.leanSrcPath
 
-  let mut declMap := HashMap.empty
-  for (_, mod) in result.moduleInfo.toArray do
-    let topLevelMod := mod.name.getRoot
-    let jsonDecls := Module.toJson mod |>.run config baseConfig
-    let currentModDecls := declMap.findD topLevelMod #[]
-    declMap := declMap.insert topLevelMod (currentModDecls ++ jsonDecls)
-
-  for (topLevelMod, decls) in declMap.toList do
-    FS.writeFile (declarationsBasePath / s!"declaration-data-{topLevelMod}.bmp") (Json.arr decls).compress
+  discard $ htmlOutputDeclarationDatas result |>.run config baseConfig
 
   for (modName, module) in result.moduleInfo.toArray do
     let fileDir := moduleNameToDirectory basePath modName

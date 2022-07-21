@@ -92,21 +92,18 @@ def getRelevantModules (imports : List Name) : MetaM (HashSet Name) := do
   let env ← getEnv
   let mut relevant := .empty
   for module in env.header.moduleNames do
-    if module.getRoot ∈ imports then
-      relevant := relevant.insert module
+    for import in imports do
+      if Name.isPrefixOf import module then
+        relevant := relevant.insert module
   pure relevant
 
 inductive AnalyzeTask where
 | loadAll (load : List Name) : AnalyzeTask
-| loadAllLimitAnalysis (load : List Name) (analyze : List Name) : AnalyzeTask
+| loadAllLimitAnalysis (analyze : List Name) : AnalyzeTask
 
 def AnalyzeTask.getLoad : AnalyzeTask → List Name
 | loadAll load => load
-| loadAllLimitAnalysis load _ => load
-
-def AnalyzeTask.getAnalyze : AnalyzeTask → List Name
-| loadAll load => load
-| loadAllLimitAnalysis _ analysis => analysis
+| loadAllLimitAnalysis load => load
 
 def getAllModuleDocs (relevantModules : Array Name) : MetaM (HashMap Name Module) := do
   let env ← getEnv
@@ -136,7 +133,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
   let env ← getEnv
   let relevantModules ← match task with
     | .loadAll _ => pure $ HashSet.fromArray env.header.moduleNames
-    | .loadAllLimitAnalysis _ analysis => getRelevantModules analysis
+    | .loadAllLimitAnalysis analysis => getRelevantModules analysis
   let allModules := env.header.moduleNames
 
   let mut res ← getAllModuleDocs relevantModules.toArray

@@ -21,14 +21,12 @@ def getTopLevelModules (p : Parsed) : IO (List String) :=  do
   pure topLevelModules
 
 def runSingleCmd (p : Parsed) : IO UInt32 := do
-    let topLevelModules ← getTopLevelModules p
     let relevantModules := [p.positionalArg! "module" |>.as! String]
-    let res ← lakeSetup (relevantModules ++ topLevelModules)
+    let res ← lakeSetup (relevantModules)
     match res with
     | Except.ok ws =>
-      let relevantModules := relevantModules.map Name.mkSimple
-      let topLevelModules := topLevelModules.map Name.mkSimple
-      let (doc, hierarchy) ← load (.loadAllLimitAnalysis topLevelModules relevantModules)
+      let relevantModules := relevantModules.map String.toName
+      let (doc, hierarchy) ← load (.loadAllLimitAnalysis relevantModules)
       IO.println "Outputting HTML"
       let baseConfig := getSimpleBaseContext hierarchy
       htmlOutputResults baseConfig doc ws (←findLeanInk? p)
@@ -40,7 +38,7 @@ def runIndexCmd (p : Parsed) : IO UInt32 := do
   let res ← lakeSetup topLevelModules
   match res with
   | Except.ok _ =>
-    let modules := topLevelModules.map Name.mkSimple
+    let modules := topLevelModules.map String.toName
     let hierarchy ← loadInit modules
     let baseConfig := getSimpleBaseContext hierarchy
     htmlOutputIndex baseConfig
@@ -57,7 +55,7 @@ def runDocGenCmd (p : Parsed) : IO UInt32 := do
   match res with
   | Except.ok ws =>
     IO.println s!"Loading modules from: {←searchPathRef.get}"
-    let modules := modules.map Name.mkSimple
+    let modules := modules.map String.toName
     let (doc, hierarchy) ← load (.loadAll modules)
     IO.println "Outputting HTML"
     htmlOutput doc hierarchy ws (←findLeanInk? p)
@@ -73,7 +71,6 @@ def singleCmd := `[Cli|
 
   ARGS:
     module : String; "The module to generate the HTML for. Does not have to be part of topLevelModules."
-    ...topLevelModules : String; "The top level modules this documentation will be for."
 ]
 
 def indexCmd := `[Cli|
