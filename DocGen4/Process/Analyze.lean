@@ -93,7 +93,7 @@ def getRelevantModules (imports : List Name) : MetaM (HashSet Name) := do
   let mut relevant := .empty
   for module in env.header.moduleNames do
     for import in imports do
-      if Name.isPrefixOf import module then
+      if import == module then
         relevant := relevant.insert module
   pure relevant
 
