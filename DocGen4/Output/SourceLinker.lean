@@ -54,7 +54,8 @@ Given a lake workspace with all the dependencies as well as the hash of the
 compiler release to work with this provides a function to turn names of
 declarations into (optionally positional) Github URLs.
 -/
-def sourceLinker (ws : Lake.Workspace) (leanHash : String): IO (Name → Option DeclarationRange → String) := do
+def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange → String) := do
+  let leanHash := ws.env.lean.githash
   -- Compute a map from package names to source URL
   let mut gitMap := Std.mkHashMap
   let projectBaseUrl := getGithubBaseUrl (←getProjectGithubUrl)

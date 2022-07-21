@@ -82,10 +82,10 @@ def Process.Module.toJson (module : Module) : HtmlM (Array Json) := do
       jsonDecls := jsonDecls.push json
     pure jsonDecls
 
-def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (ws : Lake.Workspace) (leanHash: String) (inkPath : Option System.FilePath) : IO Unit := do
+def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (ws : Lake.Workspace) (inkPath : Option System.FilePath) : IO Unit := do
   let config : SiteContext := {
     result := result,
-    sourceLinker := ←sourceLinker ws leanHash
+    sourceLinker := ←sourceLinker ws
     leanInkEnabled := inkPath.isSome
   }
   let basePath := FilePath.mk "." / "build" / "doc"
@@ -136,10 +136,10 @@ def getSimpleBaseContext (hierarchy : Hierarchy) : SiteBaseContext :=
 The main entrypoint for outputting the documentation HTML based on an
 `AnalyzerResult`.
 -/
-def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Workspace) (leanHash: String) (inkPath : Option System.FilePath) : IO Unit := do
+def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Workspace) (inkPath : Option System.FilePath) : IO Unit := do
   let baseConfig := getSimpleBaseContext hierarchy
   htmlOutputSetup baseConfig
-  htmlOutputResults baseConfig result ws leanHash inkPath
+  htmlOutputResults baseConfig result ws inkPath
 
 end DocGen4
 

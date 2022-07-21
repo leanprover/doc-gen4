@@ -22,7 +22,7 @@ def runDocGenCmd (p : Parsed) : IO UInt32 := do
     let res ← lakeSetup modules
     let modules := modules.map Name.mkSimple
     match res with
-    | Except.ok (ws, leanHash) =>
+    | Except.ok ws =>
         IO.println s!"Loading modules from: {←searchPathRef.get}"
       --if p.hasFlag "single" then
       --  if modules.length ≠ 1 then
@@ -47,7 +47,7 @@ def runDocGenCmd (p : Parsed) : IO UInt32 := do
       --else
         let (doc, hierarchy) ← load modules true
         IO.println "Outputting HTML"
-        htmlOutput doc hierarchy ws leanHash (←findLeanInk? p)
+        htmlOutput doc hierarchy ws (←findLeanInk? p)
         pure 0
     | Except.error rc => pure rc
 

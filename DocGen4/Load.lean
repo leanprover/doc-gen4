@@ -19,7 +19,7 @@ Sets up a lake workspace for the current project. Furthermore initialize
 the Lean search path with the path to the proper compiler from lean-toolchain
 as well as all the dependencies.
 -/
-def lakeSetup (imports : List String) : IO (Except UInt32 (Lake.Workspace × String)) := do
+def lakeSetup (imports : List String) : IO (Except UInt32 Lake.Workspace) := do
   let (leanInstall?, lakeInstall?) ← Lake.findInstall?
   match ←(EIO.toIO' $ Lake.mkLoadConfig {leanInstall?, lakeInstall?}) with
   | .ok config =>
@@ -30,7 +30,7 @@ def lakeSetup (imports : List String) : IO (Except UInt32 (Lake.Workspace × Str
     let ctx ← Lake.mkBuildContext ws
     (ws.root.buildImportsAndDeps imports *> pure ()) |>.run Lake.MonadLog.eio ctx
     initSearchPath (←findSysroot) ws.leanPaths.oleanPath
-    pure $ Except.ok (ws, libraryLeanGitHash)
+    pure $ Except.ok ws
   | .error err =>
     throw $ IO.userError err.toString
 
