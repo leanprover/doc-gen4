@@ -11,7 +11,6 @@ async function annotateInstances() {
     const instances = dataCenter.instancesForClass(className);
     var innerHTML = "";
     for(var instance of instances) {
-      // TODO: probably fix site root
       const instanceLink = dataCenter.declNameToLink(instance);
       innerHTML += `<li><a href="${SITE_ROOT}${instanceLink}">${instance}</a></li>`
     }

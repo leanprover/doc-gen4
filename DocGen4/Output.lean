@@ -126,12 +126,13 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   let mut allDecls : List (String × Json) := []
   let mut allInstances : HashMap String (Array String) := .empty
   let mut importedBy : HashMap String (Array String) := .empty
+  let mut allModules : List (String × Json) := []
   for entry in ←System.FilePath.readDir declarationsBasePath do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
-      IO.println s!"Processing: {entry.fileName}"
       let fileContent ← FS.readFile entry.path
       let .ok jsonContent := Json.parse fileContent | unreachable!
       let .ok (module : JsonModule) := fromJson? jsonContent | unreachable!
+      allModules := (module.name, Json.str <| moduleNameToLink module.name |>.run baseConfig) :: allModules
       allDecls := (module.declarations.map (λ d => (d.name, toJson d))) ++ allDecls
       for inst in module.instances do
         let mut insts := allInstances.findD inst.className #[]
@@ -147,7 +148,8 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   let finalJson := Json.mkObj [
     ("declarations", Json.mkObj allDecls),
     ("instances", Json.mkObj postProcessInstances),
-    ("importedBy", Json.mkObj postProcessImportedBy)
+    ("importedBy", Json.mkObj postProcessImportedBy),
+    ("modules", Json.mkObj allModules)
   ]
   -- The root JSON for find
   FS.writeFile (declarationsBasePath / "declaration-data.bmp") finalJson.compress

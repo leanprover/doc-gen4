@@ -15,6 +15,11 @@ open scoped DocGen4.Jsx
 The HTML template used for all pages.
 -/
 def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := do
+  let moduleConstant :=
+    if let some module := (←getCurrentName) then
+      #[<script>{s!"const MODULE_NAME={String.quote module.toString};"}</script>]
+    else
+      #[]
   pure
     <html lang="en">
       <head>
@@ -26,6 +31,7 @@ def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := d
         <script defer="true" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
         <script>{s!"const SITE_ROOT={String.quote (←getRoot)};"}</script>
+        [moduleConstant]
         <script type="module" src={s!"{←getRoot}nav.js"}></script>
         <script type="module" src={s!"{←getRoot}search.js"}></script>
         <script type="module" src={s!"{←getRoot}how-about.js"}></script>

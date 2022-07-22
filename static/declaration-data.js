@@ -99,6 +99,22 @@ export class DeclarationDataCenter {
   declNameToLink(declName) {
     return this.declarationData.declarations[declName].docLink;
   }
+
+  /**
+   * Find all modules that imported the given one.
+   * @returns {Array<String>}
+   */
+  moduleImportedBy(moduleName) {
+    return this.declarationData.importedBy[moduleName];
+  }
+
+  /**
+   * Analogous to Lean moduleNameToLink
+   * @returns {String}
+   */
+  moduleNameToLink(moduleName) {
+    return this.declarationData.modules[moduleName];
+  }
 }
 
 function isSeparater(char) {

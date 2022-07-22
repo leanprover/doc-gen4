@@ -195,7 +195,7 @@ def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
         </details>
         <details>
           <summary>Imported by</summary>
-          <ul id={s!"imported-by-{moduleName}"}> </ul>
+          <ul id={s!"imported-by-{moduleName}"} class="imported-by-list"> </ul>
         </details>
       </div>
       [members.map declarationToNavLink]
