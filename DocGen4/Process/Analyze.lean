@@ -12,14 +12,9 @@ import DocGen4.Process.Base
 import DocGen4.Process.Hierarchy
 import DocGen4.Process.DocInfo
 
-open Std
-
-def HashSet.fromArray [BEq α] [Hashable α] (xs : Array α) : HashSet α :=
-  xs.foldr (flip .insert) .empty
-
 namespace DocGen4.Process
 
-open Lean Meta
+open Lean Meta Std
 
 /--
 Member of a module, either a declaration or some module doc string.
@@ -41,6 +36,7 @@ structure Module where
   All members of the module, sorted according to their line numbers.
   -/
   members : Array ModuleMember
+  imports : Array Name
   deriving Inhabited
 
 /--
@@ -59,11 +55,6 @@ structure AnalyzerResult where
   A map from module names to information about these modules.
   -/
   moduleInfo : HashMap Name Module
-  /--
-  An adjacency matrix for the import relation between modules, indexed
-  my the values in `name2ModIdx`.
-  -/
-  importAdj : Array (Array Bool)
   deriving Inhabited
 
 namespace ModuleMember
@@ -92,41 +83,29 @@ def getRelevantModules (imports : List Name) : MetaM (HashSet Name) := do
   let env ← getEnv
   let mut relevant := .empty
   for module in env.header.moduleNames do
-    if module.getRoot ∈ imports then
-      relevant := relevant.insert module
+    for import in imports do
+      if import == module then
+        relevant := relevant.insert module
   pure relevant
 
 inductive AnalyzeTask where
 | loadAll (load : List Name) : AnalyzeTask
-| loadAllLimitAnalysis (load : List Name) (analyze : List Name) : AnalyzeTask
+| loadAllLimitAnalysis (analyze : List Name) : AnalyzeTask
 
 def AnalyzeTask.getLoad : AnalyzeTask → List Name
 | loadAll load => load
-| loadAllLimitAnalysis load _ => load
-
-def AnalyzeTask.getAnalyze : AnalyzeTask → List Name
-| loadAll load => load
-| loadAllLimitAnalysis _ analysis => analysis
+| loadAllLimitAnalysis load => load
 
 def getAllModuleDocs (relevantModules : Array Name) : MetaM (HashMap Name Module) := do
   let env ← getEnv
   let mut res := mkHashMap relevantModules.size
   for module in relevantModules do
     let modDocs := getModuleDoc? env module |>.getD #[] |>.map .modDoc
-    res := res.insert module (Module.mk module modDocs)
-  pure res
-
--- TODO: This is definitely not the most efficient way to store this data
-def buildImportAdjMatrix (allModules : Array Name) : MetaM (Array (Array Bool)) := do
-  let env ← getEnv
-  let mut adj := Array.mkArray allModules.size (Array.mkArray allModules.size false)
-  for moduleName in allModules do
-    let some modIdx := env.getModuleIdx? moduleName | unreachable!
+    let some modIdx := env.getModuleIdx? module | unreachable!
     let moduleData := env.header.moduleData.get! modIdx
-    for imp in moduleData.imports do
-      let some importIdx := env.getModuleIdx? imp.module | unreachable!
-      adj := adj.set! modIdx (adj.get! modIdx |>.set! importIdx true)
-  pure adj
+    let imports := moduleData.imports.map Import.module
+    res := res.insert module $ Module.mk module modDocs imports
+  pure res
 
 /--
 Run the doc-gen analysis on all modules that are loaded into the `Environment`
@@ -136,7 +115,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
   let env ← getEnv
   let relevantModules ← match task with
     | .loadAll _ => pure $ HashSet.fromArray env.header.moduleNames
-    | .loadAllLimitAnalysis _ analysis => getRelevantModules analysis
+    | .loadAllLimitAnalysis analysis => getRelevantModules analysis
   let allModules := env.header.moduleNames
 
   let mut res ← getAllModuleDocs relevantModules.toArray
@@ -162,8 +141,6 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
     catch e =>
       IO.println s!"WARNING: Failed to obtain information for: {name}: {←e.toMessageData.toString}"
 
-  let adj ← buildImportAdjMatrix allModules
-
   -- TODO: This could probably be faster if we did sorted insert above instead
   for (moduleName, module) in res.toArray do
     res := res.insert moduleName {module with members := module.members.qsort ModuleMember.order}
@@ -173,7 +150,6 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
     name2ModIdx := env.const2ModIdx,
     moduleNames := allModules,
     moduleInfo := res,
-    importAdj := adj
   }
   pure (analysis, hierarchy)
 

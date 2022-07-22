@@ -12,6 +12,7 @@ import DocGen4.Output.Module
 import DocGen4.Output.NotFound
 import DocGen4.Output.Find
 import DocGen4.Output.SourceLinker
+import DocGen4.Output.ToJson
 import DocGen4.LeanInk.Output
 import Std.Data.HashMap
 
@@ -21,18 +22,21 @@ open Lean IO System Output Process Std
 
 def basePath := FilePath.mk "." / "build" / "doc"
 def srcBasePath := basePath / "src"
+def declarationsBasePath := basePath / "declarations"
 
 def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let findBasePath := basePath / "find"
 
   -- Base structure
   FS.createDirAll basePath
-  FS.createDirAll (basePath / "find")
+  FS.createDirAll findBasePath
   FS.createDirAll srcBasePath
+  FS.createDirAll declarationsBasePath
 
   -- All the doc-gen static stuff
   let indexHtml := ReaderT.run index config |>.toString
   let notFoundHtml := ReaderT.run notFound config |>.toString
+  let navbarHtml := ReaderT.run navbar config |>.toString
   let docGenStatic := #[
     ("style.css", styleCss),
     ("declaration-data.js", declarationDataCenterJs),
@@ -40,8 +44,11 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
     ("how-about.js", howAboutJs),
     ("search.js", searchJs),
     ("mathjax-config.js", mathjaxConfigJs),
+    ("instances.js", instancesJs),
+    ("importedBy.js", importedByJs),
     ("index.html", indexHtml),
-    ("404.html", notFoundHtml)
+    ("404.html", notFoundHtml),
+    ("navbar.html", navbarHtml)
   ]
   for (fileName, content) in docGenStatic do
     FS.writeFile (basePath / fileName) content
@@ -64,19 +71,10 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   for (fileName, content) in alectryonStatic do
     FS.writeFile (srcBasePath / fileName) content
 
-def DocInfo.toJson (module : Name) (info : DocInfo) : HtmlM Json := do
-  let name := info.getName.toString
-  let doc := info.getDocString.getD ""
-  let docLink ← declNameToLink info.getName
-  let sourceLink ← getSourceUrl module info.getDeclarationRange
-  pure $ Json.mkObj [("name", name), ("doc", doc), ("docLink", docLink), ("sourceLink", sourceLink)]
-
-def Process.Module.toJson (module : Module) : HtmlM (Array Json) := do
-    let mut jsonDecls := #[]
-    for decl in filterMapDocInfo module.members do
-      let json ← DocInfo.toJson module.name decl
-      jsonDecls := jsonDecls.push json
-    pure jsonDecls
+def htmlOutputDeclarationDatas (result : AnalyzerResult) : HtmlT IO Unit := do
+  for (_, mod) in result.moduleInfo.toArray do
+    let jsonDecls ← Module.toJson mod
+    FS.writeFile (declarationsBasePath / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
 
 def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (ws : Lake.Workspace) (inkPath : Option System.FilePath) : IO Unit := do
   let config : SiteContext := {
@@ -86,20 +84,13 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
   }
 
   FS.createDirAll basePath
+  FS.createDirAll declarationsBasePath
 
   -- Rendering the entire lean compiler takes time....
   --let sourceSearchPath := ((←Lean.findSysroot) / "src" / "lean") :: ws.root.srcDir :: ws.leanSrcPath
   let sourceSearchPath := ws.root.srcDir :: ws.leanSrcPath
 
-  let mut declMap := HashMap.empty
-  for (_, mod) in result.moduleInfo.toArray do
-    let topLevelMod := mod.name.getRoot
-    let jsonDecls := Module.toJson mod |>.run config baseConfig
-    let currentModDecls := declMap.findD topLevelMod #[]
-    declMap := declMap.insert topLevelMod (currentModDecls ++ jsonDecls)
-
-  for (topLevelMod, decls) in declMap.toList do
-    FS.writeFile (basePath / s!"declaration-data-{topLevelMod}.bmp") (Json.arr decls).compress
+  discard $ htmlOutputDeclarationDatas result |>.run config baseConfig
 
   for (modName, module) in result.moduleInfo.toArray do
     let fileDir := moduleNameToDirectory basePath modName
@@ -129,17 +120,39 @@ def getSimpleBaseContext (hierarchy : Hierarchy) : SiteBaseContext :=
     hierarchy
   }
 
-def htmlOutputFinalize (baseConfig : SiteBaseContext) : IO Unit := do
+def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   htmlOutputSetup baseConfig
 
-  let mut topLevelModules := #[]
-  for entry in ←System.FilePath.readDir basePath do
+  let mut allDecls : List (String × Json) := []
+  let mut allInstances : HashMap String (Array String) := .empty
+  let mut importedBy : HashMap String (Array String) := .empty
+  let mut allModules : List (String × Json) := []
+  for entry in ←System.FilePath.readDir declarationsBasePath do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
-      let module := entry.fileName.drop "declaration-data-".length |>.dropRight ".bmp".length
-      topLevelModules := topLevelModules.push (Json.str module)
+      let fileContent ← FS.readFile entry.path
+      let .ok jsonContent := Json.parse fileContent | unreachable!
+      let .ok (module : JsonModule) := fromJson? jsonContent | unreachable!
+      allModules := (module.name, Json.str <| moduleNameToLink (String.toName module.name) |>.run baseConfig) :: allModules
+      allDecls := (module.declarations.map (λ d => (d.name, toJson d))) ++ allDecls
+      for inst in module.instances do
+        let mut insts := allInstances.findD inst.className #[]
+        insts := insts.push inst.name
+        allInstances := allInstances.insert inst.className insts
+      for imp in module.imports do
+        let mut impBy := importedBy.findD imp #[]
+        impBy := impBy.push module.name
+        importedBy := importedBy.insert imp impBy
 
+  let postProcessInstances := allInstances.toList.map (λ(k, v) => (k, toJson v))
+  let postProcessImportedBy := importedBy.toList.map (λ(k, v) => (k, toJson v))
+  let finalJson := Json.mkObj [
+    ("declarations", Json.mkObj allDecls),
+    ("instances", Json.mkObj postProcessInstances),
+    ("importedBy", Json.mkObj postProcessImportedBy),
+    ("modules", Json.mkObj allModules)
+  ]
   -- The root JSON for find
-  FS.writeFile (basePath / "declaration-data.bmp") (Json.arr topLevelModules).compress
+  FS.writeFile (declarationsBasePath / "declaration-data.bmp") finalJson.compress
 
 /--
 The main entrypoint for outputting the documentation HTML based on an
@@ -148,7 +161,7 @@ The main entrypoint for outputting the documentation HTML based on an
 def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Workspace) (inkPath : Option System.FilePath) : IO Unit := do
   let baseConfig := getSimpleBaseContext hierarchy
   htmlOutputResults baseConfig result ws inkPath
-  htmlOutputFinalize baseConfig
+  htmlOutputIndex baseConfig
 
 end DocGen4
 

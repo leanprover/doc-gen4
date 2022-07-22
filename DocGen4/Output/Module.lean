@@ -78,7 +78,7 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
 
   match doc with
   | DocInfo.structureInfo i => nodes := nodes.append (←structureInfoHeader i)
-  | DocInfo.classInfo i => nodes := nodes.append (←structureInfoHeader i.toStructureInfo)
+  | DocInfo.classInfo i => nodes := nodes.append (←structureInfoHeader i)
   | _ => nodes := nodes
 
   nodes := nodes.push <span class="decl_args">:</span>
@@ -95,18 +95,18 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   | DocInfo.structureInfo i => structureToHtml i
   | DocInfo.classInfo i => classToHtml i
   | DocInfo.classInductiveInfo i => classInductiveToHtml i
-  | i => pure #[]
+  | _ => pure #[]
   -- rendered doc stirng
   let docStringHtml ← match doc.getDocString with
   | some s => docStringToHtml s
   | none => pure #[]
   -- extra information like equations and instances
   let extraInfoHtml ← match doc with
-  | DocInfo.classInfo i => pure #[←classInstancesToHtml i.instances]
+  | DocInfo.classInfo i => pure #[←classInstancesToHtml i.name]
   | DocInfo.definitionInfo i => equationsToHtml i
-  | DocInfo.instanceInfo i => equationsToHtml i
-  | DocInfo.classInductiveInfo i => pure #[←classInstancesToHtml i.instances]
-  | i => pure #[]
+  | DocInfo.instanceInfo i => equationsToHtml i.toDefinitionInfo
+  | DocInfo.classInductiveInfo i => pure #[←classInstancesToHtml i.name]
+  | _ => pure #[]
   let attrs := doc.getAttrs
   let attrsHtml :=
     if attrs.size > 0 then
@@ -143,7 +143,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
 Rendering a module doc string, that is the ones with an ! after the opener
 as HTML.
 -/
-def modDocToHtml (module : Name) (mdoc : ModuleDoc) : HtmlM Html := do
+def modDocToHtml (mdoc : ModuleDoc) : HtmlM Html := do
   pure 
     <div class="mod_doc">
       [←docStringToHtml mdoc.doc]
@@ -156,7 +156,7 @@ as HTML.
 def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := do
   match member with
   | ModuleMember.docInfo d => docInfoToHtml module d
-  | ModuleMember.modDoc d => modDocToHtml module d
+  | ModuleMember.modDoc d => modDocToHtml d
 
 def declarationToNavLink (module : Name) : Html :=
   <div class="nav_link">
@@ -168,13 +168,7 @@ Returns the list of all imports this module does.
 -/
 def getImports (module : Name) : HtmlM (Array Name) := do
   let res ← getResult
-  let some idx := res.moduleNames.findIdx? (. == module) | unreachable!
-  let adj := res.importAdj.get! idx
-  let mut imports := #[]
-  for i in [:adj.size] do
-    if adj.get! i then
-      imports := imports.push (res.moduleNames.get! i)
-  pure imports
+  pure $ res.moduleInfo.find! module |>.imports
 
 /--
 Sort the list of all modules this one is importing, linkify it
@@ -182,27 +176,6 @@ and return the HTML.
 -/
 def importsHtml (moduleName : Name) : HtmlM (Array Html) := do
   let imports := (←getImports moduleName) |>.qsort Name.lt
-  imports.mapM (λ i => do pure <li>{←moduleToHtmlLink i}</li>)
-
-/--
-Returns a list of all modules this module is imported by.
--/
-def getImportedBy (module : Name) : HtmlM (Array Name) := do
-  let res ← getResult
-  let some idx := res.moduleNames.findIdx? (. == module) | unreachable!
-  let adj := res.importAdj
-  let mut impBy := #[]
-  for i in [:adj.size] do
-    if adj.get! i |>.get! idx then
-      impBy := impBy.push (res.moduleNames.get! i)
-  pure impBy
-
-/--
-Sort the list of all modules this one is imported by, linkify it
-and return the HTML.
--/
-def importedByHtml (moduleName : Name) : HtmlM (Array Html) := do
-  let imports := (←getImportedBy moduleName) |>.qsort Name.lt
   imports.mapM (λ i => do pure <li>{←moduleToHtmlLink i}</li>)
 
 /--
@@ -222,9 +195,7 @@ def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
         </details>
         <details>
           <summary>Imported by</summary>
-          <ul>
-            [←importedByHtml moduleName]
-          </ul>
+          <ul id={s!"imported-by-{moduleName}"} class="imported-by-list"> </ul>
         </details>
       </div>
       [members.map declarationToNavLink]

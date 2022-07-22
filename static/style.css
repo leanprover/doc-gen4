@@ -257,6 +257,11 @@ nav {
     text-indent: -2ex; padding-left: 2ex;
 }
 
+.navframe {
+    height: 100%;
+    width: 100%;
+}
+
 .internal_nav .imports {
     margin-bottom: 1rem;
 }
@@ -301,6 +306,10 @@ nav {
 
 .nav_link {
     overflow-wrap: break-word;
+}
+
+.navframe {
+    --header-height: 0;
 }
 
 .decl > div, .mod_doc {

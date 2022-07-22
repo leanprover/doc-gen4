@@ -132,6 +132,8 @@ are used in documentation generation, notably JS and CSS ones.
   def navJs : String := include_str "../../static/nav.js"
   def howAboutJs : String := include_str "../../static/how-about.js"
   def searchJs : String := include_str "../../static/search.js"
+  def instancesJs : String := include_str "../../static/instances.js"
+  def importedByJs : String := include_str "../../static/importedBy.js"
   def findJs : String := include_str "../../static/find/find.js"
   def mathjaxConfigJs : String := include_str "../../static/mathjax-config.js"
   
@@ -214,5 +216,15 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
       | _ =>
          pure #[<span class="fn">[←infoFormatToHtml t]</span>]
     | _ => pure #[<span class="fn">[←infoFormatToHtml t]</span>]
+
+def baseHtmlHeadDeclarations : BaseHtmlM (Array Html) := do
+  pure #[
+    <meta charset="UTF-8"/>,
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>,
+    <link rel="stylesheet" href={s!"{←getRoot}style.css"}/>,
+    <link rel="stylesheet" href={s!"{←getRoot}src/pygments.css"}/>,
+    <link rel="shortcut icon" href={s!"{←getRoot}favicon.ico"}/>,
+    <link rel="prefetch" href={s!"{←getRoot}/declarations/declaration-data.bmp"} as="image"/>
+  ]
 
 end DocGen4.Output

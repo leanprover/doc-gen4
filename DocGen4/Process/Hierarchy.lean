@@ -6,9 +6,14 @@ Authors: Henrik Böving
 import Lean
 import Std.Data.HashMap
 
+open Std
+
+def HashSet.fromArray [BEq α] [Hashable α] (xs : Array α) : HashSet α :=
+  xs.foldr (flip .insert) .empty
+
 namespace DocGen4
 
-open Lean Std Name
+open Lean Name
 
 def getNLevels (name : Name) (levels: Nat) : Name :=
   let components := name.components'
@@ -77,6 +82,39 @@ partial def insert! (h : Hierarchy) (n : Name) : Hierarchy := Id.run $ do
 
 partial def fromArray (names : Array Name) : Hierarchy :=
   names.foldl insert! (empty anonymous false)
+
+def baseDirBlackList : HashSet String :=
+  HashSet.fromArray #[
+    "404.html",
+    "declaration-data.js",
+    "declarations",
+    "find",
+    "how-about.js",
+    "index.html",
+    "mathjax-config.js",
+    "navbar.html",
+    "nav.js",
+    "search.js",
+    "src",
+    "style.css"
+  ]
+
+
+partial def fromDirectoryAux (dir : System.FilePath) (previous : Name) : IO (Array Name) := do
+  let mut children := #[]
+  for entry in ←System.FilePath.readDir dir do
+    if (←entry.path.isDir) then
+      children := children ++ (←fromDirectoryAux entry.path (.str previous entry.fileName))
+    else
+      children := children.push $ .str previous (entry.fileName.dropRight ".html".length)
+  pure children
+
+def fromDirectory (dir : System.FilePath) : IO Hierarchy := do
+    let mut children := #[]
+    for entry in ←System.FilePath.readDir dir do
+      if !baseDirBlackList.contains entry.fileName && (←entry.path.isDir) then
+        children := children ++ (←fromDirectoryAux entry.path (.mkSimple entry.fileName))
+    pure $ Hierarchy.fromArray children
 
 end Hierarchy
 end DocGen4
