@@ -132,7 +132,7 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
       let fileContent ← FS.readFile entry.path
       let .ok jsonContent := Json.parse fileContent | unreachable!
       let .ok (module : JsonModule) := fromJson? jsonContent | unreachable!
-      allModules := (module.name, Json.str <| moduleNameToLink module.name |>.run baseConfig) :: allModules
+      allModules := (module.name, Json.str <| moduleNameToLink (String.toName module.name) |>.run baseConfig) :: allModules
       allDecls := (module.declarations.map (λ d => (d.name, toJson d))) ++ allDecls
       for inst in module.instances do
         let mut insts := allInstances.findD inst.className #[]
