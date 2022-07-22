@@ -15,12 +15,6 @@ namespace DocGen4.Process
 
 open Lean Meta 
 
-def getInstances (className : Name) : MetaM (Array Name) := do
-  let fn ← mkConstWithFreshMVarLevels className
-  let (xs, _, _) ← forallMetaTelescopeReducing (← inferType fn)
-  let insts ← SynthInstance.getInstances (mkAppN fn xs)
-  pure $ insts.map Expr.constName!
-
 def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do
   StructureInfo.ofInductiveVal v
 

@@ -45,6 +45,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
     ("search.js", searchJs),
     ("mathjax-config.js", mathjaxConfigJs),
     ("instances.js", instancesJs),
+    ("importedBy.js", importedByJs),
     ("index.html", indexHtml),
     ("404.html", notFoundHtml),
     ("navbar.html", navbarHtml)

@@ -78,6 +78,27 @@ export class DeclarationDataCenter {
       return getMatches(this.declarationData.declarations, pattern);
     }
   }
+
+  /**
+   * Search for all instances of a certain typeclass
+   * @returns {Array<String>}
+   */
+  instancesForClass(className) {
+    const instances = this.declarationData.instances[className];
+    if (!instances) {
+      return [];
+    } else {
+      return instances;
+    }
+  }
+
+  /**
+   * Analogous to Lean declNameToLink
+   * @returns {String}
+   */
+  declNameToLink(declName) {
+    return this.declarationData.declarations[declName].docLink;
+  }
 }
 
 function isSeparater(char) {

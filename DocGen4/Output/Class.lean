@@ -15,7 +15,7 @@ def classInstancesToHtml (className : Name) : HtmlM Html := do
   pure
     <details «class»="instances">
         <summary>Instances</summary>
-        <ul id={s!"instances-list-{className}"}></ul>
+        <ul id={s!"instances-list-{className}"} class="instances-list"></ul>
     </details>
 
 def classToHtml (i : Process.ClassInfo) : HtmlM (Array Html) := do
