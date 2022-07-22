@@ -65,6 +65,7 @@ def navbar : BaseHtmlM Html := do
       </head>
 
       <body>
+        <div class="navframe">
         <nav class="nav">
           <h3>General documentation</h3>
           <div class="nav_link"><a href={s!"{←getRoot}"}>index</a></div>
@@ -80,6 +81,7 @@ def navbar : BaseHtmlM Html := do
           <h3>Library</h3>
           {← moduleList}
         </nav>
+        </div>
       </body>
     </html>
 

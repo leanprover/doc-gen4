@@ -308,6 +308,10 @@ nav {
     overflow-wrap: break-word;
 }
 
+.navframe {
+    --header-height: 0;
+}
+
 .decl > div, .mod_doc {
     padding-left: 8px;
     padding-right: 8px;
