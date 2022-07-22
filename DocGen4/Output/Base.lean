@@ -224,7 +224,7 @@ def baseHtmlHeadDeclarations : BaseHtmlM (Array Html) := do
     <link rel="stylesheet" href={s!"{←getRoot}style.css"}/>,
     <link rel="stylesheet" href={s!"{←getRoot}src/pygments.css"}/>,
     <link rel="shortcut icon" href={s!"{←getRoot}favicon.ico"}/>,
-    <link rel="prefetch" href={s!"{←getRoot}/declarations/declaration-data.bmp"}/>
+    <link rel="prefetch" href={s!"{←getRoot}/declarations/declaration-data.bmp"} as="image"/>
   ]
 
 end DocGen4.Output
