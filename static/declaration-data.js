@@ -8,16 +8,6 @@ const CACHE_DB_NAME = "declaration-data";
 const CACHE_DB_VERSION = 1;
 const CACHE_DB_KEY = "DECLARATIONS_KEY";
 
-async function fetchModuleData(module) {
-  const moduleDataUrl = new URL(
-    `${SITE_ROOT}/declarations/declaration-data-${module}.bmp`,
-    window.location
-  );
-  const moduleData = await fetch(moduleDataUrl);
-  const moduleDataJson = await moduleData.json();
-  return moduleDataJson;
-}
-
 /**
  * The DeclarationDataCenter is used for declaration searching.
  *
@@ -65,25 +55,7 @@ export class DeclarationDataCenter {
       } else {
         // undefined. then fetch the data from the server.
         const dataListRes = await fetch(dataListUrl);
-        const dataListJson = await dataListRes.json();
-
-        // TODO: this is probably kind of inefficient
-        const dataJsonUnflattened = await Promise.all(dataListJson.map(fetchModuleData));
-
-        const dataJson = dataJsonUnflattened.flat();
-        // the data is a map of name (original case) to declaration data.
-        const data = new Map(
-          dataJson.map(({ name, doc, docLink, sourceLink }) => [
-            name,
-            {
-              name,
-              lowerName: name.toLowerCase(),
-              lowerDoc: doc.toLowerCase(),
-              docLink,
-              sourceLink,
-            },
-          ])
-        );
+        const data = await dataListRes.json();
         await cacheDeclarationData(data);
         DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
       }
@@ -100,10 +72,10 @@ export class DeclarationDataCenter {
       return [];
     }
     if (strict) {
-      let decl = this.declarationData.get(pattern);
+      let decl = this.declarationData.declarations[pattern];
       return decl ? [decl] : [];
     } else {
-      return getMatches(this.declarationData, pattern);
+      return getMatches(this.declarationData.declarations, pattern);
     }
   }
 }
@@ -141,13 +113,14 @@ function getMatches(declarations, pattern, maxResults = 30) {
   const lowerPats = pattern.toLowerCase().split(/\s/g);
   const patNoSpaces = pattern.replace(/\s/g, "");
   const results = [];
-  for (const {
+  for (const [_, {
     name,
-    lowerName,
-    lowerDoc,
+    doc,
     docLink,
     sourceLink,
-  } of declarations.values()) {
+  }] of Object.entries(declarations)) {
+    const lowerName = name.toLowerCase();
+    const lowerDoc = doc.toLowerCase();
     let err = matchCaseSensitive(name, lowerName, patNoSpaces);
     // match all words as substrings of docstring
     if (

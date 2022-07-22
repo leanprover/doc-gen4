@@ -22,11 +22,9 @@ def getInstances (className : Name) : MetaM (Array Name) := do
   pure $ insts.map Expr.constName!
 
 def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do
-  let sinfo ← StructureInfo.ofInductiveVal v
-  pure $ ClassInfo.mk sinfo (←getInstances v.name)
+  StructureInfo.ofInductiveVal v
 
 def ClassInductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInductiveInfo := do
-  let info ← InductiveInfo.ofInductiveVal v
-  pure $ ClassInductiveInfo.mk info (←getInstances v.name)
+  InductiveInfo.ofInductiveVal v
 
 end DocGen4.Process

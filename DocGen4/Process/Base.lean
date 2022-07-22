@@ -103,7 +103,9 @@ structure DefinitionInfo extends Info where
 /--
 Information about an `instance` declaration.
 -/
-abbrev InstanceInfo := DefinitionInfo
+structure InstanceInfo extends DefinitionInfo where
+  instClass : Name
+  deriving Inhabited
 
 /--
 Information about an `inductive` declaration
@@ -137,16 +139,12 @@ structure StructureInfo extends Info where
 /--
 Information about a `class` declaration.
 -/
-structure ClassInfo extends StructureInfo where
-  instances : Array Name
-  deriving Inhabited
+abbrev ClassInfo := StructureInfo
 
 /--
 Information about a `class inductive` declaration.
 -/
-structure ClassInductiveInfo extends InductiveInfo where
-  instances : Array Name
-  deriving Inhabited
+abbrev ClassInductiveInfo := InductiveInfo
 
 /--
 A general type for informations about declarations.
