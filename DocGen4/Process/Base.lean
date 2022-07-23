@@ -105,6 +105,7 @@ Information about an `instance` declaration.
 -/
 structure InstanceInfo extends DefinitionInfo where
   className : Name
+  typeNames : Array Name
   deriving Inhabited
 
 /--

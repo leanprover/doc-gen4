@@ -93,6 +93,19 @@ export class DeclarationDataCenter {
   }
 
   /**
+   * Search for all instances that involve a certain type
+   * @returns {Array<String>}
+   */
+  instancesForType(typeName) {
+    const instances = this.declarationData.instancesFor[typeName];
+    if (!instances) {
+      return [];
+    } else {
+      return instances;
+    }
+  }
+
+  /**
    * Analogous to Lean declNameToLink
    * @returns {String}
    */
