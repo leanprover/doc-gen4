@@ -14,6 +14,6 @@ open Lean Meta
 
 def TheoremInfo.ofTheoremVal (v : TheoremVal) : MetaM TheoremInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
-  pure $ TheoremInfo.mk info
+  pure { toInfo := info }
 
 end DocGen4.Process

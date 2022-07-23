@@ -6,6 +6,14 @@ namespace DocGen4
 namespace Output
 
 open scoped DocGen4.Jsx
+open Lean
+
+def instancesForToHtml (typeName : Name) : HtmlM Html := do
+  pure
+    <details «class»="instances">
+        <summary>Instances For</summary>
+        <ul id={s!"instances-for-list-{typeName}"} class="instances-for-list"></ul>
+    </details>
 
 def ctorToHtml (c : Process.NameInfo) : HtmlM Html := do
   let shortName := c.name.components'.head!.toString

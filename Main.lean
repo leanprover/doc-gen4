@@ -9,15 +9,15 @@ def findLeanInk? (p : Parsed) : IO (Option System.FilePath) := do
   | some ink =>
     let inkPath := System.FilePath.mk ink.value
     if ←inkPath.pathExists then
-      pure $ some inkPath
+      pure <| some inkPath
     else
-      throw $ IO.userError "Invalid path to LeanInk binary provided"
+      throw <| IO.userError "Invalid path to LeanInk binary provided"
   | none => pure none
 
 def getTopLevelModules (p : Parsed) : IO (List String) :=  do
   let topLevelModules := p.variableArgsAs! String |>.toList
   if topLevelModules.length == 0 then
-    throw $ IO.userError "No topLevelModules provided."
+    throw <| IO.userError "No topLevelModules provided."
   pure topLevelModules
 
 def runSingleCmd (p : Parsed) : IO UInt32 := do
@@ -33,7 +33,7 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
       pure 0
     | Except.error rc => pure rc
 
-def runIndexCmd (p : Parsed) : IO UInt32 := do
+def runIndexCmd (_p : Parsed) : IO UInt32 := do
   let hierarchy ← Hierarchy.fromDirectory basePath
   let baseConfig := getSimpleBaseContext hierarchy
   htmlOutputIndex baseConfig
@@ -42,7 +42,7 @@ def runIndexCmd (p : Parsed) : IO UInt32 := do
 def runDocGenCmd (p : Parsed) : IO UInt32 := do
   let modules : List String := p.variableArgsAs! String |>.toList
   if modules.length == 0 then
-    throw $ IO.userError "No modules provided."
+    throw <| IO.userError "No modules provided."
 
   let res ← lakeSetup modules
   match res with

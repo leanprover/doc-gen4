@@ -75,7 +75,7 @@ def getRoot : BaseHtmlM String := do
 def getHierarchy : BaseHtmlM Hierarchy := do pure (←read).hierarchy
 def getCurrentName : BaseHtmlM (Option Name) := do pure (←read).currentName
 def getResult : HtmlM AnalyzerResult := do pure (←read).result
-def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do pure $ (←read).sourceLinker module range
+def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do pure <| (←read).sourceLinker module range
 def leanInkEnabled? : HtmlM Bool := do pure (←read).leanInkEnabled
 
 /--
@@ -93,7 +93,7 @@ Returns the doc-gen4 link to a module name.
 -/
 def moduleNameToLink (n : Name) : BaseHtmlM String := do
   let parts := n.components.map Name.toString
-  pure $ (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+  pure <| (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 /--
 Returns the HTML doc-gen4 link to a module name.
@@ -106,7 +106,7 @@ Returns the LeanInk link to a module name.
 -/
 def moduleNameToInkLink (n : Name) : BaseHtmlM String := do
   let parts := "src" :: n.components.map Name.toString
-  pure $ (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+  pure <| (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 /--
 Returns the path to the HTML file that contains information about a module.
@@ -149,7 +149,7 @@ Returns the doc-gen4 link to a declaration name.
 def declNameToLink (name : Name) : HtmlM String := do
   let res ← getResult
   let module := res.moduleNames[res.name2ModIdx.find! name |>.toNat]!
-  pure $ (←moduleNameToLink module) ++ "#" ++ name.toString
+  pure <| (←moduleNameToLink module) ++ "#" ++ name.toString
 
 /--
 Returns the HTML doc-gen4 link to a declaration name.
@@ -163,7 +163,7 @@ Returns the LeanInk link to a declaration name.
 def declNameToInkLink (name : Name) : HtmlM String := do
   let res ← getResult
   let module := res.moduleNames[res.name2ModIdx.find! name |>.toNat]!
-  pure $ (←moduleNameToInkLink module) ++ "#" ++ name.toString
+  pure <| (←moduleNameToInkLink module) ++ "#" ++ name.toString
 
 /--
 Returns the HTML doc-gen4 link to a declaration name with "break_within"
@@ -185,7 +185,7 @@ only `+` should be linked, taking care of this is what this function is
 responsible for.
 -/
 def splitWhitespaces (s : String) : (String × String × String) := Id.run do
-  let front := "".pushn ' ' $ s.offsetOfPos (s.find (!Char.isWhitespace ·))
+  let front := "".pushn ' ' <| s.offsetOfPos (s.find (!Char.isWhitespace ·))
   let mut s := s.trimLeft
   let back := "".pushn ' ' (s.length - s.offsetOfPos (s.find Char.isWhitespace))
   s := s.trimRight
@@ -199,7 +199,7 @@ to as much information as possible.
 partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
   match i with
   | TaggedText.text t => pure #[Html.escape t]
-  | TaggedText.append tt => tt.foldlM (λ acc t => do pure $ acc ++ (←infoFormatToHtml t)) #[]
+  | TaggedText.append tt => tt.foldlM (λ acc t => do pure <| acc ++ (←infoFormatToHtml t)) #[]
   | TaggedText.tag a t =>
     match a.info.val.info with
     | Info.ofTermInfo i =>
@@ -207,7 +207,7 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
       | Expr.const name _ =>
          match t with
          | TaggedText.text t =>
-           let (front, t, back) := splitWhitespaces $ Html.escape t
+           let (front, t, back) := splitWhitespaces <| Html.escape t
            let elem := <a href={←declNameToLink name}>{t}</a>
            pure #[Html.text front, elem, Html.text back]
          | _ =>

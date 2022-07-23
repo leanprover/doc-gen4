@@ -87,7 +87,7 @@ structure OpaqueInfo extends Info where
   A value of partial is interpreted as this opaque being part of a partial def
   since the actual definition for a partial def is hidden behind an inaccessible value.
   -/
-  unsafeInformation : DefinitionSafety
+  definitionSafety : DefinitionSafety
   deriving Inhabited
 
 /--
@@ -104,7 +104,8 @@ structure DefinitionInfo extends Info where
 Information about an `instance` declaration.
 -/
 structure InstanceInfo extends DefinitionInfo where
-  instClass : Name
+  className : Name
+  typeNames : Array Name
   deriving Inhabited
 
 /--
@@ -176,9 +177,9 @@ def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
     fileMap := default,
     ngen := ← getNGen
   }
-  pure $ tagExprInfos ctx infos tt
+  pure <| tagExprInfos ctx infos tt
 
 def isInstance (declName : Name) : MetaM Bool := do
-  pure $ (instanceExtension.getState (←getEnv)).instanceNames.contains declName
+  pure <| (instanceExtension.getState (←getEnv)).instanceNames.contains declName
 
 end DocGen4.Process

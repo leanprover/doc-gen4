@@ -14,10 +14,10 @@ open Lean Meta Widget
 
 partial def stripArgs (e : Expr) : Expr :=
   match e.consumeMData with
-  | Expr.lam name type body data =>
+  | Expr.lam name _ body _ =>
     let name := name.eraseMacroScopes
     stripArgs (Expr.instantiate1 body (mkFVar ⟨name⟩))
-  | Expr.forallE name type body data =>
+  | Expr.forallE name _ body _ =>
     let name := name.eraseMacroScopes
     stripArgs (Expr.instantiate1 body (mkFVar ⟨name⟩))
   | _ => e
@@ -28,7 +28,6 @@ def processEq (eq : Name) : MetaM CodeWithInfos := do
   prettyPrintTerm final
 
 def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
-  let env ← getEnv
   withOptions (tactic.hygienic.set . false) do
     lambdaTelescope v.value fun xs body => do
       let us := v.levelParams.map mkLevelParam
@@ -39,19 +38,38 @@ def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let isUnsafe := v.safety == DefinitionSafety.unsafe
-  let isNonComput := isNoncomputable (←getEnv) v.name
+  let isNonComputable := isNoncomputable (←getEnv) v.name
   try
     let eqs? ← getEqnsFor? v.name
     match eqs? with
     | some eqs =>
-      let prettyEqs ← eqs.mapM processEq
-      pure $ DefinitionInfo.mk info isUnsafe v.hints prettyEqs isNonComput
+      let equations ← eqs.mapM processEq
+      pure {
+        toInfo := info,
+        isUnsafe,
+        hints := v.hints,
+        equations,
+        isNonComputable
+      }
     | none =>
-      let eq ← prettyPrintTerm $ stripArgs (←valueToEq v)
-      pure $ DefinitionInfo.mk info isUnsafe v.hints (some #[eq]) isNonComput
+      let equations := #[←prettyPrintTerm <| stripArgs (←valueToEq v)]
+      pure {
+        toInfo := info,
+        isUnsafe,
+        hints := v.hints,
+        equations,
+        isNonComputable
+      }
   catch err =>
     IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {←err.toMessageData.toString}"
-    pure $ DefinitionInfo.mk info isUnsafe v.hints none isNonComput
+    pure {
+      toInfo := info,
+      isUnsafe,
+      hints := v.hints,
+      equations := none,
+      isNonComputable
+    }
+
 
 
 end DocGen4.Process

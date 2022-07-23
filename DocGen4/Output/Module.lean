@@ -65,7 +65,7 @@ and name.
 -/
 def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
-  nodes := nodes.push $ Html.element "span" false #[("class", "decl_kind")] #[doc.getKindDescription]
+  nodes := nodes.push <| Html.element "span" false #[("class", "decl_kind")] #[doc.getKindDescription]
   nodes := nodes.push
     <span class="decl_name">
       <a class="break_within" href={←declNameToLink doc.getName}>
@@ -106,6 +106,8 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   | DocInfo.definitionInfo i => equationsToHtml i
   | DocInfo.instanceInfo i => equationsToHtml i.toDefinitionInfo
   | DocInfo.classInductiveInfo i => pure #[←classInstancesToHtml i.name]
+  | DocInfo.inductiveInfo i => pure #[←instancesForToHtml i.name]
+  | DocInfo.structureInfo i => pure #[←instancesForToHtml i.name]
   | _ => pure #[]
   let attrs := doc.getAttrs
   let attrsHtml :=
@@ -168,7 +170,7 @@ Returns the list of all imports this module does.
 -/
 def getImports (module : Name) : HtmlM (Array Name) := do
   let res ← getResult
-  pure $ res.moduleInfo.find! module |>.imports
+  pure <| res.moduleInfo.find! module |>.imports
 
 /--
 Sort the list of all modules this one is importing, linkify it
@@ -207,7 +209,7 @@ The main entry point to rendering the HTML for an entire module.
 def moduleToHtml (module : Process.Module) : HtmlM Html := withTheReader SiteBaseContext (setCurrentName module.name) do
   let memberDocs ← module.members.mapM (λ i => moduleMemberToHtml module.name i)
   let memberNames := filterMapDocInfo module.members |>.map DocInfo.getName
-  templateLiftExtends (baseHtmlGenerator module.name.toString) $ pure #[
+  templateLiftExtends (baseHtmlGenerator module.name.toString) <| pure #[
     ←internalNav memberNames module.name,
     Html.element "main" false #[] memberDocs
   ]

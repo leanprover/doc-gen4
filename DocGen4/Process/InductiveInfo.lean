@@ -20,8 +20,11 @@ def getConstructorType (ctor : Name) : MetaM Expr := do
 
 def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
-  let env ← getEnv
   let ctors ← v.ctors.mapM (λ name => do NameInfo.ofTypedName name (←getConstructorType name))
-  pure $ InductiveInfo.mk info ctors v.isUnsafe
+  pure {
+    toInfo := info,
+    ctors,
+    isUnsafe := v.isUnsafe
+  }
 
 end DocGen4.Process

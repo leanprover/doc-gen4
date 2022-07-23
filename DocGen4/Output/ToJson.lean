@@ -17,6 +17,7 @@ structure JsonDeclaration where
 structure JsonInstance where
   name : String
   className : String
+  typeNames : Array String
   deriving FromJson, ToJson
 
 structure JsonModule where
@@ -40,13 +41,17 @@ def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
     for decl in declInfo do
       jsonDecls := (←DocInfo.toJson module.name decl) :: jsonDecls
       if let .instanceInfo i := decl then
-        instances := instances.push { name := i.name.toString, className := i.instClass.toString}
+        instances := instances.push {
+          name := i.name.toString,
+          className := i.className.toString
+          typeNames := i.typeNames.map Name.toString
+        }
     let jsonMod : JsonModule :=  {
       name := module.name.toString,
       declarations := jsonDecls,
-      instances := instances
+      instances,
       imports := module.imports.map Name.toString
     }
-    pure $ ToJson.toJson jsonMod
+    pure <| ToJson.toJson jsonMod
 
 end DocGen4.Output

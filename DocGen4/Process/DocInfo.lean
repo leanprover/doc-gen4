@@ -103,8 +103,8 @@ def isBlackListed (declName : Name) : MetaM Bool := do
   | some _ =>
     let env ← getEnv
     pure (declName.isInternal)
-    <||> (pure $ isAuxRecursor env declName)
-    <||> (pure $ isNoConfusion env declName)
+    <||> (pure <| isAuxRecursor env declName)
+    <||> (pure <| isNoConfusion env declName)
     <||> isRec declName
     <||> isMatcher declName
   -- TODO: Evaluate whether filtering out declarations without range is sensible
@@ -134,10 +134,10 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
   | ConstantInfo.thmInfo i => pure <| some <| theoremInfo (←TheoremInfo.ofTheoremVal i)
   | ConstantInfo.opaqueInfo i => pure <| some <| opaqueInfo (←OpaqueInfo.ofOpaqueVal i)
   | ConstantInfo.defnInfo i =>
-    if ← (isProjFn i.name) then
+    if ←isProjFn i.name then
       pure none
     else
-      if (←isInstance i.name) then
+      if ←isInstance i.name then
         let info ← InstanceInfo.ofDefinitionVal i
         pure <| some <| instanceInfo info
       else
@@ -156,15 +156,13 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := λ (name, 
       else
         pure <| some <| inductiveInfo (←InductiveInfo.ofInductiveVal i)
   -- we ignore these for now
-  | ConstantInfo.ctorInfo i => pure none
-  | ConstantInfo.recInfo i => pure none
-  | ConstantInfo.quotInfo i => pure none
+  | ConstantInfo.ctorInfo _ | ConstantInfo.recInfo _ | ConstantInfo.quotInfo _ => pure none
 
 def getKindDescription : DocInfo → String
 | axiomInfo i => if i.isUnsafe then "unsafe axiom" else "axiom"
 | theoremInfo _ => "theorem"
 | opaqueInfo i =>
-  match i.unsafeInformation with
+  match i.definitionSafety with
   | DefinitionSafety.safe => "opaque"
   | DefinitionSafety.unsafe => "unsafe opaque"
   | DefinitionSafety.partial => "partial def"
@@ -179,7 +177,7 @@ def getKindDescription : DocInfo → String
       modifiers := modifiers.push "noncomputable"
 
     modifiers := modifiers.push "def"
-    pure $ String.intercalate " " modifiers.toList
+    pure <| String.intercalate " " modifiers.toList
 | instanceInfo i => Id.run do
   let mut modifiers := #[]
   if i.isUnsafe then
@@ -188,7 +186,7 @@ def getKindDescription : DocInfo → String
     modifiers := modifiers.push "noncomputable"
 
   modifiers := modifiers.push "instance"
-  pure $ String.intercalate " " modifiers.toList
+  pure <| String.intercalate " " modifiers.toList
 | inductiveInfo i => if i.isUnsafe then "unsafe inductive" else "inductive"
 | structureInfo _ => "structure"
 | classInfo _ => "class"

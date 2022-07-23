@@ -57,28 +57,28 @@ def getChildren : Hierarchy → HierarchyMap
 def isFile : Hierarchy → Bool
 | node _ f _ => f
 
-partial def insert! (h : Hierarchy) (n : Name) : Hierarchy := Id.run $ do
+partial def insert! (h : Hierarchy) (n : Name) : Hierarchy := Id.run do
   let hn := h.getName
   let mut cs := h.getChildren
 
   if getNumParts hn + 1 == getNumParts n then
     match cs.find Name.cmp n with
     | none =>
-      node hn h.isFile (cs.insert Name.cmp n $ empty n true)
+      node hn h.isFile (cs.insert Name.cmp n <| empty n true)
     | some (node _ true _) => h
     | some (node _ false ccs) =>
         cs := cs.erase Name.cmp n
-        node hn h.isFile (cs.insert Name.cmp n $ node n true ccs)
+        node hn h.isFile (cs.insert Name.cmp n <| node n true ccs)
   else
     let leveledName := getNLevels n (getNumParts hn + 1)
     match cs.find Name.cmp leveledName with
     | some nextLevel =>
       cs := cs.erase Name.cmp leveledName
       -- BUG?
-      node hn h.isFile $ cs.insert Name.cmp leveledName (nextLevel.insert! n)
+      node hn h.isFile <| cs.insert Name.cmp leveledName (nextLevel.insert! n)
     | none =>
       let child := (insert! (empty leveledName false) n)
-      node hn h.isFile $ cs.insert Name.cmp leveledName child
+      node hn h.isFile <| cs.insert Name.cmp leveledName child
 
 partial def fromArray (names : Array Name) : Hierarchy :=
   names.foldl insert! (empty anonymous false)
@@ -106,7 +106,7 @@ partial def fromDirectoryAux (dir : System.FilePath) (previous : Name) : IO (Arr
     if (←entry.path.isDir) then
       children := children ++ (←fromDirectoryAux entry.path (.str previous entry.fileName))
     else
-      children := children.push $ .str previous (entry.fileName.dropRight ".html".length)
+      children := children.push <| .str previous (entry.fileName.dropRight ".html".length)
   pure children
 
 def fromDirectory (dir : System.FilePath) : IO Hierarchy := do
@@ -114,7 +114,7 @@ def fromDirectory (dir : System.FilePath) : IO Hierarchy := do
     for entry in ←System.FilePath.readDir dir do
       if !baseDirBlackList.contains entry.fileName && (←entry.path.isDir) then
         children := children ++ (←fromDirectoryAux entry.path (.mkSimple entry.fileName))
-    pure $ Hierarchy.fromArray children
+    pure <| Hierarchy.fromArray children
 
 end Hierarchy
 end DocGen4

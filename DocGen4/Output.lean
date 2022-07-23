@@ -90,7 +90,7 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
   --let sourceSearchPath := ((←Lean.findSysroot) / "src" / "lean") :: ws.root.srcDir :: ws.leanSrcPath
   let sourceSearchPath := ws.root.srcDir :: ws.leanSrcPath
 
-  discard $ htmlOutputDeclarationDatas result |>.run config baseConfig
+  discard <| htmlOutputDeclarationDatas result |>.run config baseConfig
 
   for (modName, module) in result.moduleInfo.toArray do
     let fileDir := moduleNameToDirectory basePath modName
@@ -99,7 +99,7 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     -- The last component is the file name, so we drop it from the depth to root.
     let baseConfig := { baseConfig with depthToRoot := modName.components.dropLast.length }
     let moduleHtml := moduleToHtml module |>.run config baseConfig
-    FS.createDirAll $ fileDir
+    FS.createDirAll fileDir
     FS.writeFile filePath moduleHtml.toString
     if let some inkPath := inkPath then
       if let some inputPath ← Lean.SearchPath.findModuleWithExt sourceSearchPath "lean" module.name then
@@ -127,6 +127,7 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   let mut allInstances : HashMap String (Array String) := .empty
   let mut importedBy : HashMap String (Array String) := .empty
   let mut allModules : List (String × Json) := []
+  let mut instancesFor : HashMap String (Array String) := .empty
   for entry in ←System.FilePath.readDir declarationsBasePath do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
       let fileContent ← FS.readFile entry.path
@@ -138,6 +139,10 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
         let mut insts := allInstances.findD inst.className #[]
         insts := insts.push inst.name
         allInstances := allInstances.insert inst.className insts
+        for typeName in inst.typeNames do
+          let mut instsFor := instancesFor.findD typeName #[]
+          instsFor := instsFor.push inst.name
+          instancesFor := instancesFor.insert typeName instsFor
       for imp in module.imports do
         let mut impBy := importedBy.findD imp #[]
         impBy := impBy.push module.name
@@ -145,11 +150,14 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
 
   let postProcessInstances := allInstances.toList.map (λ(k, v) => (k, toJson v))
   let postProcessImportedBy := importedBy.toList.map (λ(k, v) => (k, toJson v))
+  let postProcessInstancesFor := instancesFor.toList.map (λ(k, v) => (k, toJson v))
+
   let finalJson := Json.mkObj [
     ("declarations", Json.mkObj allDecls),
     ("instances", Json.mkObj postProcessInstances),
     ("importedBy", Json.mkObj postProcessImportedBy),
-    ("modules", Json.mkObj allModules)
+    ("modules", Json.mkObj allModules),
+    ("instancesFor", Json.mkObj postProcessInstancesFor)
   ]
   -- The root JSON for find
   FS.writeFile (declarationsBasePath / "declaration-data.bmp") finalJson.compress

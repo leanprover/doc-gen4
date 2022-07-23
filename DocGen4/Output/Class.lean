@@ -8,9 +8,6 @@ namespace Output
 open scoped DocGen4.Jsx
 open Lean
 
---def classInstanceToHtml (name : Name) : HtmlM Html := do
---  pure <li>{←declNameToHtmlLink name}</li>
-
 def classInstancesToHtml (className : Name) : HtmlM Html := do
   pure
     <details «class»="instances">

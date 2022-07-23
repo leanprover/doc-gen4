@@ -27,7 +27,7 @@ def getGithubBaseUrl (gitUrl : String) : String := Id.run do
     url := url.dropRight 4
     pure s!"https://github.com/{url}"
   else if url.endsWith ".git" then
-    pure $ url.dropRight 4
+    pure <| url.dropRight 4
   else
     pure url
 
@@ -70,7 +70,7 @@ def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange �
         | _ => ("https://example.com", "master")
       gitMap := gitMap.insert dep.name value
 
-  pure $ λ module range =>
+  pure λ module range =>
     let parts := module.components.map Name.toString
     let path := (parts.intersperse "/").foldl (· ++ ·) ""
     let root := module.getRoot
