@@ -14,10 +14,10 @@ open Lean Meta Widget
 
 partial def stripArgs (e : Expr) : Expr :=
   match e.consumeMData with
-  | Expr.lam name type body data =>
+  | Expr.lam name _ body _ =>
     let name := name.eraseMacroScopes
     stripArgs (Expr.instantiate1 body (mkFVar ⟨name⟩))
-  | Expr.forallE name type body data =>
+  | Expr.forallE name _ body _ =>
     let name := name.eraseMacroScopes
     stripArgs (Expr.instantiate1 body (mkFVar ⟨name⟩))
   | _ => e
@@ -28,7 +28,6 @@ def processEq (eq : Name) : MetaM CodeWithInfos := do
   prettyPrintTerm final
 
 def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
-  let env ← getEnv
   withOptions (tactic.hygienic.set . false) do
     lambdaTelescope v.value fun xs body => do
       let us := v.levelParams.map mkLevelParam

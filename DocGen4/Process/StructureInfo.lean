@@ -20,11 +20,11 @@ def dropArgs (type : Expr) (n : Nat) : (Expr × List (Name × Expr)) :=
     let body := body.instantiate1 <| mkFVar ⟨name⟩
     let next := dropArgs body x
     { next with snd := (name, type) :: next.snd}
-  | e, x + 1 => panic! s!"No forallE left"
+  | _e, _x + 1 => panic! s!"No forallE left"
 
 def getFieldTypes (struct : Name) (ctor : ConstructorVal) (parents : Nat) : MetaM (Array NameInfo) := do
   let type := ctor.type
-  let (fieldFunction, params) := dropArgs type (ctor.numParams + parents)
+  let (fieldFunction, _) := dropArgs type (ctor.numParams + parents)
   let (_, fields) := dropArgs fieldFunction (ctor.numFields - parents)
   let mut fieldInfos := #[]
   for (name, type) in fields do

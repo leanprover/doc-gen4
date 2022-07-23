@@ -44,7 +44,7 @@ partial def xmlGetHeadingId (el : Xml.Element) : String :=
   elementToPlainText el |> replaceCharSeq unicodeToDrop "-"
   where
     elementToPlainText el := match el with 
-    | (Element.Element name attrs contents) => 
+    | (Element.Element _ _ contents) => 
       "".intercalate (contents.toList.map contentToPlainText)
     contentToPlainText c := match c with
     | Content.Element el => elementToPlainText el
@@ -138,7 +138,6 @@ def addHeadingAttributes (el : Element) (modifyElement : Element → HtmlM Eleme
 def extendAnchor (el : Element) : HtmlM Element := do
   match el with
   | Element.Element name attrs contents =>
-    let root ← getRoot
     let newAttrs ← match (attrs.find? "href").map extendLink with
     | some href => href.map (attrs.insert "href")
     | none => pure attrs
