@@ -123,42 +123,15 @@ def getSimpleBaseContext (hierarchy : Hierarchy) : SiteBaseContext :=
 def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   htmlOutputSetup baseConfig
 
-  let mut allDecls : List (String × Json) := []
-  let mut allInstances : HashMap String (Array String) := .empty
-  let mut importedBy : HashMap String (Array String) := .empty
-  let mut allModules : List (String × Json) := []
-  let mut instancesFor : HashMap String (Array String) := .empty
+  let mut index : JsonIndex := { }
   for entry in ←System.FilePath.readDir declarationsBasePath do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
       let fileContent ← FS.readFile entry.path
       let .ok jsonContent := Json.parse fileContent | unreachable!
       let .ok (module : JsonModule) := fromJson? jsonContent | unreachable!
-      allModules := (module.name, Json.str <| moduleNameToLink (String.toName module.name) |>.run baseConfig) :: allModules
-      allDecls := (module.declarations.map (λ d => (d.name, toJson d))) ++ allDecls
-      for inst in module.instances do
-        let mut insts := allInstances.findD inst.className #[]
-        insts := insts.push inst.name
-        allInstances := allInstances.insert inst.className insts
-        for typeName in inst.typeNames do
-          let mut instsFor := instancesFor.findD typeName #[]
-          instsFor := instsFor.push inst.name
-          instancesFor := instancesFor.insert typeName instsFor
-      for imp in module.imports do
-        let mut impBy := importedBy.findD imp #[]
-        impBy := impBy.push module.name
-        importedBy := importedBy.insert imp impBy
+      index := index.addModule module |>.run baseConfig
 
-  let postProcessInstances := allInstances.toList.map (λ(k, v) => (k, toJson v))
-  let postProcessImportedBy := importedBy.toList.map (λ(k, v) => (k, toJson v))
-  let postProcessInstancesFor := instancesFor.toList.map (λ(k, v) => (k, toJson v))
-
-  let finalJson := Json.mkObj [
-    ("declarations", Json.mkObj allDecls),
-    ("instances", Json.mkObj postProcessInstances),
-    ("importedBy", Json.mkObj postProcessImportedBy),
-    ("modules", Json.mkObj allModules),
-    ("instancesFor", Json.mkObj postProcessInstancesFor)
-  ]
+  let finalJson := toJson index
   -- The root JSON for find
   FS.writeFile (declarationsBasePath / "declaration-data.bmp") finalJson.compress
 
