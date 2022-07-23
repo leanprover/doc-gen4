@@ -45,13 +45,13 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo :=
     match eqs? with
     | some eqs =>
       let prettyEqs ← eqs.mapM processEq
-      pure $ DefinitionInfo.mk info isUnsafe v.hints prettyEqs isNonComput
+      pure <| DefinitionInfo.mk info isUnsafe v.hints prettyEqs isNonComput
     | none =>
-      let eq ← prettyPrintTerm $ stripArgs (←valueToEq v)
-      pure $ DefinitionInfo.mk info isUnsafe v.hints (some #[eq]) isNonComput
+      let eq ← prettyPrintTerm <| stripArgs (←valueToEq v)
+      pure <| DefinitionInfo.mk info isUnsafe v.hints (some #[eq]) isNonComput
   catch err =>
     IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {←err.toMessageData.toString}"
-    pure $ DefinitionInfo.mk info isUnsafe v.hints none isNonComput
+    pure <| DefinitionInfo.mk info isUnsafe v.hints none isNonComput
 
 
 end DocGen4.Process

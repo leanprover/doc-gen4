@@ -34,21 +34,21 @@ don't have to carry them around as files.
 -/
 @[termElab includeStr] def includeStrImpl : TermElab := λ stx _ => do
   let str := stx[1].isStrLit?.get!
-  let srcPath := FilePath.mk $ ←getFileName
+  let srcPath := FilePath.mk <| ←getFileName
   let currentDir ← IO.currentDir
   -- HACK: Currently we cannot get current file path in VSCode, we have to traversely find the matched subdirectory in the current directory.
   if let some path ← match srcPath.parent with
-  | some p => pure $ some $ p / str
+  | some p => pure <| some <| p / str
   | none => do
     let foundDir ← traverseDir currentDir λ p => p / str |>.pathExists 
-    pure $ foundDir.map (· / str)
+    pure <| foundDir.map (· / str)
   then 
     if ←path.pathExists then
       if ←path.isDir then
         throwError s!"{str} is a directory"
       else
         let content ← FS.readFile path
-        pure $ mkStrLit content
+        pure <| mkStrLit content
     else
       throwError s!"{path} does not exist as a file"
   else

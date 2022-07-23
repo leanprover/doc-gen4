@@ -55,7 +55,7 @@ def Token.toHtml (t : Token) : AlectryonM Html := do
   -- TODO: render docstring
   let mut parts := #[]
   if let some tyi := t.typeinfo then
-    parts := parts.push $ ←tyi.toHtml
+    parts := parts.push <| ←tyi.toHtml
 
   parts := parts.push t.processSemantic
 
@@ -218,6 +218,6 @@ def moduleToHtml (module : Process.Module) (inkPath : System.FilePath) (sourceFi
     let baseCtx ← readThe SiteBaseContext
     let (html, _) := render |>.run ctx baseCtx
     pure html
-  | .error err => throw $ IO.userError s!"Error while parsing LeanInk Output: {err}"
+  | .error err => throw <| IO.userError s!"Error while parsing LeanInk Output: {err}"
 
 end DocGen4.Output.LeanInk

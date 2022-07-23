@@ -18,9 +18,9 @@ def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
   let env ← getEnv
   let isPartial := env.find? (Compiler.mkUnsafeRecName v.name) |>.isSome
   if isPartial then
-    pure $ OpaqueInfo.mk info t DefinitionSafety.partial
+    pure <| OpaqueInfo.mk info t DefinitionSafety.partial
   else
     let safety := if v.isUnsafe then DefinitionSafety.unsafe else DefinitionSafety.safe
-    pure $ OpaqueInfo.mk info t safety
+    pure <| OpaqueInfo.mk info t safety
 
 end DocGen4.Process

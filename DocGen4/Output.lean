@@ -90,7 +90,7 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
   --let sourceSearchPath := ((←Lean.findSysroot) / "src" / "lean") :: ws.root.srcDir :: ws.leanSrcPath
   let sourceSearchPath := ws.root.srcDir :: ws.leanSrcPath
 
-  discard $ htmlOutputDeclarationDatas result |>.run config baseConfig
+  discard <| htmlOutputDeclarationDatas result |>.run config baseConfig
 
   for (modName, module) in result.moduleInfo.toArray do
     let fileDir := moduleNameToDirectory basePath modName
@@ -99,7 +99,7 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     -- The last component is the file name, so we drop it from the depth to root.
     let baseConfig := { baseConfig with depthToRoot := modName.components.dropLast.length }
     let moduleHtml := moduleToHtml module |>.run config baseConfig
-    FS.createDirAll $ fileDir
+    FS.createDirAll fileDir
     FS.writeFile filePath moduleHtml.toString
     if let some inkPath := inkPath then
       if let some inputPath ← Lean.SearchPath.findModuleWithExt sourceSearchPath "lean" module.name then

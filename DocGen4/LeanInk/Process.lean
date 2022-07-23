@@ -33,8 +33,8 @@ def runInk (inkPath : System.FilePath) (sourceFilePath : System.FilePath) : IO J
     match Json.parse output with
     | .ok out => pure out
     | .error err =>
-      throw $ IO.userError s!"LeanInk returned invalid JSON for file: {sourceFilePath}:\n{err}"
+      throw <| IO.userError s!"LeanInk returned invalid JSON for file: {sourceFilePath}:\n{err}"
   | code =>
-    throw $ IO.userError s!"LeanInk exited with code {code} for file: {sourceFilePath}:\n{←inkProcess.stderr.readToEnd}"
+    throw <| IO.userError s!"LeanInk exited with code {code} for file: {sourceFilePath}:\n{←inkProcess.stderr.readToEnd}"
 
 end DocGen4.Output.LeanInk

@@ -104,7 +104,7 @@ def translateAttrs (attrs : Array (TSyntax `DocGen4.Jsx.jsxAttr)) : MacroM (TSyn
     | `(jsxAttr| $n:jsxAttrName=$v:jsxAttrVal) =>
       let n ← match n with
         | `(jsxAttrName| $n:str) => pure n
-        | `(jsxAttrName| $n:ident) => pure $ quote (toString n.getId)
+        | `(jsxAttrName| $n:ident) => pure <| quote (toString n.getId)
         | _ => Macro.throwUnsupported
       let v ← match v with
         | `(jsxAttrVal| {$v}) => pure v
@@ -128,7 +128,7 @@ private def htmlHelper (n : Syntax) (children : Array Syntax) (m : Syntax) : Mac
     | `(jsxChild|$e:jsxElement) => `(($cs).push ($e:jsxElement : Html))
     | _                         => Macro.throwUnsupported
   let tag := toString n.getId
-  pure $ (tag, cs)
+  pure <| (tag, cs)
 
 macro_rules
   | `(<$n $attrs* />) => do

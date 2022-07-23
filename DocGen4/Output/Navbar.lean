@@ -49,7 +49,7 @@ def moduleList : BaseHtmlM Html := do
   let hierarchy ← getHierarchy
   let mut list := Array.empty
   for (_, cs) in hierarchy.getChildren do
-    list := list.push $ ←moduleListDir cs
+    list := list.push <| ←moduleListDir cs
   pure <div class="module_list">[list]</div>
 
 /--

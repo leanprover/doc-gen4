@@ -17,8 +17,8 @@ def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
   let info ← DefinitionInfo.ofDefinitionVal v
   let some className := getClassName (←getEnv) v.type | unreachable!
   if let some instAttr ← getDefaultInstance v.name className then
-    pure $ InstanceInfo.mk { info with attrs := info.attrs.push instAttr } className
+    pure <| InstanceInfo.mk { info with attrs := info.attrs.push instAttr } className
   else
-    pure $ InstanceInfo.mk info className
+    pure <| InstanceInfo.mk info className
 
 end DocGen4.Process

@@ -79,15 +79,6 @@ def getDocString : ModuleMember → Option String
 
 end ModuleMember
 
-def getRelevantModules (imports : List Name) : MetaM (HashSet Name) := do
-  let env ← getEnv
-  let mut relevant := .empty
-  for module in env.header.moduleNames do
-    for import in imports do
-      if import == module then
-        relevant := relevant.insert module
-  pure relevant
-
 inductive AnalyzeTask where
 | loadAll (load : List Name) : AnalyzeTask
 | loadAllLimitAnalysis (analyze : List Name) : AnalyzeTask
@@ -104,7 +95,7 @@ def getAllModuleDocs (relevantModules : Array Name) : MetaM (HashMap Name Module
     let some modIdx := env.getModuleIdx? module | unreachable!
     let moduleData := env.header.moduleData.get! modIdx
     let imports := moduleData.imports.map Import.module
-    res := res.insert module $ Module.mk module modDocs imports
+    res := res.insert module <| Module.mk module modDocs imports
   pure res
 
 /--
@@ -113,9 +104,9 @@ of this `MetaM` run and mentioned by the `AnalyzeTask`.
 -/
 def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
   let env ← getEnv
-  let relevantModules ← match task with
-    | .loadAll _ => pure $ HashSet.fromArray env.header.moduleNames
-    | .loadAllLimitAnalysis analysis => getRelevantModules analysis
+  let relevantModules := match task with
+    | .loadAll _ => HashSet.fromArray env.header.moduleNames
+    | .loadAllLimitAnalysis analysis => HashSet.fromArray analysis.toArray
   let allModules := env.header.moduleNames
 
   let mut res ← getAllModuleDocs relevantModules.toArray

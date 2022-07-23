@@ -101,11 +101,11 @@ def parametricAttributes : Array ParametricAttrWrapper := #[⟨externAttr⟩, �
 
 def getTags (decl : Name) : MetaM (Array String) := do
   let env ← getEnv
-  pure $ tagAttributes.filter (TagAttribute.hasTag · env decl) |>.map (λ t => t.attr.name.toString)
+  pure <| tagAttributes.filter (TagAttribute.hasTag · env decl) |>.map (λ t => t.attr.name.toString)
 
 def getValuesAux {α : Type} {attrKind : Type → Type} [va : ValueAttr attrKind] [Inhabited α] [ToString α] (decl : Name) (attr : attrKind α) : MetaM (Option String) := do
   let env ← getEnv
-  pure $ va.getValue attr env decl
+  pure <| va.getValue attr env decl
 
 def getValues {attrKind : Type → Type} [ValueAttr attrKind] (decl : Name) (attrs : Array (ValueAttrWrapper attrKind)) : MetaM (Array String) := do
   let env ← getEnv
@@ -122,12 +122,12 @@ def getDefaultInstance (decl : Name) (className : Name) : MetaM (Option String) 
   let insts ← getDefaultInstances className
   for (inst, prio) in insts do
     if inst == decl then
-      return some $ s!"defaultInstance {prio}"
+      return some s!"defaultInstance {prio}"
   pure none
 
 def hasSimp (decl : Name) : MetaM (Option String) := do
   let thms ← simpExtension.getTheorems
-  pure $
+  pure <|
     if thms.isLemma decl then
       some "simp"
     else
@@ -135,7 +135,7 @@ def hasSimp (decl : Name) : MetaM (Option String) := do
 
 def hasCsimp (decl : Name) : MetaM (Option String) := do
   let env ← getEnv
-  pure $
+  pure <|
     if Compiler.hasCSimpAttribute env decl then
       some "csimp"
     else
@@ -163,6 +163,6 @@ def getAllAttributes (decl : Name) : MetaM (Array String) := do
   let enums ← getEnumValues decl
   let parametric ← getParametricValues decl
   let customs ← getCustomAttrs decl
-  pure $ customs ++ tags ++ enums ++ parametric
+  pure <| customs ++ tags ++ enums ++ parametric
 
 end DocGen4

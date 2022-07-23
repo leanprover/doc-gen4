@@ -161,7 +161,7 @@ def autoLink (el : Element) : HtmlM Element := do
       match link? with
       | some link => 
         let attributes := Std.RBMap.empty.insert "href" link
-        pure [Content.Element $ Element.Element "a" attributes #[Content.Character s]]
+        pure [Content.Element <| Element.Element "a" attributes #[Content.Character s]]
       | none =>
         let sHead := s.dropRightWhile (λ c => c ≠ '.')
         let sTail := s.takeRightWhile (λ c => c ≠ '.')
@@ -171,7 +171,7 @@ def autoLink (el : Element) : HtmlM Element := do
           let attributes := Std.RBMap.empty.insert "href" link'
           pure [
             Content.Character sHead,
-            Content.Element $ Element.Element "a" attributes #[Content.Character sTail]
+            Content.Element <| Element.Element "a" attributes #[Content.Character sTail]
           ]
         | none =>
           pure [Content.Character s]
@@ -204,7 +204,7 @@ def docStringToHtml (s : String) : HtmlM (Array Html) := do
   match manyDocument rendered.mkIterator with
   | Parsec.ParseResult.success _ res => 
     res.mapM λ x => do
-      pure (Html.text $ toString (← modifyElement x))
+      pure (Html.text <| toString (← modifyElement x))
   | _ => pure #[Html.text rendered]
 
 end Output

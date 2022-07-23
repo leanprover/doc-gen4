@@ -176,9 +176,9 @@ def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
     fileMap := default,
     ngen := ← getNGen
   }
-  pure $ tagExprInfos ctx infos tt
+  pure <| tagExprInfos ctx infos tt
 
 def isInstance (declName : Name) : MetaM Bool := do
-  pure $ (instanceExtension.getState (←getEnv)).instanceNames.contains declName
+  pure <| (instanceExtension.getState (←getEnv)).instanceNames.contains declName
 
 end DocGen4.Process

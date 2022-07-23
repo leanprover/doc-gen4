@@ -47,6 +47,6 @@ def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
       instances := instances
       imports := module.imports.map Name.toString
     }
-    pure $ ToJson.toJson jsonMod
+    pure <| ToJson.toJson jsonMod
 
 end DocGen4.Output

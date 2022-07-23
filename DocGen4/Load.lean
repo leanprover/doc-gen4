@@ -21,7 +21,7 @@ as well as all the dependencies.
 -/
 def lakeSetup (imports : List String) : IO (Except UInt32 Lake.Workspace) := do
   let (leanInstall?, lakeInstall?) ← Lake.findInstall?
-  match ←(EIO.toIO' $ Lake.mkLoadConfig {leanInstall?, lakeInstall?}) with
+  match ←(EIO.toIO' <| Lake.mkLoadConfig {leanInstall?, lakeInstall?}) with
   | .ok config =>
     let ws : Lake.Workspace ← Lake.loadWorkspace config |>.run Lake.MonadLog.eio
     let libraryLeanGitHash := ws.env.lean.githash
@@ -30,16 +30,16 @@ def lakeSetup (imports : List String) : IO (Except UInt32 Lake.Workspace) := do
     let ctx ← Lake.mkBuildContext ws
     (ws.root.buildImportsAndDeps imports *> pure ()) |>.run Lake.MonadLog.eio ctx
     initSearchPath (←findSysroot) ws.leanPaths.oleanPath
-    pure $ Except.ok ws
+    pure <| Except.ok ws
   | .error err =>
-    throw $ IO.userError err.toString
+    throw <| IO.userError err.toString
 
 def envOfImports (imports : List Name) : IO Environment := do
  importModules (imports.map (Import.mk · false)) Options.empty
 
 def loadInit (imports : List Name) : IO Hierarchy := do
  let env ← envOfImports imports
- pure $ Hierarchy.fromArray env.header.moduleNames
+ pure <| Hierarchy.fromArray env.header.moduleNames
 
 /--
 Load a list of modules from the current Lean search path into an `Environment`
