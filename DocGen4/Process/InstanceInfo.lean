@@ -14,11 +14,15 @@ namespace DocGen4.Process
 open Lean Meta 
 
 def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
-  let info ← DefinitionInfo.ofDefinitionVal v
+  let mut info ← DefinitionInfo.ofDefinitionVal v
   let some className := getClassName (←getEnv) v.type | unreachable!
+
   if let some instAttr ← getDefaultInstance v.name className then
-    pure <| InstanceInfo.mk { info with attrs := info.attrs.push instAttr } className
-  else
-    pure <| InstanceInfo.mk info className
+    info := { info with attrs := info.attrs.push instAttr }
+
+  pure {
+    toDefinitionInfo := info,
+    className
+  }
 
 end DocGen4.Process

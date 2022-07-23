@@ -162,7 +162,7 @@ def getKindDescription : DocInfo → String
 | axiomInfo i => if i.isUnsafe then "unsafe axiom" else "axiom"
 | theoremInfo _ => "theorem"
 | opaqueInfo i =>
-  match i.unsafeInformation with
+  match i.definitionSafety with
   | DefinitionSafety.safe => "opaque"
   | DefinitionSafety.unsafe => "unsafe opaque"
   | DefinitionSafety.partial => "partial def"

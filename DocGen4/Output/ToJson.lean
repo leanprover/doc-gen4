@@ -40,7 +40,7 @@ def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
     for decl in declInfo do
       jsonDecls := (←DocInfo.toJson module.name decl) :: jsonDecls
       if let .instanceInfo i := decl then
-        instances := instances.push { name := i.name.toString, className := i.instClass.toString}
+        instances := instances.push { name := i.name.toString, className := i.className.toString}
     let jsonMod : JsonModule :=  {
       name := module.name.toString,
       declarations := jsonDecls,

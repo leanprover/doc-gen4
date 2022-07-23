@@ -35,13 +35,24 @@ def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let env ← getEnv
   let parents := getParentStructures env v.name
-  let ctor := getStructureCtor env v.name
+  let ctorVal := getStructureCtor env v.name
+  let ctor ← NameInfo.ofTypedName ctorVal.name ctorVal.type
   match getStructureInfo? env v.name with
   | some i =>
     if i.fieldNames.size - parents.size > 0 then
-      pure <| StructureInfo.mk info (←getFieldTypes v.name ctor parents.size) parents (←NameInfo.ofTypedName ctor.name ctor.type)
+      pure {
+        toInfo := info,
+        fieldInfo := (←getFieldTypes v.name ctorVal parents.size),
+        parents,
+        ctor
+      }
     else
-      pure <| StructureInfo.mk info #[] parents (←NameInfo.ofTypedName ctor.name ctor.type)
+      pure {
+        toInfo := info,
+        fieldInfo := #[],
+        parents,
+        ctor
+      }
   | none => panic! s!"{v.name} is not a structure"
 
 end DocGen4.Process

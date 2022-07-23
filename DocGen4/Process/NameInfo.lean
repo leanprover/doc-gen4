@@ -39,7 +39,12 @@ def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let nameInfo ← NameInfo.ofTypedName v.name type
   match ←findDeclarationRanges? v.name with
   -- TODO: Maybe selection range is more relevant? Figure this out in the future
-  | some range => pure <| Info.mk nameInfo args range.range (←getAllAttributes v.name)
+  | some range => pure {
+      toNameInfo := nameInfo,
+      args,
+      declarationRange := range.range,
+      attrs := (←getAllAttributes v.name)
+    }
   | none => panic! s!"{v.name} is a declaration without position"
 
 end DocGen4.Process
