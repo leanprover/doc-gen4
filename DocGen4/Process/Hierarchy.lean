@@ -99,21 +99,24 @@ def baseDirBlackList : HashSet String :=
     "style.css"
   ]
 
-
 partial def fromDirectoryAux (dir : System.FilePath) (previous : Name) : IO (Array Name) := do
   let mut children := #[]
   for entry in ←System.FilePath.readDir dir do
     if (←entry.path.isDir) then
       children := children ++ (←fromDirectoryAux entry.path (.str previous entry.fileName))
-    else
+    else if entry.path.extension = some "html" then
       children := children.push <| .str previous (entry.fileName.dropRight ".html".length)
   pure children
 
 def fromDirectory (dir : System.FilePath) : IO Hierarchy := do
     let mut children := #[]
     for entry in ←System.FilePath.readDir dir do
-      if !baseDirBlackList.contains entry.fileName && (←entry.path.isDir) then
+      if baseDirBlackList.contains entry.fileName then
+        continue
+      else if ←entry.path.isDir then
         children := children ++ (←fromDirectoryAux entry.path (.mkSimple entry.fileName))
+      else if entry.path.extension = some "html" then
+        children := children.push <| .mkSimple (entry.fileName.dropRight ".html".length)
     pure <| Hierarchy.fromArray children
 
 end Hierarchy
