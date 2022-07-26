@@ -12,6 +12,10 @@ namespace DocGen4.Output
 open scoped DocGen4.Jsx
 open Lean System Widget Elab Process
 
+def basePath := FilePath.mk "." / "build" / "doc"
+def srcBasePath := basePath / "src"
+def declarationsBasePath := basePath / "declarations"
+
 /--
 The context used in the `BaseHtmlM` monad for HTML templating.
 -/

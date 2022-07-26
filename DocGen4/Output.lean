@@ -13,16 +13,12 @@ import DocGen4.Output.NotFound
 import DocGen4.Output.Find
 import DocGen4.Output.SourceLinker
 import DocGen4.Output.ToJson
-import DocGen4.LeanInk.Output
+import DocGen4.LeanInk.Process
 import Std.Data.HashMap
 
 namespace DocGen4
 
 open Lean IO System Output Process Std
-
-def basePath := FilePath.mk "." / "build" / "doc"
-def srcBasePath := basePath / "src"
-def declarationsBasePath := basePath / "declarations"
 
 def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let findBasePath := basePath / "find"
@@ -97,7 +93,10 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     let filePath := moduleNameToFile basePath modName
     -- path: 'basePath/module/components/till/last.html'
     -- The last component is the file name, so we drop it from the depth to root.
-    let baseConfig := { baseConfig with depthToRoot := modName.components.dropLast.length }
+    let baseConfig := { baseConfig with
+      depthToRoot := modName.components.dropLast.length
+      currentName := some modName
+    }
     let moduleHtml := moduleToHtml module |>.run config baseConfig
     FS.createDirAll fileDir
     FS.writeFile filePath moduleHtml.toString
@@ -106,12 +105,8 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
         IO.println s!"Inking: {modName.toString}"
         -- path: 'basePath/src/module/components/till/last.html'
         -- The last component is the file name, however we are in src/ here so dont drop it this time
-        let baseConfig := { baseConfig with depthToRoot := modName.components.length }
-        let srcHtml ← LeanInk.moduleToHtml module inkPath inputPath |>.run config baseConfig
-        let srcDir := moduleNameToDirectory srcBasePath modName
-        let srcPath := moduleNameToFile srcBasePath modName
-        FS.createDirAll srcDir
-        FS.writeFile srcPath srcHtml.toString
+        let baseConfig := {baseConfig with depthToRoot := modName.components.length }
+        Process.LeanInk.runInk inputPath |>.run config baseConfig
 
 def getSimpleBaseContext (hierarchy : Hierarchy) : SiteBaseContext :=
   {

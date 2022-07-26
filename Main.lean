@@ -34,7 +34,7 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
     | Except.error rc => pure rc
 
 def runIndexCmd (_p : Parsed) : IO UInt32 := do
-  let hierarchy ← Hierarchy.fromDirectory basePath
+  let hierarchy ← Hierarchy.fromDirectory Output.basePath
   let baseConfig := getSimpleBaseContext hierarchy
   htmlOutputIndex baseConfig
   pure 0
