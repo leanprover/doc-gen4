@@ -209,14 +209,14 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
     | Info.ofTermInfo i =>
       match i.expr.consumeMData with
       | Expr.const name _ =>
-         match t with
-         | TaggedText.text t =>
-           let (front, t, back) := splitWhitespaces <| Html.escape t
-           let elem := <a href={←declNameToLink name}>{t}</a>
-           pure #[Html.text front, elem, Html.text back]
-         | _ =>
-           -- TODO: Is this ever reachable?
-           pure #[<a href={←declNameToLink name}>[←infoFormatToHtml t]</a>]
+        match t with
+        | TaggedText.text t =>
+          let (front, t, back) := splitWhitespaces <| Html.escape t
+          let elem := <a href={←declNameToLink name}>{t}</a>
+          pure #[Html.text front, elem, Html.text back]
+        | _ =>
+          -- TODO: Is this ever reachable?
+          pure #[<a href={←declNameToLink name}>[←infoFormatToHtml t]</a>]
       | _ =>
          pure #[<span class="fn">[←infoFormatToHtml t]</span>]
     | _ => pure #[<span class="fn">[←infoFormatToHtml t]</span>]

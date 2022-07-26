@@ -35,7 +35,7 @@ def TypeInfo.toHtml (tyi : TypeInfo) : AlectryonM Html := do
               <span class="hyp-type">
                 <var>{tyi.name}</var>
                 <b>: </b>
-                <span>{tyi.type}</span>
+                <span>[←DocGen4.Output.infoFormatToHtml tyi.type.fst]</span>
               </span>
             </div>
           </blockquote>
@@ -80,16 +80,16 @@ def Contents.toHtml : Contents → AlectryonM Html
 
 def Hypothesis.toHtml (h : Hypothesis) : AlectryonM Html := do
   let mut hypParts := #[<var>[h.names.intersperse ", " |>.map Html.text |>.toArray]</var>]
-  if h.body != "" then
+  if h.body.snd != "" then
     hypParts := hypParts.push
       <span class="hyp-body">
         <b>:= </b>
-        <span>{h.body}</span>
+        <span>[←infoFormatToHtml h.body.fst]</span>
       </span>
   hypParts := hypParts.push
       <span class="hyp-type">
         <b>: </b>
-        <span >{h.type}</span>
+        <span >[←infoFormatToHtml h.type.fst]</span>
       </span>
 
   pure
@@ -103,6 +103,11 @@ def Goal.toHtml (g : Goal) : AlectryonM Html := do
     let rendered ← hyp.toHtml
     hypotheses := hypotheses.push rendered
     hypotheses := hypotheses.push <br/>
+  let conclusionHtml ←
+    match g.conclusion with
+    | .typed info _ => infoFormatToHtml info
+    | .untyped str => pure <| #[Html.text str]
+
   pure
     <blockquote class="alectryon-goal">
       <div class="goal-hyps">
@@ -112,7 +117,7 @@ def Goal.toHtml (g : Goal) : AlectryonM Html := do
         <hr><span class="goal-name">{g.name}</span></hr>
       </span>
       <div class="goal-conclusion">
-        {g.conclusion}
+        [conclusionHtml]
       </div>
     </blockquote>
 
