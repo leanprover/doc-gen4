@@ -72,11 +72,11 @@ def htmlOutputDeclarationDatas (result : AnalyzerResult) : HtmlT IO Unit := do
     let jsonDecls ← Module.toJson mod
     FS.writeFile (declarationsBasePath / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
 
-def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (ws : Lake.Workspace) (inkPath : Option System.FilePath) : IO Unit := do
+def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (ws : Lake.Workspace) (ink : Bool) : IO Unit := do
   let config : SiteContext := {
     result := result,
     sourceLinker := ←sourceLinker ws
-    leanInkEnabled := inkPath.isSome
+    leanInkEnabled := ink
   }
 
   FS.createDirAll basePath
@@ -100,7 +100,7 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     let moduleHtml := moduleToHtml module |>.run config baseConfig
     FS.createDirAll fileDir
     FS.writeFile filePath moduleHtml.toString
-    if let some inkPath := inkPath then
+    if ink then
       if let some inputPath ← Lean.SearchPath.findModuleWithExt sourceSearchPath "lean" module.name then
         IO.println s!"Inking: {modName.toString}"
         -- path: 'basePath/src/module/components/till/last.html'
@@ -134,9 +134,9 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
 The main entrypoint for outputting the documentation HTML based on an
 `AnalyzerResult`.
 -/
-def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Workspace) (inkPath : Option System.FilePath) : IO Unit := do
+def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Workspace) (ink : Bool) : IO Unit := do
   let baseConfig := getSimpleBaseContext hierarchy
-  htmlOutputResults baseConfig result ws inkPath
+  htmlOutputResults baseConfig result ws ink
   htmlOutputIndex baseConfig
 
 end DocGen4
