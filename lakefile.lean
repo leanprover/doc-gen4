@@ -25,7 +25,7 @@ require lake from git
   "https://github.com/leanprover/lake" @ "master"
 
 require leanInk from git
-  "https://github.com/hargonix/LeanInk" @ "doc-gen"
+  "https://github.com/hargonix/LeanInk" @ "doc-gen-json"
 
 module_facet docs : FilePath := fun mod => do
   let some docGen4 ← findLeanExe? `«doc-gen4»
