@@ -13,10 +13,10 @@ namespace DocGen4.Process.LeanInk
 
 open Lean
 open DocGen4.Output
--- TODO: rework monad mess
+
 def docGenOutput (as : List LeanInk.Annotation.Annotation) : HtmlT LeanInk.AnalysisM UInt32 := do
-  let some modName := getCurrentName |>.run (←readThe SiteBaseContext) | unreachable!
-  let srcHtml ← LeanInk.Annotation.Alectryon.renderAnnotations as |>.run (←readThe SiteContext) (←readThe SiteBaseContext)
+  let some modName ← getCurrentName | unreachable!
+  let srcHtml ← LeanInk.Annotation.Alectryon.renderAnnotations as
   let srcDir := moduleNameToDirectory srcBasePath modName
   let srcPath := moduleNameToFile srcBasePath modName
   IO.FS.createDirAll srcDir
@@ -26,7 +26,7 @@ def docGenOutput (as : List LeanInk.Annotation.Annotation) : HtmlT LeanInk.Analy
 def execAuxM : HtmlT LeanInk.AnalysisM UInt32 := do
   let ctx ← readThe SiteContext
   let baseCtx ← readThe SiteBaseContext
-  let outputFn := (λ as => docGenOutput as |>.run ctx baseCtx)
+  let outputFn := (docGenOutput · |>.run ctx baseCtx)
   return ← LeanInk.Analysis.runAnalysis { 
     name := "doc-gen4"
     genOutput := outputFn

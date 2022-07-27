@@ -209,7 +209,7 @@ def annotationsToFragments (as : List Annotation.Annotation) : AnalysisM (List F
 -- TODO: rework monad mess
 def renderAnnotations (as : List Annotation.Annotation) : HtmlT AnalysisM Html := do
   let fs ← annotationsToFragments as
-  let (html, _) := fs.mapM Fragment.toHtml >>= (baseHtml ∘ List.toArray) |>.run { counter := 0 } |>.run (←readThe SiteContext) (←readThe SiteBaseContext)
+  let (html, _) ← fs.mapM Fragment.toHtml >>= (baseHtml ∘ List.toArray) |>.run { counter := 0 }
   pure html
 
 end LeanInk.Annotation.Alectryon

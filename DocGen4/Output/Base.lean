@@ -66,6 +66,12 @@ def HtmlT.run (x : HtmlT m α) (ctx : SiteContext) (baseCtx : SiteBaseContext) :
 def HtmlM.run (x : HtmlM α) (ctx : SiteContext) (baseCtx : SiteBaseContext) : α :=
   ReaderT.run x ctx |>.run baseCtx |>.run
 
+instance [Monad m] : MonadLift HtmlM (HtmlT m) where
+  monadLift x := do pure <| x.run (←readThe SiteContext) (←readThe SiteBaseContext)
+
+instance [Monad m] : MonadLift BaseHtmlM (BaseHtmlT m) where
+  monadLift x := do pure <| x.run (←readThe SiteBaseContext)
+
 /--
 Obtains the root URL as a relative one to the current depth.
 -/
