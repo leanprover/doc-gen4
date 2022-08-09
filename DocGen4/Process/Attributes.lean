@@ -39,7 +39,7 @@ instance : ValueAttr EnumAttributes where
 Obtain the value of a parametric attribute for a certain name.
 -/
 def parametricGetValue {α : Type} [Inhabited α] [ToString α] (attr : ParametricAttribute α) (env : Environment) (decl : Name) : Option String := do
-  let val ← ParametricAttribute.getParam attr env decl
+  let val ← ParametricAttribute.getParam? attr env decl
   some (attr.attr.name.toString ++ " " ++ toString val)
 
 instance : ValueAttr ParametricAttribute where
@@ -108,7 +108,6 @@ def getValuesAux {α : Type} {attrKind : Type → Type} [va : ValueAttr attrKind
   pure <| va.getValue attr env decl
 
 def getValues {attrKind : Type → Type} [ValueAttr attrKind] (decl : Name) (attrs : Array (ValueAttrWrapper attrKind)) : MetaM (Array String) := do
-  let env ← getEnv
   let mut res := #[]
   for attr in attrs do
     if let some val ← @getValuesAux attr.α attrKind _ attr.inhab attr.str decl attr.attr then
