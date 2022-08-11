@@ -19,20 +19,13 @@ Sets up a lake workspace for the current project. Furthermore initialize
 the Lean search path with the path to the proper compiler from lean-toolchain
 as well as all the dependencies.
 -/
-def lakeSetup (imports : List String) : IO (Except UInt32 Lake.Workspace) := do
+def lakeSetup : IO (Except UInt32 Lake.Workspace) := do
   let (leanInstall?, lakeInstall?) ← Lake.findInstall?
   match ←(EIO.toIO' <| Lake.mkLoadConfig {leanInstall?, lakeInstall?}) with
   | .ok config =>
     let ws : Lake.Workspace ← Lake.loadWorkspace config
       |>.run Lake.MonadLog.eio
       |>.toIO (λ _ => IO.userError "Failed to load Lake workspace")
-    let libraryLeanGitHash := ws.lakeEnv.lean.githash
-    if libraryLeanGitHash ≠ Lean.githash then
-      IO.println s!"WARNING: This doc-gen was built with Lean: {Lean.githash} but the project is running on: {libraryLeanGitHash}"
-    let _libs ← ws.runBuild (Lake.buildImportsAndDeps imports) false
-      |>.run (Lake.MonadLog.eio config.verbosity)
-      |>.toIO (λ _ => IO.userError "Failed to compile imports via Lake")
-    initSearchPath (←findSysroot) (ws.packageList.map (·.oleanDir))
     pure <| Except.ok ws
   | .error err =>
     throw <| IO.userError err.toString
@@ -61,5 +54,8 @@ def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy)
   }
 
   Prod.fst <$> Meta.MetaM.toIO (Process.process task) config { env := env } {} {}
+
+def loadCore : IO (Process.AnalyzerResult × Hierarchy) := do
+  load <| .loadAll [`Init, `Std, `Lean]
 
 end DocGen4
