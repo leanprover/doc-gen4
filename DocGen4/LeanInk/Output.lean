@@ -5,7 +5,6 @@ Authors: Henrik Böving, Xubai Wang
 -/
 import DocGen4.Output.Base
 import DocGen4.Output.ToHtmlFormat
-import DocGen4.LeanInk.Process
 import Lean.Data.Json
 import LeanInk.Annotation.Alectryon
 
@@ -17,7 +16,8 @@ open scoped DocGen4.Jsx
 structure AlectryonContext where
   counter : Nat
 
-abbrev AlectryonM := StateT AlectryonContext HtmlM
+abbrev AlectryonT := StateT AlectryonContext
+abbrev AlectryonM := AlectryonT HtmlM
 
 def getNextButtonLabel : AlectryonM String := do
   let val ← get
@@ -35,7 +35,7 @@ def TypeInfo.toHtml (tyi : TypeInfo) : AlectryonM Html := do
               <span class="hyp-type">
                 <var>{tyi.name}</var>
                 <b>: </b>
-                <span>{tyi.type}</span>
+                <span>[←DocGen4.Output.infoFormatToHtml tyi.type.fst]</span>
               </span>
             </div>
           </blockquote>
@@ -80,16 +80,16 @@ def Contents.toHtml : Contents → AlectryonM Html
 
 def Hypothesis.toHtml (h : Hypothesis) : AlectryonM Html := do
   let mut hypParts := #[<var>[h.names.intersperse ", " |>.map Html.text |>.toArray]</var>]
-  if h.body != "" then
+  if h.body.snd != "" then
     hypParts := hypParts.push
       <span class="hyp-body">
         <b>:= </b>
-        <span>{h.body}</span>
+        <span>[←infoFormatToHtml h.body.fst]</span>
       </span>
   hypParts := hypParts.push
       <span class="hyp-type">
         <b>: </b>
-        <span >{h.type}</span>
+        <span >[←infoFormatToHtml h.type.fst]</span>
       </span>
 
   pure
@@ -103,6 +103,11 @@ def Goal.toHtml (g : Goal) : AlectryonM Html := do
     let rendered ← hyp.toHtml
     hypotheses := hypotheses.push rendered
     hypotheses := hypotheses.push <br/>
+  let conclusionHtml ←
+    match g.conclusion with
+    | .typed info _ => infoFormatToHtml info
+    | .untyped str => pure <| #[Html.text str]
+
   pure
     <blockquote class="alectryon-goal">
       <div class="goal-hyps">
@@ -112,7 +117,7 @@ def Goal.toHtml (g : Goal) : AlectryonM Html := do
         <hr><span class="goal-name">{g.name}</span></hr>
       </span>
       <div class="goal-conclusion">
-        {g.conclusion}
+        [conclusionHtml]
       </div>
     </blockquote>
 
@@ -197,27 +202,14 @@ def baseHtml (content : Array Html) : AlectryonM Html := do
       </body>
     </html>
 
-def renderFragments (fs : Array Fragment) : AlectryonM Html :=
-  fs.mapM Fragment.toHtml >>= baseHtml
+def annotationsToFragments (as : List Annotation.Annotation) : AnalysisM (List Fragment) := do
+  let config ← read
+  annotateFileWithCompounds [] config.inputFileContents as
+
+-- TODO: rework monad mess
+def renderAnnotations (as : List Annotation.Annotation) : HtmlT AnalysisM Html := do
+  let fs ← annotationsToFragments as
+  let (html, _) ← fs.mapM Fragment.toHtml >>= (baseHtml ∘ List.toArray) |>.run { counter := 0 }
+  pure html
 
 end LeanInk.Annotation.Alectryon
-
-namespace DocGen4.Output.LeanInk
-
-open Lean
-open LeanInk.Annotation.Alectryon
-open scoped DocGen4.Jsx
-
-def moduleToHtml (module : Process.Module) (inkPath : System.FilePath) (sourceFilePath : System.FilePath) : HtmlT IO Html := withTheReader SiteBaseContext (setCurrentName module.name) do
-  let json ← runInk inkPath sourceFilePath
-  let fragments := fromJson? json
-  match fragments with
-  | .ok fragments =>
-    let render := StateT.run (LeanInk.Annotation.Alectryon.renderFragments fragments) { counter := 0 }
-    let ctx ← read
-    let baseCtx ← readThe SiteBaseContext
-    let (html, _) := render |>.run ctx baseCtx
-    pure html
-  | .error err => throw <| IO.userError s!"Error while parsing LeanInk Output: {err}"
-
-end DocGen4.Output.LeanInk

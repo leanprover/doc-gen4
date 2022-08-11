@@ -4,16 +4,6 @@ import Cli
 
 open DocGen4 Lean Cli
 
-def findLeanInk? (p : Parsed) : IO (Option System.FilePath) := do
-  match p.flag? "ink" with
-  | some ink =>
-    let inkPath := System.FilePath.mk ink.value
-    if ←inkPath.pathExists then
-      pure <| some inkPath
-    else
-      throw <| IO.userError "Invalid path to LeanInk binary provided"
-  | none => pure none
-
 def getTopLevelModules (p : Parsed) : IO (List String) :=  do
   let topLevelModules := p.variableArgsAs! String |>.toList
   if topLevelModules.length == 0 then
@@ -21,46 +11,45 @@ def getTopLevelModules (p : Parsed) : IO (List String) :=  do
   pure topLevelModules
 
 def runSingleCmd (p : Parsed) : IO UInt32 := do
-    let relevantModules := [p.positionalArg! "module" |>.as! String]
-    let res ← lakeSetup (relevantModules)
-    match res with
-    | Except.ok ws =>
-      let relevantModules := relevantModules.map String.toName
-      let (doc, hierarchy) ← load (.loadAllLimitAnalysis relevantModules)
-      IO.println "Outputting HTML"
-      let baseConfig := getSimpleBaseContext hierarchy
-      htmlOutputResults baseConfig doc ws (←findLeanInk? p)
-      pure 0
-    | Except.error rc => pure rc
+  let relevantModules := [p.positionalArg! "module" |>.as! String |> String.toName]
+  let res ← lakeSetup
+  match res with
+  | Except.ok ws =>
+    let (doc, hierarchy) ← load <| .loadAllLimitAnalysis relevantModules
+    IO.println "Outputting HTML"
+    let baseConfig := getSimpleBaseContext hierarchy
+    htmlOutputResults baseConfig doc ws (p.hasFlag "ink")
+    pure 0
+  | Except.error rc => pure rc
 
 def runIndexCmd (_p : Parsed) : IO UInt32 := do
-  let hierarchy ← Hierarchy.fromDirectory basePath
+  let hierarchy ← Hierarchy.fromDirectory Output.basePath
   let baseConfig := getSimpleBaseContext hierarchy
   htmlOutputIndex baseConfig
   pure 0
 
-def runDocGenCmd (p : Parsed) : IO UInt32 := do
-  let modules : List String := p.variableArgsAs! String |>.toList
-  if modules.length == 0 then
-    throw <| IO.userError "No modules provided."
-
-  let res ← lakeSetup modules
+def runGenCoreCmd (_p : Parsed) : IO UInt32 := do
+  let res ← lakeSetup
   match res with
   | Except.ok ws =>
-    IO.println s!"Loading modules from: {←searchPathRef.get}"
-    let modules := modules.map String.toName
-    let (doc, hierarchy) ← load (.loadAll modules)
+    let (doc, hierarchy) ← loadCore
     IO.println "Outputting HTML"
-    htmlOutput doc hierarchy ws (←findLeanInk? p)
+    let baseConfig := getSimpleBaseContext hierarchy
+    htmlOutputResults baseConfig doc ws (ink := False) 
     pure 0
   | Except.error rc => pure rc
+
+def runDocGenCmd (_p : Parsed) : IO UInt32 := do
+  IO.println "You most likely want to use me via Lake now, check my README on Github on how to:"
+  IO.println "https://github.com/leanprover/doc-gen4"
+  return 0
 
 def singleCmd := `[Cli|
   single VIA runSingleCmd;
   "Only generate the documentation for the module it was given, might contain broken links unless all documentation is generated."
 
   FLAGS:
-    ink : String; "Path to a LeanInk binary to use for rendering the Lean sources."
+    ink; "Render the files with LeanInk in addition"
 
   ARGS:
     module : String; "The module to generate the HTML for. Does not have to be part of topLevelModules."
@@ -73,19 +62,19 @@ def indexCmd := `[Cli|
     ...topLevelModule : String; "The top level modules this documentation will be for."
 ]
 
+def genCoreCmd := `[Cli|
+  genCore VIA runGenCoreCmd;
+  "Generate documentation for the core Lean modules: Init, Std and Lean since they are not Lake projects"
+]
+
 def docGenCmd : Cmd := `[Cli|
-  "doc-gen4" VIA runDocGenCmd; ["0.0.1"]
+  "doc-gen4" VIA runDocGenCmd; ["0.1.0"]
   "A documentation generator for Lean 4."
-
-  FLAGS:
-    ink : String; "Path to a LeanInk binary to use for rendering the Lean sources."
-
-  ARGS:
-    ...modules : String; "The modules to generate the HTML for."
 
   SUBCOMMANDS:
     singleCmd;
-    indexCmd
+    indexCmd;
+    genCoreCmd
 ]
 
 def main (args : List String) : IO UInt32 :=

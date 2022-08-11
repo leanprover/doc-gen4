@@ -13,16 +13,12 @@ import DocGen4.Output.NotFound
 import DocGen4.Output.Find
 import DocGen4.Output.SourceLinker
 import DocGen4.Output.ToJson
-import DocGen4.LeanInk.Output
+import DocGen4.LeanInk.Process
 import Std.Data.HashMap
 
 namespace DocGen4
 
 open Lean IO System Output Process Std
-
-def basePath := FilePath.mk "." / "build" / "doc"
-def srcBasePath := basePath / "src"
-def declarationsBasePath := basePath / "declarations"
 
 def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let findBasePath := basePath / "find"
@@ -76,11 +72,11 @@ def htmlOutputDeclarationDatas (result : AnalyzerResult) : HtmlT IO Unit := do
     let jsonDecls ← Module.toJson mod
     FS.writeFile (declarationsBasePath / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
 
-def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (ws : Lake.Workspace) (inkPath : Option System.FilePath) : IO Unit := do
+def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (ws : Lake.Workspace) (ink : Bool) : IO Unit := do
   let config : SiteContext := {
     result := result,
     sourceLinker := ←sourceLinker ws
-    leanInkEnabled := inkPath.isSome
+    leanInkEnabled := ink
   }
 
   FS.createDirAll basePath
@@ -97,21 +93,20 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     let filePath := moduleNameToFile basePath modName
     -- path: 'basePath/module/components/till/last.html'
     -- The last component is the file name, so we drop it from the depth to root.
-    let baseConfig := { baseConfig with depthToRoot := modName.components.dropLast.length }
+    let baseConfig := { baseConfig with
+      depthToRoot := modName.components.dropLast.length
+      currentName := some modName
+    }
     let moduleHtml := moduleToHtml module |>.run config baseConfig
     FS.createDirAll fileDir
     FS.writeFile filePath moduleHtml.toString
-    if let some inkPath := inkPath then
+    if ink then
       if let some inputPath ← Lean.SearchPath.findModuleWithExt sourceSearchPath "lean" module.name then
         IO.println s!"Inking: {modName.toString}"
         -- path: 'basePath/src/module/components/till/last.html'
         -- The last component is the file name, however we are in src/ here so dont drop it this time
-        let baseConfig := { baseConfig with depthToRoot := modName.components.length }
-        let srcHtml ← LeanInk.moduleToHtml module inkPath inputPath |>.run config baseConfig
-        let srcDir := moduleNameToDirectory srcBasePath modName
-        let srcPath := moduleNameToFile srcBasePath modName
-        FS.createDirAll srcDir
-        FS.writeFile srcPath srcHtml.toString
+        let baseConfig := {baseConfig with depthToRoot := modName.components.length }
+        Process.LeanInk.runInk inputPath |>.run config baseConfig
 
 def getSimpleBaseContext (hierarchy : Hierarchy) : SiteBaseContext :=
   {
@@ -139,9 +134,9 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
 The main entrypoint for outputting the documentation HTML based on an
 `AnalyzerResult`.
 -/
-def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Workspace) (inkPath : Option System.FilePath) : IO Unit := do
+def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Workspace) (ink : Bool) : IO Unit := do
   let baseConfig := getSimpleBaseContext hierarchy
-  htmlOutputResults baseConfig result ws inkPath
+  htmlOutputResults baseConfig result ws ink
   htmlOutputIndex baseConfig
 
 end DocGen4

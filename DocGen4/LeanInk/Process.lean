@@ -3,38 +3,55 @@ Copyright (c) 2022 Henrik Böving. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
-import Lean.Data.Json
+import Lean
+import LeanInk.Analysis
+import LeanInk.Annotation
+import DocGen4.LeanInk.Output
+import DocGen4.Output.Base
 
-namespace DocGen4.Output.LeanInk
+namespace DocGen4.Process.LeanInk
 
 open Lean
-open IO
+open DocGen4.Output
 
-def runInk (inkPath : System.FilePath) (sourceFilePath : System.FilePath) : IO Json := do
-  let arguments := #[
-    "analyze", sourceFilePath.toString,
-    "--lake", "lakefile.lean",
-    "--x-enable-type-info",
-    "--x-enable-docStrings",
-    "--x-enable-semantic-token"
-  ]
-  let inkProcess ← Process.spawn {
-    stdin := Process.Stdio.null
-    stdout := Process.Stdio.piped
-    stderr := Process.Stdio.piped
-    cmd := inkPath.toString
-    args := arguments
+def docGenOutput (as : List LeanInk.Annotation.Annotation) : HtmlT LeanInk.AnalysisM UInt32 := do
+  let some modName ← getCurrentName | unreachable!
+  let srcHtml ← LeanInk.Annotation.Alectryon.renderAnnotations as
+  let srcDir := moduleNameToDirectory srcBasePath modName
+  let srcPath := moduleNameToFile srcBasePath modName
+  IO.FS.createDirAll srcDir
+  IO.FS.writeFile srcPath srcHtml.toString
+  pure 0
+
+def execAuxM : HtmlT LeanInk.AnalysisM UInt32 := do
+  let ctx ← readThe SiteContext
+  let baseCtx ← readThe SiteBaseContext
+  let outputFn := (docGenOutput · |>.run ctx baseCtx)
+  return ← LeanInk.Analysis.runAnalysis { 
+    name := "doc-gen4"
+    genOutput := outputFn
+  } 
+
+def execAux (config : LeanInk.Configuration) : HtmlT IO UInt32 := do
+  execAuxM.run (←readThe SiteContext) (←readThe SiteBaseContext) |>.run config
+
+@[implementedBy enableInitializersExecution]
+private def enableInitializersExecutionWrapper : IO Unit := pure ()
+
+def runInk (sourceFilePath : System.FilePath) : HtmlT IO Unit := do
+  let contents ← IO.FS.readFile sourceFilePath
+  let config := { 
+    inputFilePath := sourceFilePath
+    inputFileContents := contents
+    lakeFile := none
+    verbose := false
+    prettifyOutput := true
+    experimentalTypeInfo := true
+    experimentalDocString := true
+    experimentalSemanticType := true
   }
-  match (←inkProcess.wait) with
-  | 0 =>
-    let outputFilePath := sourceFilePath.withExtension "lean.leanInk"
-    let output ← FS.readFile outputFilePath
-    FS.removeFile outputFilePath
-    match Json.parse output with
-    | .ok out => pure out
-    | .error err =>
-      throw <| IO.userError s!"LeanInk returned invalid JSON for file: {sourceFilePath}:\n{err}"
-  | code =>
-    throw <| IO.userError s!"LeanInk exited with code {code} for file: {sourceFilePath}:\n{←inkProcess.stderr.readToEnd}"
+  enableInitializersExecutionWrapper
+  if (← execAux config) != 0 then
+    throw <| IO.userError s!"Analysis for \"{sourceFilePath}\" failed!"
 
-end DocGen4.Output.LeanInk
+end DocGen4.Process.LeanInk

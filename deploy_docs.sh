@@ -23,7 +23,7 @@ fi
 
 # generate the docs
 cd $1
-../$2/build/bin/doc-gen4 --ink ../$4/build/bin/leanInk Mathlib
+lake -Kenv=dev build Mathlib:docs --verbose
 
 if [ "$3" = "true" ]; then
   cd ..

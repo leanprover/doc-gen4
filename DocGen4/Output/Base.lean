@@ -11,6 +11,10 @@ namespace DocGen4.Output
 open scoped DocGen4.Jsx
 open Lean System Widget Elab Process
 
+def basePath := FilePath.mk "." / "build" / "doc"
+def srcBasePath := basePath / "src"
+def declarationsBasePath := basePath / "declarations"
+
 /--
 The context used in the `BaseHtmlM` monad for HTML templating.
 -/
@@ -60,6 +64,12 @@ def HtmlT.run (x : HtmlT m α) (ctx : SiteContext) (baseCtx : SiteBaseContext) :
 
 def HtmlM.run (x : HtmlM α) (ctx : SiteContext) (baseCtx : SiteBaseContext) : α :=
   ReaderT.run x ctx |>.run baseCtx |>.run
+
+instance [Monad m] : MonadLift HtmlM (HtmlT m) where
+  monadLift x := do pure <| x.run (←readThe SiteContext) (←readThe SiteBaseContext)
+
+instance [Monad m] : MonadLift BaseHtmlM (BaseHtmlT m) where
+  monadLift x := do pure <| x.run (←readThe SiteBaseContext)
 
 /--
 Obtains the root URL as a relative one to the current depth.
@@ -202,17 +212,21 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
   | TaggedText.tag a t =>
     match a.info.val.info with
     | Info.ofTermInfo i =>
-      match i.expr.consumeMData with
-      | Expr.const name _ =>
-         match t with
-         | TaggedText.text t =>
-           let (front, t, back) := splitWhitespaces <| Html.escape t
-           let elem := <a href={←declNameToLink name}>{t}</a>
-           pure #[Html.text front, elem, Html.text back]
-         | _ =>
-           -- TODO: Is this ever reachable?
-           pure #[<a href={←declNameToLink name}>[←infoFormatToHtml t]</a>]
-      | _ =>
+      let cleanExpr :=  i.expr.consumeMData
+      if let Expr.const name _ := cleanExpr then
+        -- TODO: this is some very primitive blacklisting but real Blacklisting needs MetaM
+        -- find a better solution
+        if (←getResult).name2ModIdx.contains name then
+          match t with
+          | TaggedText.text t =>
+            let (front, t, back) := splitWhitespaces <| Html.escape t
+            let elem := <a href={←declNameToLink name}>{t}</a>
+            pure #[Html.text front, elem, Html.text back]
+          | _ =>
+            pure #[<a href={←declNameToLink name}>[←infoFormatToHtml t]</a>]
+        else
+         pure #[<span class="fn">[←infoFormatToHtml t]</span>]
+      else
          pure #[<span class="fn">[←infoFormatToHtml t]</span>]
     | _ => pure #[<span class="fn">[←infoFormatToHtml t]</span>]
 
