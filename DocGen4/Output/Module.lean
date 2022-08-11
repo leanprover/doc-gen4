@@ -81,7 +81,7 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   | DocInfo.classInfo i => nodes := nodes.append (←structureInfoHeader i)
   | _ => nodes := nodes
 
-  nodes := nodes.push <span class="decl_args">:</span>
+  nodes := nodes.push <| Html.element "span" true #[("class", "decl_args")] #[" :"]
   nodes := nodes.push <div class="decl_type">[←infoFormatToHtml doc.getType]</div>
   pure <div class="decl_header"> [nodes] </div>
 
