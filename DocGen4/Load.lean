@@ -23,13 +23,16 @@ def lakeSetup (imports : List String) : IO (Except UInt32 Lake.Workspace) := do
   let (leanInstall?, lakeInstall?) ← Lake.findInstall?
   match ←(EIO.toIO' <| Lake.mkLoadConfig {leanInstall?, lakeInstall?}) with
   | .ok config =>
-    let ws : Lake.Workspace ← Lake.loadWorkspace config |>.run Lake.MonadLog.eio
-    let libraryLeanGitHash := ws.env.lean.githash
+    let ws : Lake.Workspace ← Lake.loadWorkspace config
+      |>.run Lake.MonadLog.eio
+      |>.toIO (λ _ => IO.userError "Failed to load Lake workspace")
+    let libraryLeanGitHash := ws.lakeEnv.lean.githash
     if libraryLeanGitHash ≠ Lean.githash then
       IO.println s!"WARNING: This doc-gen was built with Lean: {Lean.githash} but the project is running on: {libraryLeanGitHash}"
-    let ctx ← Lake.mkBuildContext ws
-    (ws.root.buildImportsAndDeps imports *> pure ()) |>.run Lake.MonadLog.eio ctx
-    initSearchPath (←findSysroot) ws.leanPaths.oleanPath
+    let _libs ← ws.runBuild (Lake.buildImportsAndDeps imports) false
+      |>.run (Lake.MonadLog.eio config.verbosity)
+      |>.toIO (λ _ => IO.userError "Failed to compile imports via Lake")
+    initSearchPath (←findSysroot) (ws.packageList.map (·.oleanDir))
     pure <| Except.ok ws
   | .error err =>
     throw <| IO.userError err.toString

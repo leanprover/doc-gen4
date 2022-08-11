@@ -55,20 +55,18 @@ compiler release to work with this provides a function to turn names of
 declarations into (optionally positional) Github URLs.
 -/
 def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange → String) := do
-  let leanHash := ws.env.lean.githash
+  let leanHash := ws.lakeEnv.lean.githash
   -- Compute a map from package names to source URL
   let mut gitMap := Std.mkHashMap
   let projectBaseUrl := getGithubBaseUrl (←getProjectGithubUrl)
   let projectCommit ← getProjectCommit
   gitMap := gitMap.insert ws.root.name (projectBaseUrl, projectCommit)
-  for pkg in ws.packageArray do
-    for dep in pkg.dependencies do
-      let value := match dep.src with
-        -- TODO: subdir handling
-        | Lake.Source.git url commit _ => (getGithubBaseUrl url, commit.getD "main")
-        -- TODO: What do we do here if linking a source is not possible?
-        | _ => ("https://example.com", "master")
-      gitMap := gitMap.insert dep.name value
+  let manifest ← Lake.Manifest.loadOrEmpty ws.root.manifestFile
+      |>.run (Lake.MonadLog.eio .normal)
+      |>.toIO (λ _ => IO.userError "Failed to load lake manifest")
+  for pkg in manifest.toArray do
+    let value := (getGithubBaseUrl pkg.url, pkg.rev)
+    gitMap := gitMap.insert pkg.name value
 
   pure λ module range =>
     let parts := module.components.map Name.toString
@@ -79,8 +77,9 @@ def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange �
     else
       match ws.packageArray.find? (·.isLocalModule module) with
       | some pkg =>
-        let (baseUrl, commit) := gitMap.find! pkg.name
-        s!"{baseUrl}/blob/{commit}/{path}.lean"
+        match gitMap.find? pkg.name with
+        | some (baseUrl, commit) => s!"{baseUrl}/blob/{commit}/{path}.lean"
+        | none => "https://example.com"
       | none => "https://example.com"
 
     match range with

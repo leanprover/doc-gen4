@@ -5,6 +5,5 @@ Authors: Henrik Böving
 -/
 import DocGen4.Process
 import DocGen4.Load
-import DocGen4.IncludeStr
 import DocGen4.Output
 import DocGen4.LeanInk
