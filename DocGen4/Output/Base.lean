@@ -212,17 +212,21 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
   | TaggedText.tag a t =>
     match a.info.val.info with
     | Info.ofTermInfo i =>
-      match i.expr.consumeMData with
-      | Expr.const name _ =>
-        match t with
-        | TaggedText.text t =>
-          let (front, t, back) := splitWhitespaces <| Html.escape t
-          let elem := <a href={←declNameToLink name}>{t}</a>
-          pure #[Html.text front, elem, Html.text back]
-        | _ =>
-          -- TODO: Is this ever reachable?
-          pure #[<a href={←declNameToLink name}>[←infoFormatToHtml t]</a>]
-      | _ =>
+      let cleanExpr :=  i.expr.consumeMData
+      if let Expr.const name _ := cleanExpr then
+        -- TODO: this is some very primitive blacklisting but real Blacklisting needs MetaM
+        -- find a better solution
+        if (←getResult).name2ModIdx.contains name then
+          match t with
+          | TaggedText.text t =>
+            let (front, t, back) := splitWhitespaces <| Html.escape t
+            let elem := <a href={←declNameToLink name}>{t}</a>
+            pure #[Html.text front, elem, Html.text back]
+          | _ =>
+            pure #[<a href={←declNameToLink name}>[←infoFormatToHtml t]</a>]
+        else
+         pure #[<span class="fn">[←infoFormatToHtml t]</span>]
+      else
          pure #[<span class="fn">[←infoFormatToHtml t]</span>]
     | _ => pure #[<span class="fn">[←infoFormatToHtml t]</span>]
 
