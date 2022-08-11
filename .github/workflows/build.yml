@@ -25,14 +25,6 @@ jobs:
         run: |
           lake build
 
-      - name: Checkout and compile LeanInk
-        run: |
-          cd ../
-          git clone https://github.com/hargonix/LeanInk
-          cd LeanInk
-          git checkout doc-gen
-          lake build
-
       - name: Checkout and compile mathlib4
         run: |
           cd ../
