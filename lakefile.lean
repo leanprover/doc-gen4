@@ -1,5 +1,4 @@
 import Lake
-import Lake.CLI.Main
 open System Lake DSL
 
 package «doc-gen4»
