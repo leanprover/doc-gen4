@@ -128,7 +128,7 @@ def addHeadingAttributes (el : Element) (modifyElement : Element → HtmlM Eleme
       |>.insert "class" "markdown-heading"
     let newContents := (← 
       contents.mapM (λ c => match c with
-      | Content.Element e => (modifyElement e).map (Content.Element)
+      | Content.Element e => return Content.Element (← modifyElement e)
       | _ => pure c))
       |>.push (Content.Character " ")
       |>.push (Content.Element anchor)
@@ -138,8 +138,8 @@ def addHeadingAttributes (el : Element) (modifyElement : Element → HtmlM Eleme
 def extendAnchor (el : Element) : HtmlM Element := do
   match el with
   | Element.Element name attrs contents =>
-    let newAttrs ← match (attrs.find? "href").map extendLink with
-    | some href => href.map (attrs.insert "href")
+    let newAttrs ← match attrs.find? "href" with
+    | some href => pure (attrs.insert "href" (← extendLink href))
     | none => pure attrs
     pure ⟨ name, newAttrs, contents⟩
 
@@ -193,7 +193,7 @@ partial def modifyElement (element : Element) : HtmlM Element :=
     -- recursively modify
     else
       let newContents ← contents.mapM λ c => match c with
-        | Content.Element e => (modifyElement e).map Content.Element
+        | Content.Element e => return Content.Element (← modifyElement e)
         | _ => pure c
       pure ⟨ name, attrs, newContents ⟩ 
 
