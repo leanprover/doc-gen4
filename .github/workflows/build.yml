@@ -21,10 +21,6 @@ jobs:
           ~/.elan/bin/lean --version
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
-      - name: compile doc-gen4
-        run: |
-          lake build
-
       - name: Checkout and compile mathlib4
         run: |
           cd ../
@@ -32,7 +28,7 @@ jobs:
           cd mathlib4
           lake build
 
-      - name: generate and deploy docs
+      - name: generate docs, deploy if on master
         run: |
           if [ "$github_repo" = "leanprover/doc-gen4" ] && [ "$github_ref" = "refs/heads/main" ]; then
             deploy="true"
