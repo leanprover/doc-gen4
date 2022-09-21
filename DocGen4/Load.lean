@@ -8,7 +8,7 @@ import Lean
 import Lake
 import Lake.CLI.Main
 import DocGen4.Process
-import Std.Data.HashMap
+import Lean.Data.HashMap
 
 namespace DocGen4
 

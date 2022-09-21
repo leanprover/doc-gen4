@@ -77,7 +77,7 @@ instance : ToString SpecializeAttributeKind where
 /--
 The list of all enum based attributes doc-gen knows about and can recover.
 -/
-def enumAttributes : Array EnumAttrWrapper := #[⟨Compiler.inlineAttrs⟩, ⟨Compiler.specializeAttrs⟩]
+def enumAttributes : Array EnumAttrWrapper := #[⟨Compiler.inlineAttrs⟩]
 
 instance : ToString ExternEntry where
   toString entry :=
@@ -97,7 +97,7 @@ instance : ToString ExternAttrData where
 The list of all parametric attributes (that is, attributes with any kind of information attached)
 doc-gen knows about and can recover.
 -/
-def parametricAttributes : Array ParametricAttrWrapper := #[⟨externAttr⟩, ⟨Compiler.implementedByAttr⟩, ⟨exportAttr⟩]
+def parametricAttributes : Array ParametricAttrWrapper := #[⟨externAttr⟩, ⟨Compiler.implementedByAttr⟩, ⟨exportAttr⟩, ⟨Compiler.specializeAttr⟩]
 
 def getTags (decl : Name) : MetaM (Array String) := do
   let env ← getEnv

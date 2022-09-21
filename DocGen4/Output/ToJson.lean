@@ -1,7 +1,7 @@
 import Lean
 import DocGen4.Process
 import DocGen4.Output.Base
-import Std.Data.RBMap
+import Lean.Data.RBMap
 
 namespace DocGen4.Output
 
