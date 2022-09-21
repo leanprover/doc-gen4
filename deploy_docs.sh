@@ -23,7 +23,7 @@ fi
 
 # generate the docs
 cd $1
-sed -i "s/git \"https:\/\/github.com\/leanprover\/doc-gen4\" @ \"main\"/\"..\" \/ \"$2\" with NameMap.empty/" lakefile.lean
+sed -i "s/git \"https:\/\/github.com\/leanprover\/doc-gen4\" @ \"$docgen_git_hash\"/\"..\" \/ \"$2\" with NameMap.empty/" lakefile.lean
 lake -Kdoc=on build Mathlib:docs --verbose
 
 if [ "$3" = "true" ]; then
