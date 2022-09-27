@@ -127,7 +127,7 @@ def getDefaultInstance (decl : Name) (className : Name) : MetaM (Option String) 
 def hasSimp (decl : Name) : MetaM (Option String) := do
   let thms ← simpExtension.getTheorems
   pure <|
-    if thms.isLemma decl then
+    if thms.isLemma (.decl decl) then
       some "simp"
     else
       none
