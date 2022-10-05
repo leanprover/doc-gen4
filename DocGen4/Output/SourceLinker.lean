@@ -57,7 +57,7 @@ declarations into (optionally positional) Github URLs.
 def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange → String) := do
   let leanHash := ws.lakeEnv.lean.githash
   -- Compute a map from package names to source URL
-  let mut gitMap := Std.mkHashMap
+  let mut gitMap := Lean.mkHashMap
   let projectBaseUrl := getGithubBaseUrl (←getProjectGithubUrl)
   let projectCommit ← getProjectCommit
   gitMap := gitMap.insert ws.root.name (projectBaseUrl, projectCommit)

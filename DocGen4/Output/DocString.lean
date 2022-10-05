@@ -27,7 +27,7 @@ namespace Output
 -/
 def splitAround (s : String) (p : Char → Bool) : List String := splitAroundAux s p 0 0 []
 
-instance : Inhabited Element := ⟨"", Std.RBMap.empty, #[]⟩
+instance : Inhabited Element := ⟨"", Lean.RBMap.empty, #[]⟩
 
 /-- Parse an array of Xml/Html document from String. -/
 def manyDocument : Parsec (Array Element) := many (prolog *> element <* many Misc) <* eof
@@ -119,7 +119,7 @@ def addHeadingAttributes (el : Element) (modifyElement : Element → HtmlM Eleme
   match el with
   | Element.Element name attrs contents => do
     let id := xmlGetHeadingId el
-    let anchorAttributes := Std.RBMap.empty
+    let anchorAttributes := Lean.RBMap.empty
       |>.insert "class" "hover-link"
       |>.insert "href" s!"#{id}"
     let anchor := Element.Element "a" anchorAttributes #[Content.Character "#"]
@@ -159,7 +159,7 @@ def autoLink (el : Element) : HtmlM Element := do
       let link? ← nameToLink? s
       match link? with
       | some link => 
-        let attributes := Std.RBMap.empty.insert "href" link
+        let attributes := Lean.RBMap.empty.insert "href" link
         pure [Content.Element <| Element.Element "a" attributes #[Content.Character s]]
       | none =>
         let sHead := s.dropRightWhile (λ c => c ≠ '.')
@@ -167,7 +167,7 @@ def autoLink (el : Element) : HtmlM Element := do
         let link'? ← nameToLink? sTail
         match link'? with
         | some link' => 
-          let attributes := Std.RBMap.empty.insert "href" link'
+          let attributes := Lean.RBMap.empty.insert "href" link'
           pure [
             Content.Character sHead,
             Content.Element <| Element.Element "a" attributes #[Content.Character sTail]
