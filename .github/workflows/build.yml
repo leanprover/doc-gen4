@@ -15,7 +15,11 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
-
+      - name: Dump GitHub context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: |
+          echo "$GITHUB_CONTEXT"
       - name: install elan
         run: |
           set -o pipefail
