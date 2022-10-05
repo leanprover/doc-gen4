@@ -30,16 +30,19 @@ jobs:
           cd mathlib4
           lake build
 
-      - name: generate docs, deploy if on master
+      - name: generate docs
+        if: ${{ github.event.pull_request.head_sha != "" }}
         run: |
-          if [ "$github_repo" = "leanprover/doc-gen4" ] && [ "$github_ref" = "refs/heads/main" ]; then
-            deploy="true"
-            DOC_GEN_REF="main"
-          else
-            deploy="false"
-          fi
           cd ../
-          ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "$deploy" "LeanInk"
+          ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "false" "LeanInk"
+        env:
+          DOC_GEN_REF: ${{ github.event.pull_request.head.sha }}
+
+      - name: generate and deploy docs
+        if: ${{ github.event.pull_request.head.sha == "" && github.event.push.repository.full_name == "leanprover/doc-gen4" }}
+        run: |
+          cd ../
+          ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "true" "LeanInk"
         env:
           MATHLIB4_DOCS_KEY: ${{ secrets.MATHLIB4_DOCS_KEY }}
-          DOC_GEN_REF: ${{ github.event.pull_request.head.sha }}
+          DOC_GEN_REF: "main"
