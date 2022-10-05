@@ -24,7 +24,6 @@ fi
 # generate the docs
 cd $1
 sed -i "s|\"https://github.com/leanprover/doc-gen4\" @ \"main\"|\"$DOC_GEN_URL\" @ \"$DOC_GEN_REF\"|" lakefile.lean
-cat lakefile.lean
 lake -Kdoc=on update
 lake -Kdoc=on build Mathlib:docs Std:docs --verbose
 
