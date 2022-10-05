@@ -5,8 +5,8 @@ Authors: Henrik Böving
 -/
 
 import Lean
-import Std.Data.HashMap
-import Std.Data.HashSet
+import Lean.Data.HashMap
+import Lean.Data.HashSet
 
 import DocGen4.Process.Base
 import DocGen4.Process.Hierarchy
@@ -14,7 +14,7 @@ import DocGen4.Process.DocInfo
 
 namespace DocGen4.Process
 
-open Lean Meta Std
+open Lean Meta
 
 /--
 Member of a module, either a declaration or some module doc string.

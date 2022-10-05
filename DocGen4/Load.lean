@@ -8,11 +8,11 @@ import Lean
 import Lake
 import Lake.CLI.Main
 import DocGen4.Process
-import Std.Data.HashMap
+import Lean.Data.HashMap
 
 namespace DocGen4
 
-open Lean System Std IO
+open Lean System IO
 
 /--
 Sets up a lake workspace for the current project. Furthermore initialize
@@ -56,6 +56,6 @@ def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy)
   Prod.fst <$> Meta.MetaM.toIO (Process.process task) config { env := env } {} {}
 
 def loadCore : IO (Process.AnalyzerResult × Hierarchy) := do
-  load <| .loadAll [`Init, `Std, `Lean]
+  load <| .loadAll [`Init, `Lean]
 
 end DocGen4

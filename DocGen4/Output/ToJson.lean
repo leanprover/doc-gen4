@@ -1,11 +1,11 @@
 import Lean
 import DocGen4.Process
 import DocGen4.Output.Base
-import Std.Data.RBMap
+import Lean.Data.RBMap
 
 namespace DocGen4.Output
 
-open Lean Std
+open Lean
 
 structure JsonDeclaration where
   name : String

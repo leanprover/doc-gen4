@@ -4,11 +4,9 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
 import Lean
-import Std.Data.HashMap
+import Lean.Data.HashMap
 
-open Std
-
-def HashSet.fromArray [BEq α] [Hashable α] (xs : Array α) : HashSet α :=
+def Lean.HashSet.fromArray [BEq α] [Hashable α] (xs : Array α) : Lean.HashSet α :=
   xs.foldr (flip .insert) .empty
 
 namespace DocGen4

@@ -54,7 +54,7 @@ target coreDocs : FilePath := do
   let dataFile := basePath / "declarations" / "declaration-data-Lean.bmp"
   exeJob.bindSync fun exeFile exeTrace => do
     let trace ← buildFileUnlessUpToDate dataFile exeTrace do
-      logInfo "Documenting Lean core: Init, Std, Lean"
+      logInfo "Documenting Lean core: Init and Lean"
       proc {
         cmd := exeFile.toString
         args := #["genCore"]

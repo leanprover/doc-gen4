@@ -121,7 +121,7 @@ private def htmlHelper (n : Syntax) (children : Array Syntax) (m : Syntax) : Mac
   let mut cs ← `(#[])
   for child in children do
     cs ← match child with
-    | `(jsxChild|$t:jsxText)    => `(($cs).push (Html.text $(quote t.raw[0].getAtomVal!)))
+    | `(jsxChild|$t:jsxText)    => `(($cs).push (Html.text $(quote t.raw[0]!.getAtomVal)))
     -- TODO(WN): elab as list of children if type is `t Html` where `Foldable t`
     | `(jsxChild|{$t})          => `(($cs).push ($t : Html))
     | `(jsxChild|[$t])          => `($cs ++ ($t : Array Html))

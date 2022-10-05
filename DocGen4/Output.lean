@@ -14,11 +14,11 @@ import DocGen4.Output.Find
 import DocGen4.Output.SourceLinker
 import DocGen4.Output.ToJson
 import DocGen4.LeanInk.Process
-import Std.Data.HashMap
+import Lean.Data.HashMap
 
 namespace DocGen4
 
-open Lean IO System Output Process Std
+open Lean IO System Output Process
 
 def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let findBasePath := basePath / "find"

@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: '0 */2 * * *' # every 2 hours
   push:
+    branches:
+      - "main"
   pull_request:
 
 jobs:
@@ -12,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: install elan
         run: |
@@ -32,6 +34,7 @@ jobs:
         run: |
           if [ "$github_repo" = "leanprover/doc-gen4" ] && [ "$github_ref" = "refs/heads/main" ]; then
             deploy="true"
+            DOC_GEN_REF="main"
           else
             deploy="false"
           fi
@@ -39,5 +42,4 @@ jobs:
           ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "$deploy" "LeanInk"
         env:
           MATHLIB4_DOCS_KEY: ${{ secrets.MATHLIB4_DOCS_KEY }}
-          github_repo: ${{ github.repository }}
-          github_ref: ${{ github.ref }}
+          DOC_GEN_REF: ${{ github.event.pull_request.head.sha }}
