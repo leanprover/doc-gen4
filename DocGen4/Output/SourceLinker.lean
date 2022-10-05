@@ -72,7 +72,7 @@ def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange �
     let parts := module.components.map Name.toString
     let path := (parts.intersperse "/").foldl (· ++ ·) ""
     let root := module.getRoot
-    let basic := if root == `Lean ∨ root == `Init ∨ root == `Std then
+    let basic := if root == `Lean ∨ root == `Init then
       s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/{path}.lean"
     else
       match ws.packageArray.find? (·.isLocalModule module) with

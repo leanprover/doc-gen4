@@ -5,7 +5,7 @@ import Lean.Data.RBMap
 
 namespace DocGen4.Output
 
-open Lean Std
+open Lean
 
 structure JsonDeclaration where
   name : String

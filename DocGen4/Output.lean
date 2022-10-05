@@ -18,7 +18,7 @@ import Lean.Data.HashMap
 
 namespace DocGen4
 
-open Lean IO System Output Process Std
+open Lean IO System Output Process
 
 def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let findBasePath := basePath / "find"

@@ -14,7 +14,7 @@ import DocGen4.Process.DocInfo
 
 namespace DocGen4.Process
 
-open Lean Meta Std
+open Lean Meta
 
 /--
 Member of a module, either a declaration or some module doc string.
