@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: '0 */2 * * *' # every 2 hours
   push:
+    branches:
+      - "main"
   pull_request:
 
 jobs:

@@ -10,22 +10,20 @@ cd $1
 mathlib_short_git_hash="$(git log -1 --pretty=format:%h)"
 
 cd ../$2
-DOCGEN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-echo $DOC_GEN_REF
+DOC_GEN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
 
 cd ../
 
 git clone "https://github.com/leanprover-community/mathlib4_docs.git" mathlib4_docs
 
 # skip if docs for this commit have already been generated
-if [ "$(cd mathlib4_docs && git log -1 --pretty=format:%s)" == "automatic update to mathlib4 $mathlib_short_git_hash
-  using doc-gen4 $DOC_GEN_REF" ]; then
+if [ "$(cd mathlib4_docs && git log -1 --pretty=format:%s)" == "automatic update to mathlib4 $mathlib_short_git_hash using doc-gen4 $DOC_GEN_REF" ]; then
   exit 0
 fi
 
 # generate the docs
 cd $1
-sed -i "s|\"https://github.com/leanprover/doc-gen4\" @ \"main\"|\"$docgen_url\" @ \"$DOC_GEN_REF\"|" lakefile.lean
+sed -i "s|\"https://github.com/leanprover/doc-gen4\" @ \"main\"|\"$DOC_GEN_URL\" @ \"$DOC_GEN_REF\"|" lakefile.lean
 cat lakefile.lean
 lake -Kdoc=on update
 lake -Kdoc=on build Mathlib:docs Std:docs --verbose
