@@ -11,6 +11,7 @@ mathlib_short_git_hash="$(git log -1 --pretty=format:%h)"
 
 cd ../$2
 DOCGEN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+echo $DOC_GEN_REF
 
 cd ../
 
