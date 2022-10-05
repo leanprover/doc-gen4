@@ -15,11 +15,7 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
-      - name: Dump GitHub context
-        env:
-          GITHUB_CONTEXT: ${{ toJson(github) }}
-        run: |
-          echo "$GITHUB_CONTEXT"
+
       - name: install elan
         run: |
           set -o pipefail
@@ -34,16 +30,16 @@ jobs:
           cd mathlib4
           lake build
 
-      - name: generate docs
-        if: github.event.pull_request.head_sha != ''
+      - name: generate docs (PRs only)
+        if: github.event_name == 'pull_request'
         run: |
           cd ../
           ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "false" "LeanInk"
         env:
           DOC_GEN_REF: ${{ github.event.pull_request.head.sha }}
 
-      - name: generate and deploy docs
-        if: github.event.pull_request.head.sha == '' && github.event.push.repository.full_name == 'leanprover/doc-gen4'
+      - name: generate and deploy docs (master only)
+        if: github.event_name == 'push' && github.repository == 'leanprover/doc-gen4'
         run: |
           cd ../
           ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "true" "LeanInk"
