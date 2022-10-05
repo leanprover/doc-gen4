@@ -31,7 +31,7 @@ jobs:
           lake build
 
       - name: generate docs
-        if: ${{ github.event.pull_request.head_sha != '' }}
+        if: github.event.pull_request.head_sha != ''
         run: |
           cd ../
           ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "false" "LeanInk"
@@ -39,7 +39,7 @@ jobs:
           DOC_GEN_REF: ${{ github.event.pull_request.head.sha }}
 
       - name: generate and deploy docs
-        if: ${{ github.event.pull_request.head.sha == '' && github.event.push.repository.full_name == 'leanprover/doc-gen4' }}
+        if: github.event.pull_request.head.sha == '' && github.event.push.repository.full_name == 'leanprover/doc-gen4'
         run: |
           cd ../
           ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "true" "LeanInk"
