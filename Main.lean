@@ -64,7 +64,7 @@ def indexCmd := `[Cli|
 
 def genCoreCmd := `[Cli|
   genCore VIA runGenCoreCmd;
-  "Generate documentation for the core Lean modules: Init, Std and Lean since they are not Lake projects"
+  "Generate documentation for the core Lean modules: Init and Lean since they are not Lake projects"
 ]
 
 def docGenCmd : Cmd := `[Cli|
