@@ -30,8 +30,6 @@ def argToHtml (arg : Arg) : HtmlM Html := do
   | BinderInfo.implicit => ("{", "}", true)
   | BinderInfo.strictImplicit => ("⦃", "⦄", true)
   | BinderInfo.instImplicit => ("[", "]", true)
-  -- TODO: Can this ever be reached here? What does it mean?
-  | BinderInfo.auxDecl => unreachable!
   let mut nodes := #[Html.text s!"{l}{arg.name.toString} : "]
   nodes := nodes.append (←infoFormatToHtml arg.type)
   nodes := nodes.push r
@@ -146,7 +144,7 @@ Rendering a module doc string, that is the ones with an ! after the opener
 as HTML.
 -/
 def modDocToHtml (mdoc : ModuleDoc) : HtmlM Html := do
-  pure 
+  pure
     <div class="mod_doc">
       [←docStringToHtml mdoc.doc]
     </div>

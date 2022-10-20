@@ -27,20 +27,20 @@ def execAuxM : HtmlT LeanInk.AnalysisM UInt32 := do
   let ctx ← readThe SiteContext
   let baseCtx ← readThe SiteBaseContext
   let outputFn := (docGenOutput · |>.run ctx baseCtx)
-  return ← LeanInk.Analysis.runAnalysis { 
+  return ← LeanInk.Analysis.runAnalysis {
     name := "doc-gen4"
     genOutput := outputFn
-  } 
+  }
 
 def execAux (config : LeanInk.Configuration) : HtmlT IO UInt32 := do
   execAuxM.run (←readThe SiteContext) (←readThe SiteBaseContext) |>.run config
 
-@[implementedBy enableInitializersExecution]
+@[implemented_by enableInitializersExecution]
 private def enableInitializersExecutionWrapper : IO Unit := pure ()
 
 def runInk (sourceFilePath : System.FilePath) : HtmlT IO Unit := do
   let contents ← IO.FS.readFile sourceFilePath
-  let config := { 
+  let config := {
     inputFilePath := sourceFilePath
     inputFileContents := contents
     lakeFile := none

@@ -43,8 +43,8 @@ def manyDocument : Parsec (Array Element) := many (prolog *> element <* many Mis
 partial def xmlGetHeadingId (el : Xml.Element) : String :=
   elementToPlainText el |> replaceCharSeq unicodeToDrop "-"
   where
-    elementToPlainText el := match el with 
-    | (Element.Element _ _ contents) => 
+    elementToPlainText el := match el with
+    | (Element.Element _ _ contents) =>
       "".intercalate (contents.toList.map contentToPlainText)
     contentToPlainText c := match c with
     | Content.Element el => elementToPlainText el
@@ -54,10 +54,10 @@ partial def xmlGetHeadingId (el : Xml.Element) : String :=
       s.split pattern
       |>.filter (!·.isEmpty)
       |> replacement.intercalate
-    unicodeToDrop (c : Char) : Bool := 
+    unicodeToDrop (c : Char) : Bool :=
       charInGeneralCategory c GeneralCategory.punctuation ||
       charInGeneralCategory c GeneralCategory.separator ||
-      charInGeneralCategory c GeneralCategory.other  
+      charInGeneralCategory c GeneralCategory.other
 
 /--
   This function try to find the given name, both globally and in current module.
@@ -79,7 +79,7 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
       match (← getCurrentName) with
       | some currentName =>
         match res.moduleInfo.find! currentName |>.members |> filterMapDocInfo |>.find? (sameEnd ·.getName name) with
-        | some info => 
+        | some info =>
           declNameToLink info.getName
         | _ => pure none
       | _ => pure none
@@ -88,7 +88,7 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
   where
     -- check if two names have the same ending components
     sameEnd n1 n2 :=
-      List.zip n1.components' n2.components'
+      List.zip n1.componentsRev n2.componentsRev
       |>.all λ ⟨a, b⟩ => a == b
 
 /--
@@ -106,11 +106,11 @@ def extendLink (s : String)  : HtmlM String := do
       pure link
     else
       panic! s!"Cannot find {s.drop 2}, only full name and abbrev in current module is supported"
-  -- for id 
+  -- for id
   else if s.startsWith "#" then
     pure s
   -- for absolute and relative urls
-  else if s.startsWith "http" then 
+  else if s.startsWith "http" then
     pure s
   else pure ((←getRoot) ++ s)
 
@@ -126,13 +126,13 @@ def addHeadingAttributes (el : Element) (modifyElement : Element → HtmlM Eleme
     let newAttrs := attrs
       |>.insert "id" id
       |>.insert "class" "markdown-heading"
-    let newContents := (← 
+    let newContents := (←
       contents.mapM (λ c => match c with
       | Content.Element e => return Content.Element (← modifyElement e)
       | _ => pure c))
       |>.push (Content.Character " ")
       |>.push (Content.Element anchor)
-    pure ⟨ name, newAttrs, newContents⟩ 
+    pure ⟨ name, newAttrs, newContents⟩
 
 /-- Extend anchor links. -/
 def extendAnchor (el : Element) : HtmlM Element := do
@@ -158,7 +158,7 @@ def autoLink (el : Element) : HtmlM Element := do
     linkify s := do
       let link? ← nameToLink? s
       match link? with
-      | some link => 
+      | some link =>
         let attributes := Lean.RBMap.empty.insert "href" link
         pure [Content.Element <| Element.Element "a" attributes #[Content.Character s]]
       | none =>
@@ -166,7 +166,7 @@ def autoLink (el : Element) : HtmlM Element := do
         let sTail := s.takeRightWhile (λ c => c ≠ '.')
         let link'? ← nameToLink? sTail
         match link'? with
-        | some link' => 
+        | some link' =>
           let attributes := Lean.RBMap.empty.insert "href" link'
           pure [
             Content.Character sHead,
@@ -174,9 +174,9 @@ def autoLink (el : Element) : HtmlM Element := do
           ]
         | none =>
           pure [Content.Character s]
-    unicodeToSplit (c : Char) : Bool := 
+    unicodeToSplit (c : Char) : Bool :=
       charInGeneralCategory c GeneralCategory.separator ||
-      charInGeneralCategory c GeneralCategory.other  
+      charInGeneralCategory c GeneralCategory.other
 /-- Core function of modifying the cmark rendered docstring html. -/
 partial def modifyElement (element : Element) : HtmlM Element :=
   match element with
@@ -195,13 +195,13 @@ partial def modifyElement (element : Element) : HtmlM Element :=
       let newContents ← contents.mapM λ c => match c with
         | Content.Element e => return Content.Element (← modifyElement e)
         | _ => pure c
-      pure ⟨ name, attrs, newContents ⟩ 
+      pure ⟨ name, attrs, newContents ⟩
 
 /-- Convert docstring to Html. -/
 def docStringToHtml (s : String) : HtmlM (Array Html) := do
   let rendered := CMark.renderHtml s
   match manyDocument rendered.mkIterator with
-  | Parsec.ParseResult.success _ res => 
+  | Parsec.ParseResult.success _ res =>
     res.mapM λ x => do
       pure (Html.text <| toString (← modifyElement x))
   | _ => pure #[Html.text rendered]
