@@ -17,14 +17,26 @@
 
 import { DeclarationDataCenter } from "../declaration-data.js";
 
+function leanFriendlyRegExp(c) {
+  try {
+    return new RegExp("(?<!«[^»]*)" + c);
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      // Lookbehind is not implemented yet in WebKit. Fall bacck to less friendly regex.
+      return new RegExp(c);
+    }
+    throw e;
+  }
+}
+
 /**
  * We don't use browser's default hash and searchParams in case Lean declaration name
  * can be like `«#»`, rather we manually handle the `window.location.href` with regex.
  */
 const LEAN_FRIENDLY_URL_REGEX = /^[^?#]+(?:\?((?:[^«#»]|«.*»)*))?(?:#(.*))?$/;
-const LEAN_FRIENDLY_AND_SEPARATOR = /(?<!«[^»]*)&/;
-const LEAN_FRIENDLY_EQUAL_SEPARATOR = /(?<!«[^»]*)=/;
-const LEAN_FRIENDLY_SLASH_SEPARATOR = /(?<!«[^»]*)\//;
+const LEAN_FRIENDLY_AND_SEPARATOR = leanFriendlyRegExp("&");
+const LEAN_FRIENDLY_EQUAL_SEPARATOR = leanFriendlyRegExp("=");
+const LEAN_FRIENDLY_SLASH_SEPARATOR = leanFriendlyRegExp("/");
 
 const [_, query, fragment] = LEAN_FRIENDLY_URL_REGEX.exec(window.location.href);
 const queryParams = new Map(
