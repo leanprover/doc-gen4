@@ -22,7 +22,8 @@ function leanFriendlyRegExp(c) {
     return new RegExp("(?<!«[^»]*)" + c);
   } catch (e) {
     if (e instanceof SyntaxError) {
-      // Lookbehind is not implemented yet in WebKit. Fall bacck to less friendly regex.
+      // Lookbehind is not implemented yet in WebKit: https://bugs.webkit.org/show_bug.cgi?id=174931
+      // Fall back to less friendly regex.
       return new RegExp(c);
     }
     throw e;
