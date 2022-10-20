@@ -14,7 +14,7 @@ namespace DocGen4
 open Lean Name
 
 def getNLevels (name : Name) (levels: Nat) : Name :=
-  let components := name.components'
+  let components := name.componentsRev
   (components.drop (components.length - levels)).reverse.foldl (· ++ ·) Name.anonymous
 
 inductive Hierarchy where

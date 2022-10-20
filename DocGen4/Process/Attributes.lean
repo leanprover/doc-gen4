@@ -64,8 +64,9 @@ instance : ToString InlineAttributeKind where
     match kind with
     | InlineAttributeKind.inline => "inline"
     | InlineAttributeKind.noinline => "noinline"
-    | InlineAttributeKind.macroInline => "macroInline"
-    | InlineAttributeKind.inlineIfReduce => "inlineIfReduce"
+    | InlineAttributeKind.macroInline => "macro_inline"
+    | InlineAttributeKind.inlineIfReduce => "inline_if_reduce"
+    | InlineAttributeKind.alwaysInline => "always_inline"
 
 open Compiler in
 instance : ToString SpecializeAttributeKind where

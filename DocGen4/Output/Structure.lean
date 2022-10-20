@@ -12,7 +12,7 @@ open Lean
 Render a single field consisting of its documentation, its name and its type as HTML.
 -/
 def fieldToHtml (f : Process.NameInfo) : HtmlM Html := do
-  let shortName := f.name.components'.head!.toString
+  let shortName := f.name.componentsRev.head!.toString
   let name := f.name.toString
   if let some doc := f.doc then
     let renderedDoc ← docStringToHtml doc
@@ -37,7 +37,7 @@ def structureToHtml (i : Process.StructureInfo) : HtmlM (Array Html) := do
         [←i.fieldInfo.mapM fieldToHtml]
       </ul>)
     else
-      let ctorShortName := i.ctor.name.components'.head!.toString
+      let ctorShortName := i.ctor.name.componentsRev.head!.toString
       (<ul class="structure_ext">
         <li id={i.ctor.name.toString} class="structure_ext_ctor">{s!"{ctorShortName} "} :: (</li>
         <ul class="structure_ext_fields">

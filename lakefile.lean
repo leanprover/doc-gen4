@@ -5,7 +5,7 @@ package «doc-gen4»
 
 lean_lib DocGen4
 
-@[defaultTarget]
+@[default_target]
 lean_exe «doc-gen4» {
   root := `Main
   supportInterpreter := true
