@@ -262,6 +262,12 @@ nav {
     width: 100%;
 }
 
+.navframe .nav {
+    position: absolute;
+    left: 0;
+    margin-left: 0;
+}
+
 .internal_nav .imports {
     margin-bottom: 1rem;
 }
