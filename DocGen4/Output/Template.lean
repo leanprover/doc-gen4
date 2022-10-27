@@ -48,8 +48,8 @@ def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := d
           <p class="header_filename break_within">{title}</p>
           -- TODO: Replace this form with our own search
           <form action="https://google.com/search" method="get" id="search_form">
-            <input type="hidden" name="sitesearch" value="https://leanprover-community.github.io/mathlib_docs"/>
-            <input type="text" name="q" autocomplete="off"/>
+            <input type="hidden" name="sitesearch" value="https://leanprover-community.github.io/mathlib4_docs"/>
+            <input type="text" name="q" autocomplete="off"/>&#32;
             <button>Google site search</button>
           </form>
         </header>
@@ -57,7 +57,7 @@ def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := d
         [site]
 
         <nav class="nav">
-          <iframe src={s!"{←getRoot}/navbar.html"} class="navframe" frameBorder="0"></iframe>
+          <iframe src={s!"{←getRoot}navbar.html"} class="navframe" frameBorder="0"></iframe>
         </nav>
       </body>
     </html>
