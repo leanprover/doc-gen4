@@ -13,7 +13,7 @@
    "name": "Unicode",
    "inputRev": "main"},
   {"url": "https://github.com/leanprover/lake",
-   "rev": "c5a8ec5bc5d160da0aef5084a7257df9e653cbe7",
+   "rev": "004034496ef84b21976a940edc65f335340bd2ec",
    "name": "lake",
    "inputRev": "master"},
   {"url": "https://github.com/xubaiw/CMark.lean",
