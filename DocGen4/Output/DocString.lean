@@ -188,7 +188,9 @@ partial def modifyElement (element : Element) : HtmlM Element :=
     else if name = "a" then
       extendAnchor el
     -- auto link for inline <code></code>
-    else if name = "code" ∧ attrs.find? "class" = "language-lean" then
+    else if name = "code" ∧
+      -- don't linkify code blocks explicitly tagged with a language other than lean
+      ((¬ attrs.contains "class") ∨ (((attrs.find? "class").getD "").splitOn).filter (fun s => s.startsWith "language-" ∧ s ≠ "language-lean") = []) then
       autoLink el
     -- recursively modify
     else
