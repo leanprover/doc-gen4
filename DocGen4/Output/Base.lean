@@ -207,18 +207,19 @@ to as much information as possible.
 -/
 partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
   match i with
-  | TaggedText.text t => pure #[Html.escape t]
-  | TaggedText.append tt => tt.foldlM (λ acc t => do pure <| acc ++ (←infoFormatToHtml t)) #[]
-  | TaggedText.tag a t =>
+  | .text t => pure #[Html.escape t]
+  | .append tt => tt.foldlM (λ acc t => do pure <| acc ++ (←infoFormatToHtml t)) #[]
+  | .tag a t =>
     match a.info.val.info with
     | Info.ofTermInfo i =>
       let cleanExpr :=  i.expr.consumeMData
-      if let Expr.const name _ := cleanExpr then
+      match cleanExpr with
+      | .const name _ =>
         -- TODO: this is some very primitive blacklisting but real Blacklisting needs MetaM
         -- find a better solution
         if (←getResult).name2ModIdx.contains name then
           match t with
-          | TaggedText.text t =>
+          | .text t =>
             let (front, t, back) := splitWhitespaces <| Html.escape t
             let elem := <a href={←declNameToLink name}>{t}</a>
             pure #[Html.text front, elem, Html.text back]
@@ -226,7 +227,17 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
             pure #[<a href={←declNameToLink name}>[←infoFormatToHtml t]</a>]
         else
          pure #[<span class="fn">[←infoFormatToHtml t]</span>]
-      else
+      | .sort _ =>
+        match t with
+        | .text t =>
+          let mut sortPrefix :: rest := t.splitOn " " | unreachable!
+          let sortLink := <a href={s!"{← getRoot}foundational_types.html"}>{sortPrefix}</a>
+          if rest != [] then
+            rest := " " :: rest
+          pure #[sortLink, Html.text <| String.join rest]
+        | _ =>
+          pure #[<a href={s!"{← getRoot}foundational_types.html"}>[← infoFormatToHtml t]</a>]
+      | _ =>
          pure #[<span class="fn">[←infoFormatToHtml t]</span>]
     | _ => pure #[<span class="fn">[←infoFormatToHtml t]</span>]
 
