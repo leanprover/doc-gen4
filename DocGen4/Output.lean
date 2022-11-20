@@ -13,6 +13,7 @@ import DocGen4.Output.NotFound
 import DocGen4.Output.Find
 import DocGen4.Output.SourceLinker
 import DocGen4.Output.ToJson
+import DocGen4.Output.FoundationalTypes
 import DocGen4.LeanInk.Process
 import Lean.Data.HashMap
 
@@ -32,6 +33,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   -- All the doc-gen static stuff
   let indexHtml := ReaderT.run index config |>.toString
   let notFoundHtml := ReaderT.run notFound config |>.toString
+  let foundationalTypesHtml := ReaderT.run foundationalTypes config |>.toString
   let navbarHtml := ReaderT.run navbar config |>.toString
   let docGenStatic := #[
     ("style.css", styleCss),
@@ -43,6 +45,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
     ("instances.js", instancesJs),
     ("importedBy.js", importedByJs),
     ("index.html", indexHtml),
+    ("foundational_types.html", foundationalTypesHtml),
     ("404.html", notFoundHtml),
     ("navbar.html", navbarHtml)
   ]
