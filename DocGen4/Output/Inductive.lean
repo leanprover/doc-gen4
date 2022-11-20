@@ -8,7 +8,7 @@ namespace Output
 open scoped DocGen4.Jsx
 open Lean
 
-def instancesForToHtml (typeName : Name) : HtmlM Html := do
+def instancesForToHtml (typeName : Name) : BaseHtmlM Html := do
   pure
     <details «class»="instances">
         <summary>Instances For</summary>

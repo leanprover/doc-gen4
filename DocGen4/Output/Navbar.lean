@@ -69,6 +69,7 @@ def navbar : BaseHtmlM Html := do
         <nav class="nav">
           <h3>General documentation</h3>
           <div class="nav_link"><a href={s!"{←getRoot}"}>index</a></div>
+          <div class="nav_link"><a href={s!"{←getRoot}foundational_types.html"}>foundational types</a></div>
           /-
           TODO: Add these in later
           <div class="nav_link"><a href={s!"{←getRoot}tactics.html"}>tactics</a></div>
