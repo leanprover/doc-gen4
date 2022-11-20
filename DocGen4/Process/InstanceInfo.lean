@@ -16,11 +16,14 @@ open Lean Meta
 def getInstanceTypes (typ : Expr) : MetaM (Array Name) := do
   let (_, _, tail) ← forallMetaTelescopeReducing typ
   let args := tail.getAppArgs
-  let (_, bar) ← args.mapM (Expr.forEach · findName) |>.run .empty
-  pure bar
+  let (_, names) ← args.mapM (Expr.forEach · findName) |>.run .empty
+  return names
 where
   findName : Expr → StateRefT (Array Name) MetaM Unit
-    | .const name _ => do set <| (←get).push name
+    | .const name _ => modify (·.push name)
+    | .sort .zero => modify (·.push "_builtin_prop")
+    | .sort (.succ _) => modify (·.push "_builtin_typeu")
+    | .sort _ => modify (·.push "_builtin_sortu")
     | _ => pure ()
 
 def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
@@ -30,7 +33,7 @@ def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
     info := { info with attrs := info.attrs.push instAttr }
   let typeNames ← getInstanceTypes v.type
 
-  pure {
+  return {
     toDefinitionInfo := info,
     className,
     typeNames
