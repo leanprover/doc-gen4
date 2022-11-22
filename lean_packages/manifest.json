@@ -1,7 +1,7 @@
 {"version": 2,
  "packages":
  [{"url": "https://github.com/mhuisi/lean4-cli",
-   "rev": "b88b0ab3ad5f1352d107d3e8740ff15dc1fbb5b1",
+   "rev": "5a858c32963b6b19be0d477a30a1f4b6c120be7e",
    "name": "Cli",
    "inputRev": "nightly"},
   {"url": "https://github.com/hargonix/LeanInk",
