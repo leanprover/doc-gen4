@@ -4,7 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
 import Lean
-import Lake
+import Lake.Load
 
 namespace DocGen4.Output
 
@@ -65,8 +65,8 @@ def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange �
       |>.run (Lake.MonadLog.eio .normal)
       |>.toIO (λ _ => IO.userError "Failed to load lake manifest")
   for pkg in manifest.toArray do
-    let value := (getGithubBaseUrl pkg.url, pkg.rev)
-    gitMap := gitMap.insert pkg.name value
+    if let  .git _ url rev .. := pkg then
+      gitMap := gitMap.insert pkg.name (getGithubBaseUrl url, rev)
 
   pure λ module range =>
     let parts := module.components.map Name.toString

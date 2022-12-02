@@ -13,7 +13,6 @@ import Lean.Data.HashMap
 namespace DocGen4
 
 open Lean System IO
-
 /--
 Sets up a lake workspace for the current project. Furthermore initialize
 the Lean search path with the path to the proper compiler from lean-toolchain
@@ -21,7 +20,8 @@ as well as all the dependencies.
 -/
 def lakeSetup : IO (Except UInt32 Lake.Workspace) := do
   let (leanInstall?, lakeInstall?) ← Lake.findInstall?
-  match ←(EIO.toIO' <| Lake.mkLoadConfig {leanInstall?, lakeInstall?}) with
+  let config := Lake.mkLoadConfig.{0} {leanInstall?, lakeInstall?}
+  match ←(EIO.toIO' config) with
   | .ok config =>
     let ws : Lake.Workspace ← Lake.loadWorkspace config
       |>.run Lake.MonadLog.eio
