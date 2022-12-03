@@ -77,7 +77,8 @@ library_facet docs (lib) : FilePath := do
   else
     error "wrong package"
 
-  let moduleJobs ← BuildJob.mixArray (α := FilePath) <| ← lib.recBuildLocalModules #[`docs]
+  let mods ← lib.modules.fetch
+  let moduleJobs ← BuildJob.mixArray <| ← mods.mapM (fetch <| ·.facet `docs)
   -- Shared with DocGen4.Output
   let basePath := (←getWorkspace).root.buildDir / "doc"
   let dataFile := basePath / "declarations" / "declaration-data.bmp"

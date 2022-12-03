@@ -64,7 +64,7 @@ def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange �
   let manifest ← Lake.Manifest.loadOrEmpty ws.root.manifestFile
       |>.run (Lake.MonadLog.eio .normal)
       |>.toIO (λ _ => IO.userError "Failed to load lake manifest")
-  for pkg in manifest.toArray do
+  for pkg in manifest.entryArray do
     if let  .git _ url rev .. := pkg then
       gitMap := gitMap.insert pkg.name (getGithubBaseUrl url, rev)
 
