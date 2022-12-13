@@ -33,7 +33,7 @@ partial def moduleListDir (h : Hierarchy) : BaseHtmlM Html := do
     if h.isFile then
       <summary>{←moduleToHtmlLink h.getName}</summary>
     else
-      <summary>{h.getName.toString}</summary>
+      <summary>{h.getName.getString!}</summary>
 
   pure
     <details class="nav_sect" "data-path"={moduleLink} [if (←getCurrentName).any (h.getName.isPrefixOf ·) then #[("open", "")] else #[]]>
