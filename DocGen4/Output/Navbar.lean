@@ -61,6 +61,7 @@ def navbar : BaseHtmlM Html := do
       <head>
         [←baseHtmlHeadDeclarations]
 
+        <script type="module" src={s!"{←getRoot}nav.js"}></script>
         <base target="_parent" />
       </head>
 
