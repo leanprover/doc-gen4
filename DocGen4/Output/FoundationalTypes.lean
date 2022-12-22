@@ -34,17 +34,19 @@ def foundationalTypes : BaseHtmlM Html := templateLiftExtends (baseHtml "Foundat
       <p>Note that these can also be written with the alternative notations:</p>
       <ul>
       <li><code>∀ a : α, β a</code>, conventionally used where <code>β a : Prop</code>.</li>
+      <li><code>(a : α) → β a</code></li>
       <li><code>α → γ</code>, possible only if <code>β a = γ</code> for all <code>a</code>.</li>
       </ul>
       <p>Lean also permits ASCII-only spellings of the three variants:</p>
       <ul>
       <li><code>Pi a : A, B a</code> for <code>{"Π a : α, β a"}</code></li>
       <li><code>forall a : A, B a</code> for <code>{"∀ a : α, β a"}</code></li>
+      <li><code>(a : A) -&gt; B a</code>, for <code>(a : α) → β a</code></li>
       <li><code>A -&gt; B</code>, for <code>α → β</code></li>
       </ul>
       <p>Note that despite not itself being a function, <code>(→)</code> is available as infix notation for
       <code>{"λ α β, α → β"}</code>.</p>    
-      -- TODO: instnaces for pi types 
+      -- TODO: instances for pi types 
     </main>
 
 end DocGen4.Output
