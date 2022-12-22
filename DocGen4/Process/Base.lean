@@ -166,7 +166,7 @@ inductive DocInfo where
 Turns an `Expr` into a pretty printed `CodeWithInfos`.
 -/
 def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
-  let (fmt, infos) ←  PrettyPrinter.ppExprWithInfos expr
+  let ⟨fmt, infos⟩ ←  PrettyPrinter.ppExprWithInfos expr
   let tt := TaggedText.prettyTagged fmt
   let ctx := {
     env := ← getEnv
@@ -177,7 +177,7 @@ def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
     fileMap := default,
     ngen := ← getNGen
   }
-  pure <| tagExprInfos ctx infos tt
+  pure <| tagCodeInfos ctx infos tt
 
 def isInstance (declName : Name) : MetaM Bool := do
   pure <| (instanceExtension.getState (←getEnv)).instanceNames.contains declName

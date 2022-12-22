@@ -22,7 +22,7 @@
   {"git":
    {"url": "https://github.com/hargonix/LeanInk",
     "subDir?": null,
-    "rev": "9f3101452135964ac9107ec8e9910bfd14022bbc",
+    "rev": "2447df5cc6e48eb965c3c3fba87e46d353b5e9f1",
     "name": "leanInk",
     "inputRev?": "doc-gen"}},
   {"git":
