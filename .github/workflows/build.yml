@@ -45,4 +45,4 @@ jobs:
           ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "true" "LeanInk"
         env:
           MATHLIB4_DOCS_KEY: ${{ secrets.MATHLIB4_DOCS_KEY }}
-          DOC_GEN_REF: "main"
+          DOC_GEN_REF: ${{ github.sha }}
