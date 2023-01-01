@@ -15,7 +15,7 @@ open scoped DocGen4.Jsx
 
 def moduleListFile (file : Name) : BaseHtmlM Html := do
   pure <div class={if (← getCurrentName) == file then "nav_link visible" else "nav_link"}>
-    {←moduleToHtmlLink file}
+    <a href={←moduleNameToLink file}>{file.getString!}</a>
   </div>
 
 /--

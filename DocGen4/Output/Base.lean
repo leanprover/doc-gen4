@@ -108,7 +108,7 @@ def moduleNameToLink (n : Name) : BaseHtmlM String := do
 Returns the HTML doc-gen4 link to a module name.
 -/
 def moduleToHtmlLink (module : Name) : BaseHtmlM Html := do
-  pure <a href={←moduleNameToLink module}>{module.getString!}</a>
+  pure <a href={←moduleNameToLink module}>{module.toString}</a>
 
 /--
 Returns the LeanInk link to a module name.
