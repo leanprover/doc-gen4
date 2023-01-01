@@ -36,11 +36,11 @@ structure JsonIndex where
 
 instance : ToJson JsonIndex where
   toJson idx := Id.run do
-    let jsonDecls := Json.mkObj <| idx.declarations.map (λ (k, v) => (k, toJson v))
-    let jsonInstances := Json.mkObj <| idx.instances.toList.map (λ (k, v) => (k, toJson v))
-    let jsonImportedBy := Json.mkObj <| idx.importedBy.toList.map (λ (k, v) => (k, toJson v))
-    let jsonModules := Json.mkObj <| idx.modules.map (λ (k, v) => (k, toJson v))
-    let jsonInstancesFor := Json.mkObj <| idx.instancesFor.toList.map (λ (k, v) => (k, toJson v))
+    let jsonDecls := Json.mkObj <| idx.declarations.map (fun (k, v) => (k, toJson v))
+    let jsonInstances := Json.mkObj <| idx.instances.toList.map (fun (k, v) => (k, toJson v))
+    let jsonImportedBy := Json.mkObj <| idx.importedBy.toList.map (fun (k, v) => (k, toJson v))
+    let jsonModules := Json.mkObj <| idx.modules.map (fun (k, v) => (k, toJson v))
+    let jsonInstancesFor := Json.mkObj <| idx.instancesFor.toList.map (fun (k, v) => (k, toJson v))
     let finalJson := Json.mkObj [
       ("declarations", jsonDecls),
       ("instances", jsonInstances),
@@ -48,12 +48,12 @@ instance : ToJson JsonIndex where
       ("modules", jsonModules),
       ("instancesFor", jsonInstancesFor)
     ]
-    pure finalJson
+    return finalJson
 
 def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM JsonIndex := do
   let mut index := index
-  let newModule := (module.name, ←moduleNameToLink (String.toName module.name))
-  let newDecls := module.declarations.map (λ d => (d.name, d))
+  let newModule := (module.name, ← moduleNameToLink (String.toName module.name))
+  let newDecls := module.declarations.map (fun d => (d.name, d))
   index := { index with
     modules := newModule :: index.modules
     declarations := newDecls ++ index.declarations
@@ -72,21 +72,21 @@ def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM Js
     let mut impBy := index.importedBy.findD imp #[]
     impBy := impBy.push module.name
     index := { index with importedBy := index.importedBy.insert imp impBy }
-  pure index
+  return index
 
 def DocInfo.toJson (module : Name) (info : Process.DocInfo) : HtmlM JsonDeclaration := do
   let name := info.getName.toString
   let doc := info.getDocString.getD ""
   let docLink ← declNameToLink info.getName
   let sourceLink ← getSourceUrl module info.getDeclarationRange
-  pure { name, doc, docLink, sourceLink }
+  return { name, doc, docLink, sourceLink }
 
 def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
     let mut jsonDecls := []
     let mut instances := #[]
     let declInfo := Process.filterMapDocInfo module.members
     for decl in declInfo do
-      jsonDecls := (←DocInfo.toJson module.name decl) :: jsonDecls
+      jsonDecls := (← DocInfo.toJson module.name decl) :: jsonDecls
       if let .instanceInfo i := decl then
         instances := instances.push {
           name := i.name.toString,
@@ -99,6 +99,6 @@ def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
       instances,
       imports := module.imports.map Name.toString
     }
-    pure <| ToJson.toJson jsonMod
+    return ToJson.toJson jsonMod
 
 end DocGen4.Output

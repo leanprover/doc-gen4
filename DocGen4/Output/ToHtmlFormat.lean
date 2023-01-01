@@ -29,7 +29,7 @@ instance : Coe String Html :=
 namespace Html
 
 def attributesToString (attrs : Array (String × String)) :String :=
-  attrs.foldl (λ acc (k, v) => acc ++ " " ++ k ++ "=\"" ++ v ++ "\"") ""
+  attrs.foldl (fun acc (k, v) => acc ++ " " ++ k ++ "=\"" ++ v ++ "\"") ""
 
 -- TODO: Termination proof
 partial def toStringAux : Html → String
@@ -60,7 +60,7 @@ def escapePairs : Array (String × String) :=
   ]
 
 def escape (s : String) : String :=
-  escapePairs.foldl (λ acc (o, r) => acc.replace o r) s
+  escapePairs.foldl (fun acc (o, r) => acc.replace o r) s
 
 end Html
 

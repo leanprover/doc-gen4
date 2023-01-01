@@ -10,8 +10,8 @@ def find : BaseHtmlM Html := do
   pure
     <html lang="en">
       <head>
-        <link rel="preload" href={s!"{←getRoot}/declarations/declaration-data.bmp"} as="image"/>
-        <script>{s!"const SITE_ROOT={String.quote (←getRoot)};"}</script>
+        <link rel="preload" href={s!"{← getRoot}/declarations/declaration-data.bmp"} as="image"/>
+        <script>{s!"const SITE_ROOT={String.quote (← getRoot)};"}</script>
         <script type="module" async="true" src="./find.js"></script>
       </head>
       <body></body>

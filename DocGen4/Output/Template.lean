@@ -16,26 +16,26 @@ The HTML template used for all pages.
 -/
 def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := do
   let moduleConstant :=
-    if let some module := (←getCurrentName) then
+    if let some module := ← getCurrentName then
       #[<script>{s!"const MODULE_NAME={String.quote module.toString};"}</script>]
     else
       #[]
   pure
     <html lang="en">
       <head>
-        [←baseHtmlHeadDeclarations]
+        [← baseHtmlHeadDeclarations]
 
         <title>{title}</title>
-        <script defer="true" src={s!"{←getRoot}mathjax-config.js"}></script>
+        <script defer="true" src={s!"{← getRoot}mathjax-config.js"}></script>
         <script defer="true" src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
         <script defer="true" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
-        <script>{s!"const SITE_ROOT={String.quote (←getRoot)};"}</script>
+        <script>{s!"const SITE_ROOT={String.quote (← getRoot)};"}</script>
         [moduleConstant]
-        <script type="module" src={s!"{←getRoot}search.js"}></script>
-        <script type="module" src={s!"{←getRoot}how-about.js"}></script>
-        <script type="module" src={s!"{←getRoot}instances.js"}></script>
-        <script type="module" src={s!"{←getRoot}importedBy.js"}></script>
+        <script type="module" src={s!"{← getRoot}search.js"}></script>
+        <script type="module" src={s!"{← getRoot}how-about.js"}></script>
+        <script type="module" src={s!"{← getRoot}instances.js"}></script>
+        <script type="module" src={s!"{← getRoot}importedBy.js"}></script>
       </head>
 
       <body>
@@ -56,7 +56,7 @@ def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := d
         [site]
 
         <nav class="nav">
-          <iframe src={s!"{←getRoot}navbar.html"} class="navframe" frameBorder="0"></iframe>
+          <iframe src={s!"{← getRoot}navbar.html"} class="navframe" frameBorder="0"></iframe>
         </nav>
       </body>
     </html>

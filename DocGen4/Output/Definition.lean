@@ -12,7 +12,7 @@ open Lean Widget
 def equationLimit : Nat := 200
 
 def equationToHtml (c : CodeWithInfos) : HtmlM Html := do
-  pure <li class="equation">[←infoFormatToHtml c]</li>
+  return <li class="equation">[← infoFormatToHtml c]</li>
 
 /--
 Attempt to render all `simp` equations for this definition. At a size
@@ -23,9 +23,9 @@ defined in `equationLimit` we stop trying since they:
 def equationsToHtml (i : Process.DefinitionInfo) : HtmlM (Array Html) := do
   if let some eqs := i.equations then
     let equationsHtml ← eqs.mapM equationToHtml
-    let filteredEquationsHtml := equationsHtml.filter (λ eq => eq.textLength < equationLimit)
+    let filteredEquationsHtml := equationsHtml.filter (·.textLength < equationLimit)
     if equationsHtml.size ≠ filteredEquationsHtml.size then
-      pure #[
+      return #[
         <details>
           <summary>Equations</summary>
           <ul class="equations">
@@ -35,7 +35,7 @@ def equationsToHtml (i : Process.DefinitionInfo) : HtmlM (Array Html) := do
         </details>
       ]
     else
-      pure #[
+      return #[
         <details>
           <summary>Equations</summary>
           <ul class="equations">
@@ -44,7 +44,7 @@ def equationsToHtml (i : Process.DefinitionInfo) : HtmlM (Array Html) := do
         </details>
       ]
   else
-    pure #[]
+    return #[]
 
 end Output
 end DocGen4

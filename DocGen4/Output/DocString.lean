@@ -23,7 +23,7 @@ namespace Output
 
 /--
   Similar to `Stirng.split` in Lean core, but keeps the separater.
-  e.g. `splitAround "a,b,c" (λ c => c = ',') = ["a", ",", "b", ",", "c"]`
+  e.g. `splitAround "a,b,c" (fun c => c = ',') = ["a", ",", "b", ",", "c"]`
 -/
 def splitAround (s : String) (p : Char → Bool) : List String := splitAroundAux s p 0 0 []
 
@@ -81,15 +81,15 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
         match res.moduleInfo.find! currentName |>.members |> filterMapDocInfo |>.find? (sameEnd ·.getName name) with
         | some info =>
           declNameToLink info.getName
-        | _ => pure none
-      | _ => pure none
+        | _ => return none
+      | _ => return none
   else
-    pure none
+    return none
   where
     -- check if two names have the same ending components
     sameEnd n1 n2 :=
       List.zip n1.componentsRev n2.componentsRev
-      |>.all λ ⟨a, b⟩ => a == b
+      |>.all fun ⟨a, b⟩ => a == b
 
 /--
   Extend links with following rules:
@@ -103,16 +103,16 @@ def extendLink (s : String)  : HtmlM String := do
   -- for intra doc links
   if s.startsWith "##" then
     if let some link ← nameToLink? (s.drop 2) then
-      pure link
+      return link
     else
       panic! s!"Cannot find {s.drop 2}, only full name and abbrev in current module is supported"
   -- for id
   else if s.startsWith "#" then
-    pure s
+    return s
   -- for absolute and relative urls
   else if s.startsWith "http" then
-    pure s
-  else pure ((←getRoot) ++ s)
+    return s
+  else return ((← getRoot) ++ s)
 
 /-- Add attributes for heading. -/
 def addHeadingAttributes (el : Element) (modifyElement : Element → HtmlM Element) : HtmlM Element := do
@@ -127,12 +127,12 @@ def addHeadingAttributes (el : Element) (modifyElement : Element → HtmlM Eleme
       |>.insert "id" id
       |>.insert "class" "markdown-heading"
     let newContents := (←
-      contents.mapM (λ c => match c with
+      contents.mapM (fun c => match c with
       | Content.Element e => return Content.Element (← modifyElement e)
       | _ => pure c))
       |>.push (Content.Character " ")
       |>.push (Content.Element anchor)
-    pure ⟨ name, newAttrs, newContents⟩
+    return ⟨ name, newAttrs, newContents⟩
 
 /-- Extend anchor links. -/
 def extendAnchor (el : Element) : HtmlM Element := do
@@ -141,7 +141,7 @@ def extendAnchor (el : Element) : HtmlM Element := do
     let newAttrs ← match attrs.find? "href" with
     | some href => pure (attrs.insert "href" (← extendLink href))
     | none => pure attrs
-    pure ⟨ name, newAttrs, contents⟩
+    return ⟨ name, newAttrs, contents⟩
 
 /-- Automatically add intra documentation link for inline code span. -/
 def autoLink (el : Element) : HtmlM Element := do
@@ -153,27 +153,27 @@ def autoLink (el : Element) : HtmlM Element := do
       | Content.Character s =>
         newContents := newContents ++ (← splitAround s unicodeToSplit |>.mapM linkify).join
       | _ => newContents := newContents.push c
-    pure ⟨ name, attrs, newContents ⟩
+    return ⟨ name, attrs, newContents ⟩
   where
     linkify s := do
       let link? ← nameToLink? s
       match link? with
       | some link =>
         let attributes := Lean.RBMap.empty.insert "href" link
-        pure [Content.Element <| Element.Element "a" attributes #[Content.Character s]]
+        return [Content.Element <| Element.Element "a" attributes #[Content.Character s]]
       | none =>
-        let sHead := s.dropRightWhile (λ c => c ≠ '.')
-        let sTail := s.takeRightWhile (λ c => c ≠ '.')
+        let sHead := s.dropRightWhile (· != '.')
+        let sTail := s.takeRightWhile (· != '.')
         let link'? ← nameToLink? sTail
         match link'? with
         | some link' =>
           let attributes := Lean.RBMap.empty.insert "href" link'
-          pure [
+          return [
             Content.Character sHead,
             Content.Element <| Element.Element "a" attributes #[Content.Character sTail]
           ]
         | none =>
-          pure [Content.Character s]
+          return [Content.Character s]
     unicodeToSplit (c : Char) : Bool :=
       charInGeneralCategory c GeneralCategory.separator ||
       charInGeneralCategory c GeneralCategory.other
@@ -192,19 +192,18 @@ partial def modifyElement (element : Element) : HtmlM Element :=
       autoLink el
     -- recursively modify
     else
-      let newContents ← contents.mapM λ c => match c with
+      let newContents ← contents.mapM fun c => match c with
         | Content.Element e => return Content.Element (← modifyElement e)
         | _ => pure c
-      pure ⟨ name, attrs, newContents ⟩
+      return ⟨ name, attrs, newContents ⟩
 
 /-- Convert docstring to Html. -/
 def docStringToHtml (s : String) : HtmlM (Array Html) := do
   let rendered := CMark.renderHtml s
   match manyDocument rendered.mkIterator with
   | Parsec.ParseResult.success _ res =>
-    res.mapM λ x => do
-      pure (Html.text <| toString (← modifyElement x))
-  | _ => pure #[Html.text rendered]
+    res.mapM fun x => do return Html.text <| toString (← modifyElement x)
+  | _ => return #[Html.text rendered]
 
 end Output
 end DocGen4

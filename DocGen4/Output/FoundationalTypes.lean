@@ -28,7 +28,7 @@ def foundationalTypes : BaseHtmlM Html := templateLiftExtends (baseHtml "Foundat
       <p><code>Prop</code> is notation for <code>Sort 0</code>.</p>    
       {← instancesForToHtml `_builtin_prop}
     
-      <h2 id="pi-types-codeπ-a--α-β-acode">Pi types, <code>{"Π a : α, β a"}</code></h2>
+      <h2 id="pi-types-codeπ-a--α-β-acode">Pi types, <code>{"(a : α) → β a"}</code></h2>
       <p>The type of dependent functions is known as a pi type.
       Non-dependent functions and implications are a special case.</p>
       <p>Note that these can also be written with the alternative notations:</p>
@@ -39,13 +39,12 @@ def foundationalTypes : BaseHtmlM Html := templateLiftExtends (baseHtml "Foundat
       </ul>
       <p>Lean also permits ASCII-only spellings of the three variants:</p>
       <ul>
-      <li><code>Pi a : A, B a</code> for <code>{"Π a : α, β a"}</code></li>
       <li><code>forall a : A, B a</code> for <code>{"∀ a : α, β a"}</code></li>
       <li><code>(a : A) -&gt; B a</code>, for <code>(a : α) → β a</code></li>
       <li><code>A -&gt; B</code>, for <code>α → β</code></li>
       </ul>
       <p>Note that despite not itself being a function, <code>(→)</code> is available as infix notation for
-      <code>{"λ α β, α → β"}</code>.</p>    
+      <code>{"fun α β, α → β"}</code>.</p>    
       -- TODO: instances for pi types 
     </main>
 

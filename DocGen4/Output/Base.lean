@@ -66,10 +66,10 @@ def HtmlM.run (x : HtmlM α) (ctx : SiteContext) (baseCtx : SiteBaseContext) : �
   ReaderT.run x ctx |>.run baseCtx |>.run
 
 instance [Monad m] : MonadLift HtmlM (HtmlT m) where
-  monadLift x := do pure <| x.run (←readThe SiteContext) (←readThe SiteBaseContext)
+  monadLift x := do return x.run (← readThe SiteContext) (← readThe SiteBaseContext)
 
 instance [Monad m] : MonadLift BaseHtmlM (BaseHtmlT m) where
-  monadLift x := do pure <| x.run (←readThe SiteBaseContext)
+  monadLift x := do return x.run (← readThe SiteBaseContext)
 
 /--
 Obtains the root URL as a relative one to the current depth.
@@ -81,11 +81,11 @@ def getRoot : BaseHtmlM String := do
   let d <- SiteBaseContext.depthToRoot <$> read
   return (go d)
 
-def getHierarchy : BaseHtmlM Hierarchy := do pure (←read).hierarchy
-def getCurrentName : BaseHtmlM (Option Name) := do pure (←read).currentName
-def getResult : HtmlM AnalyzerResult := do pure (←read).result
-def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do pure <| (←read).sourceLinker module range
-def leanInkEnabled? : HtmlM Bool := do pure (←read).leanInkEnabled
+def getHierarchy : BaseHtmlM Hierarchy := do return (← read).hierarchy
+def getCurrentName : BaseHtmlM (Option Name) := do return (← read).currentName
+def getResult : HtmlM AnalyzerResult := do return (← read).result
+def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do return (← read).sourceLinker module range
+def leanInkEnabled? : HtmlM Bool := do return (← read).leanInkEnabled
 
 /--
 If a template is meant to be extended because it for example only provides the
@@ -102,20 +102,20 @@ Returns the doc-gen4 link to a module name.
 -/
 def moduleNameToLink (n : Name) : BaseHtmlM String := do
   let parts := n.components.map Name.toString
-  pure <| (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+  return (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 /--
 Returns the HTML doc-gen4 link to a module name.
 -/
 def moduleToHtmlLink (module : Name) : BaseHtmlM Html := do
-  pure <a href={←moduleNameToLink module}>{module.toString}</a>
+  return <a href={← moduleNameToLink module}>{module.toString}</a>
 
 /--
 Returns the LeanInk link to a module name.
 -/
 def moduleNameToInkLink (n : Name) : BaseHtmlM String := do
   let parts := "src" :: n.components.map Name.toString
-  pure <| (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+  return (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 /--
 Returns the path to the HTML file that contains information about a module.
@@ -158,13 +158,13 @@ Returns the doc-gen4 link to a declaration name.
 def declNameToLink (name : Name) : HtmlM String := do
   let res ← getResult
   let module := res.moduleNames[res.name2ModIdx.find! name |>.toNat]!
-  pure <| (←moduleNameToLink module) ++ "#" ++ name.toString
+  return (← moduleNameToLink module) ++ "#" ++ name.toString
 
 /--
 Returns the HTML doc-gen4 link to a declaration name.
 -/
 def declNameToHtmlLink (name : Name) : HtmlM Html := do
-  pure <a href={←declNameToLink name}>{name.toString}</a>
+  return <a href={← declNameToLink name}>{name.toString}</a>
 
 /--
 Returns the LeanInk link to a declaration name.
@@ -172,14 +172,14 @@ Returns the LeanInk link to a declaration name.
 def declNameToInkLink (name : Name) : HtmlM String := do
   let res ← getResult
   let module := res.moduleNames[res.name2ModIdx.find! name |>.toNat]!
-  pure <| (←moduleNameToInkLink module) ++ "#" ++ name.toString
+  return (← moduleNameToInkLink module) ++ "#" ++ name.toString
 
 /--
 Returns the HTML doc-gen4 link to a declaration name with "break_within"
 set as class.
 -/
 def declNameToHtmlBreakWithinLink (name : Name) : HtmlM Html := do
-  pure <a class="break_within" href={←declNameToLink name}>{name.toString}</a>
+  return <a class="break_within" href={← declNameToLink name}>{name.toString}</a>
 
 /--
 In Lean syntax declarations the following pattern is quite common:
@@ -207,8 +207,8 @@ to as much information as possible.
 -/
 partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
   match i with
-  | .text t => pure #[Html.escape t]
-  | .append tt => tt.foldlM (λ acc t => do pure <| acc ++ (←infoFormatToHtml t)) #[]
+  | .text t => return #[Html.escape t]
+  | .append tt => tt.foldlM (fun acc t => do return acc ++ (← infoFormatToHtml t)) #[]
   | .tag a t =>
     match a.info.val.info with
     | Info.ofTermInfo i =>
@@ -217,16 +217,16 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
       | .const name _ =>
         -- TODO: this is some very primitive blacklisting but real Blacklisting needs MetaM
         -- find a better solution
-        if (←getResult).name2ModIdx.contains name then
+        if (← getResult).name2ModIdx.contains name then
           match t with
           | .text t =>
             let (front, t, back) := splitWhitespaces <| Html.escape t
-            let elem := <a href={←declNameToLink name}>{t}</a>
-            pure #[Html.text front, elem, Html.text back]
+            let elem := <a href={← declNameToLink name}>{t}</a>
+            return #[Html.text front, elem, Html.text back]
           | _ =>
-            pure #[<a href={←declNameToLink name}>[←infoFormatToHtml t]</a>]
+            return #[<a href={← declNameToLink name}>[← infoFormatToHtml t]</a>]
         else
-         pure #[<span class="fn">[←infoFormatToHtml t]</span>]
+         return #[<span class="fn">[← infoFormatToHtml t]</span>]
       | .sort _ =>
         match t with
         | .text t =>
@@ -234,21 +234,21 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
           let sortLink := <a href={s!"{← getRoot}foundational_types.html"}>{sortPrefix}</a>
           if rest != [] then
             rest := " " :: rest
-          pure #[sortLink, Html.text <| String.join rest]
+          return #[sortLink, Html.text <| String.join rest]
         | _ =>
-          pure #[<a href={s!"{← getRoot}foundational_types.html"}>[← infoFormatToHtml t]</a>]
+          return #[<a href={s!"{← getRoot}foundational_types.html"}>[← infoFormatToHtml t]</a>]
       | _ =>
-         pure #[<span class="fn">[←infoFormatToHtml t]</span>]
-    | _ => pure #[<span class="fn">[←infoFormatToHtml t]</span>]
+         return #[<span class="fn">[← infoFormatToHtml t]</span>]
+    | _ => return #[<span class="fn">[← infoFormatToHtml t]</span>]
 
 def baseHtmlHeadDeclarations : BaseHtmlM (Array Html) := do
-  pure #[
+  return #[
     <meta charset="UTF-8"/>,
     <meta name="viewport" content="width=device-width, initial-scale=1"/>,
-    <link rel="stylesheet" href={s!"{←getRoot}style.css"}/>,
-    <link rel="stylesheet" href={s!"{←getRoot}src/pygments.css"}/>,
-    <link rel="shortcut icon" href={s!"{←getRoot}favicon.ico"}/>,
-    <link rel="prefetch" href={s!"{←getRoot}/declarations/declaration-data.bmp"} as="image"/>
+    <link rel="stylesheet" href={s!"{← getRoot}style.css"}/>,
+    <link rel="stylesheet" href={s!"{← getRoot}src/pygments.css"}/>,
+    <link rel="shortcut icon" href={s!"{← getRoot}favicon.ico"}/>,
+    <link rel="prefetch" href={s!"{← getRoot}/declarations/declaration-data.bmp"} as="image"/>
   ]
 
 end DocGen4.Output
