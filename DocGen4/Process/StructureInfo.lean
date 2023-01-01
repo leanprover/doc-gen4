@@ -20,7 +20,7 @@ def dropArgs (type : Expr) (n : Nat) : (Expr × List (Name × Expr)) :=
     let body := body.instantiate1 <| mkFVar ⟨name⟩
     let next := dropArgs body x
     { next with snd := (name, type) :: next.snd}
-  | _e, _x + 1 => panic! s!"No forallE left"
+  | _, _ + 1 => panic! s!"No forallE left"
 
 def getFieldTypes (struct : Name) (ctor : ConstructorVal) (parents : Nat) : MetaM (Array NameInfo) := do
   let type := ctor.type
@@ -28,8 +28,8 @@ def getFieldTypes (struct : Name) (ctor : ConstructorVal) (parents : Nat) : Meta
   let (_, fields) := dropArgs fieldFunction (ctor.numFields - parents)
   let mut fieldInfos := #[]
   for (name, type) in fields do
-    fieldInfos := fieldInfos.push <| ←NameInfo.ofTypedName (struct.append name) type
-  pure <| fieldInfos
+    fieldInfos := fieldInfos.push <| ← NameInfo.ofTypedName (struct.append name) type
+  return fieldInfos
 
 def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
@@ -40,14 +40,14 @@ def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   match getStructureInfo? env v.name with
   | some i =>
     if i.fieldNames.size - parents.size > 0 then
-      pure {
+      return {
         toInfo := info,
-        fieldInfo := (←getFieldTypes v.name ctorVal parents.size),
+        fieldInfo := ← getFieldTypes v.name ctorVal parents.size,
         parents,
         ctor
       }
     else
-      pure {
+      return {
         toInfo := info,
         fieldInfo := #[],
         parents,

@@ -20,8 +20,8 @@ def getConstructorType (ctor : Name) : MetaM Expr := do
 
 def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
-  let ctors ← v.ctors.mapM (λ name => do NameInfo.ofTypedName name (←getConstructorType name))
-  pure {
+  let ctors ← v.ctors.mapM (fun name => do NameInfo.ofTypedName name (← getConstructorType name))
+  return {
     toInfo := info,
     ctors,
     isUnsafe := v.isUnsafe

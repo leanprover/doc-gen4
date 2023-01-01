@@ -18,11 +18,11 @@ def getNLevels (name : Name) (levels: Nat) : Name :=
   (components.drop (components.length - levels)).reverse.foldl (· ++ ·) Name.anonymous
 
 inductive Hierarchy where
-| node (name : Name) (isFile : Bool) (children : RBNode Name (λ _ => Hierarchy)) : Hierarchy
+| node (name : Name) (isFile : Bool) (children : RBNode Name (fun _ => Hierarchy)) : Hierarchy
 
 instance : Inhabited Hierarchy := ⟨Hierarchy.node Name.anonymous false RBNode.leaf⟩
 
-abbrev HierarchyMap := RBNode Name (λ _ => Hierarchy)
+abbrev HierarchyMap := RBNode Name (fun _ => Hierarchy)
 
 -- Everything in this namespace is adapted from stdlib's RBNode
 namespace HierarchyMap
@@ -100,23 +100,23 @@ def baseDirBlackList : HashSet String :=
 
 partial def fromDirectoryAux (dir : System.FilePath) (previous : Name) : IO (Array Name) := do
   let mut children := #[]
-  for entry in ←System.FilePath.readDir dir do
-    if (←entry.path.isDir) then
-      children := children ++ (←fromDirectoryAux entry.path (.str previous entry.fileName))
+  for entry in ← System.FilePath.readDir dir do
+    if ← entry.path.isDir then
+      children := children ++ (← fromDirectoryAux entry.path (.str previous entry.fileName))
     else if entry.path.extension = some "html" then
       children := children.push <| .str previous (entry.fileName.dropRight ".html".length)
-  pure children
+  return children
 
 def fromDirectory (dir : System.FilePath) : IO Hierarchy := do
     let mut children := #[]
-    for entry in ←System.FilePath.readDir dir do
+    for entry in ← System.FilePath.readDir dir do
       if baseDirBlackList.contains entry.fileName then
         continue
-      else if ←entry.path.isDir then
-        children := children ++ (←fromDirectoryAux entry.path (.mkSimple entry.fileName))
+      else if ← entry.path.isDir then
+        children := children ++ (← fromDirectoryAux entry.path (.mkSimple entry.fileName))
       else if entry.path.extension = some "html" then
         children := children.push <| .mkSimple (entry.fileName.dropRight ".html".length)
-    pure <| Hierarchy.fromArray children
+    return Hierarchy.fromArray children
 
 end Hierarchy
 end DocGen4

@@ -102,18 +102,18 @@ def parametricAttributes : Array ParametricAttrWrapper := #[⟨externAttr⟩, �
 
 def getTags (decl : Name) : MetaM (Array String) := do
   let env ← getEnv
-  pure <| tagAttributes.filter (TagAttribute.hasTag · env decl) |>.map (λ t => t.attr.name.toString)
+  return tagAttributes.filter (TagAttribute.hasTag · env decl) |>.map (·.attr.name.toString)
 
 def getValuesAux {α : Type} {attrKind : Type → Type} [va : ValueAttr attrKind] [Inhabited α] [ToString α] (decl : Name) (attr : attrKind α) : MetaM (Option String) := do
   let env ← getEnv
-  pure <| va.getValue attr env decl
+  return va.getValue attr env decl
 
 def getValues {attrKind : Type → Type} [ValueAttr attrKind] (decl : Name) (attrs : Array (ValueAttrWrapper attrKind)) : MetaM (Array String) := do
   let mut res := #[]
   for attr in attrs do
     if let some val ← @getValuesAux attr.α attrKind _ attr.inhab attr.str decl attr.attr then
       res := res.push val
-  pure res
+  return res
 
 def getEnumValues (decl : Name) : MetaM (Array String) := getValues decl enumAttributes
 def getParametricValues (decl : Name) : MetaM (Array String) := getValues decl parametricAttributes
@@ -123,23 +123,21 @@ def getDefaultInstance (decl : Name) (className : Name) : MetaM (Option String) 
   for (inst, prio) in insts do
     if inst == decl then
       return some s!"defaultInstance {prio}"
-  pure none
+  return none
 
 def hasSimp (decl : Name) : MetaM (Option String) := do
   let thms ← simpExtension.getTheorems
-  pure <|
-    if thms.isLemma (.decl decl) then
-      some "simp"
-    else
-      none
+  if thms.isLemma (.decl decl) then
+    return "simp"
+  else
+    return none
 
 def hasCsimp (decl : Name) : MetaM (Option String) := do
   let env ← getEnv
-  pure <|
-    if Compiler.hasCSimpAttribute env decl then
-      some "csimp"
-    else
-      none
+  if Compiler.hasCSimpAttribute env decl then
+    return some "csimp"
+  else
+    return none
 
 /--
 The list of custom attributes, that don't fit in the parametric or enum
@@ -152,7 +150,7 @@ def getCustomAttrs (decl : Name) : MetaM (Array String) := do
   for attr in customAttrs do
     if let some value ← attr decl then
       values := values.push value
-  pure values
+  return values
 
 /--
 The main entry point for recovering all attribute values for a given
@@ -163,6 +161,6 @@ def getAllAttributes (decl : Name) : MetaM (Array String) := do
   let enums ← getEnumValues decl
   let parametric ← getParametricValues decl
   let customs ← getCustomAttrs decl
-  pure <| customs ++ tags ++ enums ++ parametric
+  return customs ++ tags ++ enums ++ parametric
 
 end DocGen4

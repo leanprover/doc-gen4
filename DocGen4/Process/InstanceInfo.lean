@@ -24,7 +24,7 @@ where
     | .sort .zero => modify (·.push "_builtin_prop")
     | .sort (.succ _) => modify (·.push "_builtin_typeu")
     | .sort _ => modify (·.push "_builtin_sortu")
-    | _ => pure ()
+    | _ => return ()
 
 def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
   let mut info ← DefinitionInfo.ofDefinitionVal v
@@ -32,7 +32,6 @@ def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
   if let some instAttr ← getDefaultInstance v.name className then
     info := { info with attrs := info.attrs.push instAttr }
   let typeNames ← getInstanceTypes v.type
-
   return {
     toDefinitionInfo := info,
     className,

@@ -24,7 +24,7 @@ def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
       DefinitionSafety.unsafe
     else
       DefinitionSafety.safe
-  pure {
+  return {
     toInfo := info,
     value,
     definitionSafety

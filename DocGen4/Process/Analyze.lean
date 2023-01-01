@@ -96,7 +96,7 @@ def getAllModuleDocs (relevantModules : Array Name) : MetaM (HashMap Name Module
     let moduleData := env.header.moduleData.get! modIdx
     let imports := moduleData.imports.map Import.module
     res := res.insert module <| Module.mk module modDocs imports
-  pure res
+  return res
 
 /--
 Run the doc-gen analysis on all modules that are loaded into the `Environment`
@@ -120,17 +120,17 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
     try
       let config := {
         maxHeartbeats := 5000000,
-        options := ←getOptions,
-        fileName := ←getFileName,
-        fileMap := ←getFileMap
+        options := ← getOptions,
+        fileName := ← getFileName,
+        fileMap := ← getFileMap
       }
-      let analysis := Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant (name, cinfo)) config { env := env } {} {}
-      if let some dinfo ← analysis then
+      let analysis ← Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant (name, cinfo)) config { env := env } {} {}
+      if let some dinfo := analysis then
         let moduleName := env.allImportedModuleNames.get! modidx
         let module := res.find! moduleName
         res := res.insert moduleName {module with members := module.members.push (ModuleMember.docInfo dinfo)}
     catch e =>
-      IO.println s!"WARNING: Failed to obtain information for: {name}: {←e.toMessageData.toString}"
+      IO.println s!"WARNING: Failed to obtain information for: {name}: {← e.toMessageData.toString}"
 
   -- TODO: This could probably be faster if we did sorted insert above instead
   for (moduleName, module) in res.toArray do
@@ -142,7 +142,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
     moduleNames := allModules,
     moduleInfo := res,
   }
-  pure (analysis, hierarchy)
+  return (analysis, hierarchy)
 
 def filterMapDocInfo (ms : Array ModuleMember) : Array DocInfo :=
   ms.filterMap filter

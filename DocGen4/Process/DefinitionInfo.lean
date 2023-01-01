@@ -33,18 +33,18 @@ def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
       let us := v.levelParams.map mkLevelParam
       let type ← mkEq (mkAppN (Lean.mkConst v.name us) xs) body
       let type ← mkForallFVars xs type
-      pure type
+      return type
 
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let isUnsafe := v.safety == DefinitionSafety.unsafe
-  let isNonComputable := isNoncomputable (←getEnv) v.name
+  let isNonComputable := isNoncomputable (← getEnv) v.name
   try
     let eqs? ← getEqnsFor? v.name
     match eqs? with
     | some eqs =>
       let equations ← eqs.mapM processEq
-      pure {
+      return {
         toInfo := info,
         isUnsafe,
         hints := v.hints,
@@ -52,8 +52,8 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo :=
         isNonComputable
       }
     | none =>
-      let equations := #[←prettyPrintTerm <| stripArgs (←valueToEq v)]
-      pure {
+      let equations := #[← prettyPrintTerm <| stripArgs (← valueToEq v)]
+      return {
         toInfo := info,
         isUnsafe,
         hints := v.hints,
@@ -61,8 +61,8 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo :=
         isNonComputable
       }
   catch err =>
-    IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {←err.toMessageData.toString}"
-    pure {
+    IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {← err.toMessageData.toString}"
+    return {
       toInfo := info,
       isUnsafe,
       hints := v.hints,

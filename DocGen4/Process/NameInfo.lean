@@ -13,15 +13,15 @@ open Lean Meta
 
 def NameInfo.ofTypedName (n : Name) (t : Expr) : MetaM NameInfo := do
   let env ← getEnv
-  pure { name := n, type := ←prettyPrintTerm t, doc := ←findDocString? env n}
+  return { name := n, type := ← prettyPrintTerm t, doc := ← findDocString? env n}
 
 partial def typeToArgsType (e : Expr) : (Array (Name × Expr × BinderInfo) × Expr) :=
-  let helper := λ name type body data =>
+  let helper := fun name type body data =>
     -- Once we hit a name with a macro scope we stop traversing the expression
     -- and print what is left after the : instead. The only exception
     -- to this is instances since these almost never have a name
     -- but should still be printed as arguments instead of after the :.
-    if name.hasMacroScopes ∧ ¬data.isInstImplicit then
+    if name.hasMacroScopes && !data.isInstImplicit then
       (#[], e)
     else
       let name := name.eraseMacroScopes
@@ -35,15 +35,15 @@ partial def typeToArgsType (e : Expr) : (Array (Name × Expr × BinderInfo) × E
 
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let (args, type) := typeToArgsType v.type
-  let args ← args.mapM (λ (n, e, b) => do pure <| Arg.mk n (←prettyPrintTerm e) b)
+  let args ← args.mapM (fun (n, e, b) => do return Arg.mk n (← prettyPrintTerm e) b)
   let nameInfo ← NameInfo.ofTypedName v.name type
-  match ←findDeclarationRanges? v.name with
+  match ← findDeclarationRanges? v.name with
   -- TODO: Maybe selection range is more relevant? Figure this out in the future
-  | some range => pure {
+  | some range => return {
       toNameInfo := nameInfo,
       args,
       declarationRange := range.range,
-      attrs := (←getAllAttributes v.name)
+      attrs := ← getAllAttributes v.name
     }
   | none => panic! s!"{v.name} is a declaration without position"
 

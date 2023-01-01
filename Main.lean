@@ -8,7 +8,7 @@ def getTopLevelModules (p : Parsed) : IO (List String) :=  do
   let topLevelModules := p.variableArgsAs! String |>.toList
   if topLevelModules.length == 0 then
     throw <| IO.userError "No topLevelModules provided."
-  pure topLevelModules
+  return topLevelModules
 
 def runSingleCmd (p : Parsed) : IO UInt32 := do
   let relevantModules := [p.positionalArg! "module" |>.as! String |> String.toName]
@@ -19,14 +19,14 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
     IO.println "Outputting HTML"
     let baseConfig := getSimpleBaseContext hierarchy
     htmlOutputResults baseConfig doc ws (p.hasFlag "ink")
-    pure 0
+    return 0
   | Except.error rc => pure rc
 
 def runIndexCmd (_p : Parsed) : IO UInt32 := do
   let hierarchy ← Hierarchy.fromDirectory Output.basePath
   let baseConfig := getSimpleBaseContext hierarchy
   htmlOutputIndex baseConfig
-  pure 0
+  return 0
 
 def runGenCoreCmd (_p : Parsed) : IO UInt32 := do
   let res ← lakeSetup
@@ -36,7 +36,7 @@ def runGenCoreCmd (_p : Parsed) : IO UInt32 := do
     IO.println "Outputting HTML"
     let baseConfig := getSimpleBaseContext hierarchy
     htmlOutputResults baseConfig doc ws (ink := False) 
-    pure 0
+    return 0
   | Except.error rc => pure rc
 
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do

@@ -14,7 +14,7 @@ open Lean Meta
 
 def AxiomInfo.ofAxiomVal (v : AxiomVal) : MetaM AxiomInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
-  pure {
+  return {
     toInfo := info,
     isUnsafe := v.isUnsafe
   } 
