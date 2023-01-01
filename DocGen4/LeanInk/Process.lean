@@ -21,7 +21,7 @@ def docGenOutput (as : List LeanInk.Annotation.Annotation) : HtmlT LeanInk.Analy
   let srcPath := moduleNameToFile srcBasePath modName
   IO.FS.createDirAll srcDir
   IO.FS.writeFile srcPath srcHtml.toString
-  pure 0
+  return 0
 
 def execAuxM : HtmlT LeanInk.AnalysisM UInt32 := do
   let ctx ← readThe SiteContext
@@ -33,10 +33,10 @@ def execAuxM : HtmlT LeanInk.AnalysisM UInt32 := do
   }
 
 def execAux (config : LeanInk.Configuration) : HtmlT IO UInt32 := do
-  execAuxM.run (←readThe SiteContext) (←readThe SiteBaseContext) |>.run config
+  execAuxM.run (← readThe SiteContext) (← readThe SiteBaseContext) |>.run config
 
 @[implemented_by enableInitializersExecution]
-private def enableInitializersExecutionWrapper : IO Unit := pure ()
+private def enableInitializersExecutionWrapper : IO Unit := return ()
 
 def runInk (sourceFilePath : System.FilePath) : HtmlT IO Unit := do
   let contents ← IO.FS.readFile sourceFilePath

@@ -23,7 +23,7 @@ def getNextButtonLabel : AlectryonM String := do
   let val ← get
   let newCounter := val.counter + 1
   set { val with counter := newCounter }
-  pure s!"plain-lean4-lean-chk{val.counter}"
+  return s!"plain-lean4-lean-chk{val.counter}"
 
 def TypeInfo.toHtml (tyi : TypeInfo) : AlectryonM Html := do
   pure
@@ -35,7 +35,7 @@ def TypeInfo.toHtml (tyi : TypeInfo) : AlectryonM Html := do
               <span class="hyp-type">
                 <var>{tyi.name}</var>
                 <b>: </b>
-                <span>[←DocGen4.Output.infoFormatToHtml tyi.type.fst]</span>
+                <span>[← DocGen4.Output.infoFormatToHtml tyi.type.fst]</span>
               </span>
             </div>
           </blockquote>
@@ -55,7 +55,7 @@ def Token.toHtml (t : Token) : AlectryonM Html := do
   -- TODO: render docstring
   let mut parts := #[]
   if let some tyi := t.typeinfo then
-    parts := parts.push <| ←tyi.toHtml
+    parts := parts.push <| ← tyi.toHtml
 
   parts := parts.push t.processSemantic
 
@@ -84,12 +84,12 @@ def Hypothesis.toHtml (h : Hypothesis) : AlectryonM Html := do
     hypParts := hypParts.push
       <span class="hyp-body">
         <b>:= </b>
-        <span>[←infoFormatToHtml h.body.fst]</span>
+        <span>[← infoFormatToHtml h.body.fst]</span>
       </span>
   hypParts := hypParts.push
       <span class="hyp-type">
         <b>: </b>
-        <span >[←infoFormatToHtml h.type.fst]</span>
+        <span >[← infoFormatToHtml h.type.fst]</span>
       </span>
 
   pure
@@ -106,7 +106,7 @@ def Goal.toHtml (g : Goal) : AlectryonM Html := do
   let conclusionHtml ←
     match g.conclusion with
     | .typed info _ => infoFormatToHtml info
-    | .untyped str => pure <| #[Html.text str]
+    | .untyped str => pure #[Html.text str]
 
   pure
     <blockquote class="alectryon-goal">
@@ -133,7 +133,7 @@ def Sentence.toHtml (s : Sentence) : AlectryonM Html := do
     if s.messages.size > 0 then
       #[
         <div class="alectryon-messages">
-          [←s.messages.mapM Message.toHtml]
+          [← s.messages.mapM Message.toHtml]
         </div>
       ]
     else
@@ -144,7 +144,7 @@ def Sentence.toHtml (s : Sentence) : AlectryonM Html := do
       -- TODO: Alectryon has a "alectryon-extra-goals" here, implement it
       #[
         <div class="alectryon-goals">
-          [←s.goals.mapM Goal.toHtml]
+          [← s.goals.mapM Goal.toHtml]
         </div>
       ]
     else
@@ -156,7 +156,7 @@ def Sentence.toHtml (s : Sentence) : AlectryonM Html := do
     <span class="alectryon-sentence">
       <input class="alectryon-toggle" id={buttonLabel} style="display: none" type="checkbox"/>
       <label class="alectryon-input" for={buttonLabel}>
-        {←s.contents.toHtml}
+        {← s.contents.toHtml}
       </label>
       <small class="alectryon-output">
         [messages]
@@ -185,12 +185,12 @@ def baseHtml (content : Array Html) : AlectryonM Html := do
         <meta charset="UTF-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
 
-        <link rel="stylesheet" href={s!"{←getRoot}src/alectryon.css"}/>
-        <link rel="stylesheet" href={s!"{←getRoot}src/pygments.css"}/>
-        <link rel="stylesheet" href={s!"{←getRoot}src/docutils_basic.css"}/>
-        <link rel="shortcut icon" href={s!"{←getRoot}favicon.ico"}/>
+        <link rel="stylesheet" href={s!"{← getRoot}src/alectryon.css"}/>
+        <link rel="stylesheet" href={s!"{← getRoot}src/pygments.css"}/>
+        <link rel="stylesheet" href={s!"{← getRoot}src/docutils_basic.css"}/>
+        <link rel="shortcut icon" href={s!"{← getRoot}favicon.ico"}/>
 
-        <script defer="true" src={s!"{←getRoot}src/alectryon.js"}></script>
+        <script defer="true" src={s!"{← getRoot}src/alectryon.js"}></script>
       </head>
       <body>
         <article class="alectryon-root alectryon-centered">
@@ -210,6 +210,6 @@ def annotationsToFragments (as : List Annotation.Annotation) : AnalysisM (List F
 def renderAnnotations (as : List Annotation.Annotation) : HtmlT AnalysisM Html := do
   let fs ← annotationsToFragments as
   let (html, _) ← fs.mapM Fragment.toHtml >>= (baseHtml ∘ List.toArray) |>.run { counter := 0 }
-  pure html
+  return html
 
 end LeanInk.Annotation.Alectryon
