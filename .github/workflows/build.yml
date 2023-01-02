@@ -39,7 +39,7 @@ jobs:
           DOC_GEN_REF: ${{ github.event.pull_request.head.sha }}
 
       - name: generate and deploy docs (main only)
-        if: (github.event_name == 'push' || github.event_name == 'schedule') && github.repository == 'leanprover/doc-gen4' && github.ref_name == 'master'
+        if: (github.event_name == 'push' || github.event_name == 'schedule') && github.repository == 'leanprover/doc-gen4' && github.ref_name == 'main'
         run: |
           cd ../
           ./doc-gen4/deploy_docs.sh "mathlib4" "doc-gen4" "true" "LeanInk"
