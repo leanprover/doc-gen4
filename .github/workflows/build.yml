@@ -28,6 +28,7 @@ jobs:
           cd ../
           git clone https://github.com/leanprover-community/mathlib4
           cd mathlib4
+          lake exe cache get
           lake build
 
       - name: generate docs (PRs only)
