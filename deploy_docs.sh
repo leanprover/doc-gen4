@@ -6,6 +6,7 @@
 set -e
 set -x
 
+cp -r $2/lake-packages/* $1/lake-packages
 cd $1
 mathlib_short_git_hash="$(git log -1 --pretty=format:%h)"
 
@@ -23,10 +24,12 @@ fi
 
 # generate the docs
 cd $1
-sed -i "s|\"https://github.com/leanprover/doc-gen4\" @ \"main\"|\"$DOC_GEN_URL\" @ \"$DOC_GEN_REF\"|" lakefile.lean
-rm -rf lean_packages/manifest.json
+sed -i "s|from git \"https://github.com/leanprover/doc-gen4\" @ \"main\"| from \"..\" / \"doc-gen4\" with NameMap.empty|" lakefile.lean
+# This can destroy caching properties if std4 or aesop master are out of sync with mathlib4 but
+# we need it since lake does not provide the ability to update singular deps
+# right now. Once the feature is implemented we can stop doing that.
 lake -Kdoc=on update
-lake -Kdoc=on build Mathlib:docs Std:docs --verbose
+lake -Kdoc=on build Mathlib:docs Std:docs
 
 if [ "$3" = "true" ]; then
   cd ..
