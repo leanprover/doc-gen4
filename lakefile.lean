@@ -94,6 +94,7 @@ library_facet docs (lib) : FilePath := do
     basePath / "index.html",
     basePath / "404.html",
     basePath / "navbar.html",
+    basePath / "search.html",
     basePath / "find" / "index.html",
     basePath / "find" / "find.js",
     basePath / "src"  / "alectryon.css",

@@ -67,7 +67,7 @@ export class DeclarationDataCenter {
    * Search for a declaration.
    * @returns {Array<any>}
    */
-  search(pattern, strict = true) {
+  search(pattern, strict = true, maxResults=undefined) {
     if (!pattern) {
       return [];
     }
@@ -75,7 +75,7 @@ export class DeclarationDataCenter {
       let decl = this.declarationData.declarations[pattern];
       return decl ? [decl] : [];
     } else {
-      return getMatches(this.declarationData.declarations, pattern);
+      return getMatches(this.declarationData.declarations, pattern, maxResults);
     }
   }
 
@@ -159,7 +159,7 @@ function matchCaseSensitive(declName, lowerDeclName, pattern) {
   }
 }
 
-function getMatches(declarations, pattern, maxResults = 30) {
+function getMatches(declarations, pattern, maxResults = undefined) {
   const lowerPats = pattern.toLowerCase().split(/\s/g);
   const patNoSpaces = pattern.replace(/\s/g, "");
   const results = [];

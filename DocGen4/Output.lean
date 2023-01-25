@@ -12,6 +12,7 @@ import DocGen4.Output.Module
 import DocGen4.Output.NotFound
 import DocGen4.Output.Find
 import DocGen4.Output.SourceLinker
+import DocGen4.Output.Search
 import DocGen4.Output.ToJson
 import DocGen4.Output.FoundationalTypes
 import DocGen4.LeanInk.Process
@@ -35,11 +36,13 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let notFoundHtml := ReaderT.run notFound config |>.toString
   let foundationalTypesHtml := ReaderT.run foundationalTypes config |>.toString
   let navbarHtml := ReaderT.run navbar config |>.toString
+  let searchHtml := ReaderT.run search config |>.toString
   let docGenStatic := #[
     ("style.css", styleCss),
     ("declaration-data.js", declarationDataCenterJs),
     ("nav.js", navJs),
     ("how-about.js", howAboutJs),
+    ("search.html", searchHtml),
     ("search.js", searchJs),
     ("mathjax-config.js", mathjaxConfigJs),
     ("instances.js", instancesJs),
