@@ -116,7 +116,7 @@ header {
     :root { --header-side-padding: 1ex; }
     #search_form button { display: none; }
     #search_form input { width: 100%; }
-    header #search_results {
+    header #autocomplete_results {
         left: 1ex;
         right: 1ex;
         width: inherit;
@@ -146,7 +146,7 @@ header header_filename {
 }
 
 /* inserted by nav.js */
-#search_results {
+#autocomplete_results {
     position: absolute;
     top: var(--header-height);
     right: calc(var(--header-side-padding));
@@ -160,15 +160,15 @@ header header_filename {
     max-height: calc(100vh - var(--header-height));
 }
 
-#search_results:empty {
+#autocomplete_results:empty {
     display: none;
 }
 
-#search_results[state="loading"]:empty {
+#autocomplete_results[state="loading"]:empty {
     display: block;
     cursor: progress;
 }
-#search_results[state="loading"]:empty::before {
+#autocomplete_results[state="loading"]:empty::before {
     display: block;
     content: ' 🐙 🐙 🐙 🐙 🐙 🐙 🐙 🐙 🐙 🐙 🐙 🐙 🐙 🐙 🐙 ';
     padding: 1ex;
@@ -179,17 +179,17 @@ header header_filename {
     100% { transform: translate(-100%, 0); }
 }
 
-#search_results[state="done"]:empty {
+#autocomplete_results[state="done"]:empty {
     display: block;
     text-align: center;
     padding: 1ex;
 }
-#search_results[state="done"]:empty::before {
+#autocomplete_results[state="done"]:empty::before {
     content: '(no results)';
     font-style: italic;
 }
 
-#search_results a {
+#autocomplete_results a {
     display: block;
     color: inherit;
     padding: 1ex;
@@ -197,9 +197,18 @@ header header_filename {
     padding-left: 0.5ex;
     cursor: pointer;
 }
-#search_results .selected {
+#autocomplete_results .selected {
     background: white;
     border-color: #f0a202;
+}
+
+#search_results a {
+    display: block;
+}
+
+#search_results[state="done"]:empty::before {
+    content: '(no results)';
+    font-style: italic;
 }
 
 main, nav {
@@ -476,7 +485,7 @@ main h2, main h3, main h4, main h5, main h6 {
 }
 
 .imports li, code, .decl_header, .attributes, .structure_field_info,
-        .constructor, .instances li, .equation, #search_results div,
+        .constructor, .instances li, .equation, #autocomplete_results div,
         .structure_ext_ctor {
     font-family: 'Source Code Pro', monospace;
 }

@@ -4,27 +4,36 @@
 
 import { DeclarationDataCenter } from "./declaration-data.js";
 
+// Search form and input in the upper right toolbar
 const SEARCH_FORM = document.querySelector("#search_form");
 const SEARCH_INPUT = SEARCH_FORM.querySelector("input[name=q]");
 
-// Create an `div#search_results` to hold all search results.
-let sr = document.createElement("div");
-sr.id = "search_results";
-SEARCH_FORM.appendChild(sr);
+// Search form on the /search.html_page.  These may be null.
+const SEARCH_PAGE_INPUT = document.querySelector("#search_page_query")
+const SEARCH_RESULTS = document.querySelector("#search_results")
+
+// Max results to show for autocomplete or /search.html page.
+const AC_MAX_RESULTS = 30
+const SEARCH_PAGE_MAX_RESULTS = undefined
+
+// Create an `div#autocomplete_results` to hold all autocomplete results.
+let ac_results = document.createElement("div");
+ac_results.id = "autocomplete_results";
+SEARCH_FORM.appendChild(ac_results);
 
 /**
- * Attach `selected` class to the the selected search result.
+ * Attach `selected` class to the the selected autocomplete result.
  */
 function handleSearchCursorUpDown(down) {
-  const sel = sr.querySelector(`.selected`);
+  const sel = ac_results.querySelector(`.selected`);
   if (sel) {
     sel.classList.remove("selected");
     const toSelect = down
-      ? sel.nextSibling || sr.firstChild
-      : sel.previousSibling || sr.lastChild;
+      ? sel.nextSibling || ac_results.firstChild
+      : sel.previousSibling || ac_results.lastChild;
     toSelect && toSelect.classList.add("selected");
   } else {
-    const toSelect = down ? sr.firstChild : sr.lastChild;
+    const toSelect = down ? ac_results.firstChild : ac_results.lastChild;
     toSelect && toSelect.classList.add("selected");
   }
 }
@@ -33,12 +42,12 @@ function handleSearchCursorUpDown(down) {
  * Perform search (when enter is pressed).
  */
 function handleSearchEnter() {
-  const sel = sr.querySelector(`.selected`) || sr.firstChild;
+  const sel = ac_results.querySelector(`.selected`) || ac_results.firstChild;
   sel.click();
 }
 
 /**
- * Allow user to navigate search results with up/down arrow keys, and choose with enter.
+ * Allow user to navigate autocomplete results with up/down arrow keys, and choose with enter.
  */
 SEARCH_INPUT.addEventListener("keydown", (ev) => {
   switch (ev.key) {
@@ -71,7 +80,7 @@ function removeAllChildren(node) {
 /**
  * Handle user input and perform search.
  */
-function handleSearch(dataCenter, err, ev) {
+function handleSearch(dataCenter, err, ev, sr, maxResults) {
   const text = ev.target.value;
 
   // If no input clear all.
@@ -85,12 +94,12 @@ function handleSearch(dataCenter, err, ev) {
   sr.setAttribute("state", "loading");
 
   if (dataCenter) {
-    const result = dataCenter.search(text, false);
+    const result = dataCenter.search(text, false, maxResults);
 
     // in case user has updated the input.
     if (ev.target.value != text) return;
   
-    // update search results
+    // update autocomplete results
     removeAllChildren(sr);
     for (const { name, docLink } of result) {
       const d = sr.appendChild(document.createElement("a"));
@@ -111,8 +120,15 @@ function handleSearch(dataCenter, err, ev) {
 DeclarationDataCenter.init()
   .then((dataCenter) => {
     // Search autocompletion.
-    SEARCH_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev));
+    SEARCH_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev, ac_results, AC_MAX_RESULTS));
+    if(SEARCH_PAGE_INPUT) {
+      SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS))
+      SEARCH_PAGE_INPUT.dispatchEvent(new Event("input"))
+    }
   })
   .catch(e => {
-    SEARCH_INPUT.addEventListener("input", ev => handleSearch(null, e, ev));
+    SEARCH_INPUT.addEventListener("input", ev => handleSearch(null, e, ev, ac_results, AC_MAX_RESULTS));
+    if(SEARCH_PAGE_INPUT) {
+      SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(null, e, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS));
+    }
   });
