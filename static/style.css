@@ -197,6 +197,7 @@ header header_filename {
     padding-left: 0.5ex;
     cursor: pointer;
 }
+
 #autocomplete_results .selected {
     background: white;
     border-color: #f0a202;
@@ -211,6 +212,27 @@ header header_filename {
     font-style: italic;
 }
 
+#search_results {
+    width: 100%;
+    display: table;
+    table-layout: auto;
+}
+
+.search_result {
+    width: 100%;
+    display: table-row;
+}
+
+.result_link, .result_doc {
+    display: table-cell;
+    overflow: hidden;
+}
+
+#search_results .result_link, #search_results .result_doc {
+    display: table-cell;
+    overflow: hidden;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.8);
+}
 main, nav {
     margin-top: calc(var(--header-height) + 1em);
 }
@@ -485,8 +507,7 @@ main h2, main h3, main h4, main h5, main h6 {
 }
 
 .imports li, code, .decl_header, .attributes, .structure_field_info,
-        .constructor, .instances li, .equation, #autocomplete_results div,
-        .structure_ext_ctor {
+        .constructor, .instances li, .equation, .result_link, .structure_ext_ctor {
     font-family: 'Source Code Pro', monospace;
 }
 

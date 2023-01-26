@@ -80,7 +80,7 @@ function removeAllChildren(node) {
 /**
  * Handle user input and perform search.
  */
-function handleSearch(dataCenter, err, ev, sr, maxResults) {
+function handleSearch(dataCenter, err, ev, sr, maxResults, includedoc=false) {
   const text = ev.target.value;
 
   // If no input clear all.
@@ -101,11 +101,20 @@ function handleSearch(dataCenter, err, ev, sr, maxResults) {
   
     // update autocomplete results
     removeAllChildren(sr);
-    for (const { name, docLink } of result) {
-      const d = sr.appendChild(document.createElement("a"));
-      d.innerText = name;
-      d.title = name;
-      d.href = SITE_ROOT + docLink;
+    for (const { name, doc, docLink } of result) {
+      const row = sr.appendChild(document.createElement("div"));
+      row.classList.add("search_result")
+      const linkdiv = row.appendChild(document.createElement("div"))
+      linkdiv.classList.add("result_link")
+      const link = linkdiv.appendChild(document.createElement("a"));
+      link.innerText = name;
+      link.title = name;
+      link.href = SITE_ROOT + docLink;
+      if (includedoc) {
+        const doctext = row.appendChild(document.createElement("div"));
+        doctext.innerText = doc
+        doctext.classList.add("result_doc")
+      }
     }
   }
   // handle error
@@ -122,13 +131,13 @@ DeclarationDataCenter.init()
     // Search autocompletion.
     SEARCH_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev, ac_results, AC_MAX_RESULTS));
     if(SEARCH_PAGE_INPUT) {
-      SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS))
+      SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS, true))
       SEARCH_PAGE_INPUT.dispatchEvent(new Event("input"))
     }
   })
   .catch(e => {
     SEARCH_INPUT.addEventListener("input", ev => handleSearch(null, e, ev, ac_results, AC_MAX_RESULTS));
     if(SEARCH_PAGE_INPUT) {
-      SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(null, e, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS));
+      SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(null, e, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS, true));
     }
   });
