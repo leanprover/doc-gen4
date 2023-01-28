@@ -29,8 +29,8 @@ function handleSearchCursorUpDown(down) {
   if (sel) {
     sel.classList.remove("selected");
     const toSelect = down
-      ? sel.nextSibling || ac_results.firstChild
-      : sel.previousSibling || ac_results.lastChild;
+      ? sel.nextSibling 
+      : sel.previousSibling;
     toSelect && toSelect.classList.add("selected");
   } else {
     const toSelect = down ? ac_results.firstChild : ac_results.lastChild;
@@ -42,7 +42,7 @@ function handleSearchCursorUpDown(down) {
  * Perform search (when enter is pressed).
  */
 function handleSearchEnter() {
-  const sel = ac_results.querySelector(`.selected`) || ac_results.firstChild;
+  const sel = ac_results.querySelector(`.selected .result_link a`) || document.querySelector(`#search_button`);
   sel.click();
 }
 

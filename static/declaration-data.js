@@ -183,6 +183,7 @@ function getMatches(declarations, pattern, maxResults = undefined) {
     if (err !== undefined) {
       results.push({
         name,
+        doc,
         err,
         lowerName,
         lowerDoc,
