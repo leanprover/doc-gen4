@@ -14,7 +14,6 @@ open scoped DocGen4.Jsx
 def search : BaseHtmlM Html := do templateExtends (baseHtml "Search") <|
   pure <|
     <main>
-      <a id="top"></a>
       <h1> Search Results </h1>
       <label for="search_page_query">Query:</label><input id="search_page_query" />
       <script>

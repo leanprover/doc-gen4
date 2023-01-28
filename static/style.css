@@ -198,41 +198,35 @@ header header_filename {
     cursor: pointer;
 }
 
-#autocomplete_results .selected {
+#autocomplete_results .selected .result_link a {
     background: white;
     border-color: #f0a202;
 }
 
-#search_results a {
-    display: block;
-}
 
+#search_results {
+    display: table;
+    width: 100%;
+}
 #search_results[state="done"]:empty::before {
     content: '(no results)';
     font-style: italic;
 }
 
-#search_results {
-    width: 100%;
-    display: table;
-    table-layout: auto;
+#search_results .result_link, #search_results .result_doc {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.8);
 }
 
 .search_result {
-    width: 100%;
     display: table-row;
 }
 
 .result_link, .result_doc {
     display: table-cell;
     overflow: hidden;
+    word-break: break-word;
 }
 
-#search_results .result_link, #search_results .result_doc {
-    display: table-cell;
-    overflow: hidden;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.8);
-}
 main, nav {
     margin-top: calc(var(--header-height) + 1em);
 }
