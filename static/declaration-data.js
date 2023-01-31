@@ -67,7 +67,7 @@ export class DeclarationDataCenter {
    * Search for a declaration.
    * @returns {Array<any>}
    */
-  search(pattern, strict = true, maxResults=undefined) {
+  search(pattern, strict = true, allowedKinds=undefined, maxResults=undefined) {
     if (!pattern) {
       return [];
     }
@@ -75,7 +75,7 @@ export class DeclarationDataCenter {
       let decl = this.declarationData.declarations[pattern];
       return decl ? [decl] : [];
     } else {
-      return getMatches(this.declarationData.declarations, pattern, maxResults);
+      return getMatches(this.declarationData.declarations, pattern, allowedKinds, maxResults);
     }
   }
 
@@ -159,16 +159,23 @@ function matchCaseSensitive(declName, lowerDeclName, pattern) {
   }
 }
 
-function getMatches(declarations, pattern, maxResults = undefined) {
+function getMatches(declarations, pattern, allowedKinds = undefined, maxResults = undefined) {
   const lowerPats = pattern.toLowerCase().split(/\s/g);
   const patNoSpaces = pattern.replace(/\s/g, "");
   const results = [];
   for (const [_, {
     name,
+    kind,
     doc,
     docLink,
     sourceLink,
   }] of Object.entries(declarations)) {
+    // Apply "kind" filter
+    if (allowedKinds !== undefined) {
+      if (!allowedKinds.has(kind)) {
+        continue;
+      }
+    }
     const lowerName = name.toLowerCase();
     const lowerDoc = doc.toLowerCase();
     let err = matchCaseSensitive(name, lowerName, patNoSpaces);
@@ -183,6 +190,7 @@ function getMatches(declarations, pattern, maxResults = undefined) {
     if (err !== undefined) {
       results.push({
         name,
+        kind,
         doc,
         err,
         lowerName,
