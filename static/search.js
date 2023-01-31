@@ -80,7 +80,7 @@ function removeAllChildren(node) {
 /**
  * Handle user input and perform search.
  */
-function handleSearch(dataCenter, err, ev, sr, maxResults, includedoc=false) {
+function handleSearch(dataCenter, err, ev, sr, maxResults, autocomplete) {
   const text = ev.target.value;
 
   // If no input clear all.
@@ -94,14 +94,25 @@ function handleSearch(dataCenter, err, ev, sr, maxResults, includedoc=false) {
   sr.setAttribute("state", "loading");
 
   if (dataCenter) {
-    const result = dataCenter.search(text, false, maxResults);
+    var allowedKinds;
+    if (!autocomplete) {
+      allowedKinds = new Set();
+      document.querySelectorAll(".kind_checkbox").forEach((checkbox) =>
+        {
+          if (checkbox.checked) {
+            allowedKinds.add(checkbox.value);
+          }
+        } 
+      );
+    }
+    const result = dataCenter.search(text, false, allowedKinds, maxResults);
 
     // in case user has updated the input.
     if (ev.target.value != text) return;
   
     // update autocomplete results
     removeAllChildren(sr);
-    for (const { name, doc, docLink } of result) {
+    for (const { name, kind, doc, docLink } of result) {
       const row = sr.appendChild(document.createElement("div"));
       row.classList.add("search_result")
       const linkdiv = row.appendChild(document.createElement("div"))
@@ -110,7 +121,7 @@ function handleSearch(dataCenter, err, ev, sr, maxResults, includedoc=false) {
       link.innerText = name;
       link.title = name;
       link.href = SITE_ROOT + docLink;
-      if (includedoc) {
+      if (!autocomplete) {
         const doctext = row.appendChild(document.createElement("div"));
         doctext.innerText = doc
         doctext.classList.add("result_doc")
@@ -129,15 +140,18 @@ function handleSearch(dataCenter, err, ev, sr, maxResults, includedoc=false) {
 DeclarationDataCenter.init()
   .then((dataCenter) => {
     // Search autocompletion.
-    SEARCH_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev, ac_results, AC_MAX_RESULTS));
+    SEARCH_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev, ac_results, AC_MAX_RESULTS, true));
     if(SEARCH_PAGE_INPUT) {
-      SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS, true))
+      SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS, false))
+      document.querySelectorAll(".kind_checkbox").forEach((checkbox) =>
+        checkbox.addEventListener("input", ev => SEARCH_PAGE_INPUT.dispatchEvent(new Event("input")))
+      );
       SEARCH_PAGE_INPUT.dispatchEvent(new Event("input"))
     }
   })
   .catch(e => {
-    SEARCH_INPUT.addEventListener("input", ev => handleSearch(null, e, ev, ac_results, AC_MAX_RESULTS));
+    SEARCH_INPUT.addEventListener("input", ev => handleSearch(null, e, ev, ac_results, AC_MAX_RESULTS,true ));
     if(SEARCH_PAGE_INPUT) {
-      SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(null, e, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS, true));
+      SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(null, e, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS, false));
     }
   });

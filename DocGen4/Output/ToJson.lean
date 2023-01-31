@@ -9,6 +9,7 @@ open Lean
 
 structure JsonDeclaration where
   name : String
+  kind : String
   doc : String
   docLink : String
   sourceLink : String
@@ -76,10 +77,11 @@ def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM Js
 
 def DocInfo.toJson (module : Name) (info : Process.DocInfo) : HtmlM JsonDeclaration := do
   let name := info.getName.toString
+  let kind := info.getKind
   let doc := info.getDocString.getD ""
   let docLink ← declNameToLink info.getName
   let sourceLink ← getSourceUrl module info.getDeclarationRange
-  return { name, doc, docLink, sourceLink }
+  return { name, kind, doc, docLink, sourceLink }
 
 def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
     let mut jsonDecls := []
