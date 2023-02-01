@@ -27,3 +27,8 @@ The root of the built docs will be `build/docs/index.html`.  However, due to the
 generated website will be partially broken if you just open the generated html files in your browser.  You
 need to serve them from a proper http server for it to work.  An easy way to do that is to run 
 `python3 -m http.server` from the `build/docs` directory.
+
+Note that if you modify the `.js` or `.css` files in doc-gen4, they won't necessarily be copied over when 
+you rebuild the documentation.  You can manually copy the changes to the `build/docs` directory to make
+sure the changes appear, or just do a full recompilation (`lake clean` and `lake build` inside the `doc-gen4`
+directory.)
