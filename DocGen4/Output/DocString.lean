@@ -1,7 +1,6 @@
 import CMark
 import DocGen4.Output.Template
 import Lean.Data.Parsec
-import Unicode.General.GeneralCategory
 
 open Lean Unicode  Xml Parser Parsec DocGen4.Process
 
@@ -55,9 +54,7 @@ partial def xmlGetHeadingId (el : Xml.Element) : String :=
       |>.filter (!·.isEmpty)
       |> replacement.intercalate
     unicodeToDrop (c : Char) : Bool :=
-      charInGeneralCategory c GeneralCategory.punctuation ||
-      charInGeneralCategory c GeneralCategory.separator ||
-      charInGeneralCategory c GeneralCategory.other
+      dalse -- TODO: restore the behavior described in the docstring
 
 /--
   This function try to find the given name, both globally and in current module.
