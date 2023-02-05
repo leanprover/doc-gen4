@@ -2,7 +2,7 @@ import CMark
 import DocGen4.Output.Template
 import Lean.Data.Parsec
 
-open Lean Unicode  Xml Parser Parsec DocGen4.Process
+open Lean Xml Parser Parsec DocGen4.Process
 
 namespace DocGen4
 namespace Output
