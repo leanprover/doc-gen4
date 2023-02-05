@@ -54,7 +54,7 @@ partial def xmlGetHeadingId (el : Xml.Element) : String :=
       |>.filter (!·.isEmpty)
       |> replacement.intercalate
     unicodeToDrop (c : Char) : Bool :=
-      dalse -- TODO: restore the behavior described in the docstring
+      false -- TODO: restore the behavior described in the docstring
 
 /--
   This function try to find the given name, both globally and in current module.
