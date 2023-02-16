@@ -86,7 +86,7 @@ def DocInfo.toJson (module : Name) (info : Process.DocInfo) : HtmlM JsonDeclarat
 def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
     let mut jsonDecls := []
     let mut instances := #[]
-    let declInfo := Process.filterMapDocInfo module.members
+    let declInfo := Process.filterDocInfo module.members
     for decl in declInfo do
       jsonDecls := (← DocInfo.toJson module.name decl) :: jsonDecls
       if let .instanceInfo i := decl then

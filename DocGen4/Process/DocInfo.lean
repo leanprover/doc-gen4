@@ -31,6 +31,7 @@ def getDeclarationRange : DocInfo → DeclarationRange
 | structureInfo i => i.declarationRange
 | classInfo i => i.declarationRange
 | classInductiveInfo i => i.declarationRange
+| ctorInfo i => i.declarationRange
 
 def getName : DocInfo → Name
 | axiomInfo i => i.name
@@ -42,6 +43,7 @@ def getName : DocInfo → Name
 | structureInfo i => i.name
 | classInfo i => i.name
 | classInductiveInfo i => i.name
+| ctorInfo i => i.name
 
 def getKind : DocInfo → String
 | axiomInfo _ => "axiom"
@@ -53,6 +55,7 @@ def getKind : DocInfo → String
 | structureInfo _ => "structure"
 | classInfo _ => "class"
 | classInductiveInfo _ => "class"
+| ctorInfo _ => "ctor" -- TODO: kind ctor support in js
 
 def getType : DocInfo → CodeWithInfos
 | axiomInfo i => i.type
@@ -64,6 +67,7 @@ def getType : DocInfo → CodeWithInfos
 | structureInfo i => i.type
 | classInfo i => i.type
 | classInductiveInfo i => i.type
+| ctorInfo i => i.type
 
 def getArgs : DocInfo → Array Arg
 | axiomInfo i => i.args
@@ -75,6 +79,7 @@ def getArgs : DocInfo → Array Arg
 | structureInfo i => i.args
 | classInfo i => i.args
 | classInductiveInfo i => i.args
+| ctorInfo i => i.args
 
 def getAttrs : DocInfo → Array String
 | axiomInfo i => i.attrs
@@ -86,6 +91,7 @@ def getAttrs : DocInfo → Array String
 | structureInfo i => i.attrs
 | classInfo i => i.attrs
 | classInductiveInfo i => i.attrs
+| ctorInfo i => i.attrs
 
 def getDocString : DocInfo → Option String
 | axiomInfo i => i.doc
@@ -97,6 +103,19 @@ def getDocString : DocInfo → Option String
 | structureInfo i => i.doc
 | classInfo i => i.doc
 | classInductiveInfo i => i.doc
+| ctorInfo i => i.doc
+
+def shouldRender : DocInfo → Bool
+| axiomInfo i => i.render
+| theoremInfo i => i.render
+| opaqueInfo i => i.render
+| definitionInfo i => i.render
+| instanceInfo i => i.render
+| inductiveInfo i => i.render
+| structureInfo i => i.render
+| classInfo i => i.render
+| classInductiveInfo i => i.render
+| ctorInfo i => i.render
 
 def isBlackListed (declName : Name) : MetaM Bool := do
   match ← findDeclarationRanges? declName with
@@ -135,7 +154,8 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := fun (name,
   | ConstantInfo.opaqueInfo i => return some <| opaqueInfo (← OpaqueInfo.ofOpaqueVal i)
   | ConstantInfo.defnInfo i =>
     if ← isProjFn i.name then
-      return none
+      let info ← DefinitionInfo.ofDefinitionVal i
+      return some <| definitionInfo { info with render := false }
     else
       if ← isInstance i.name then
         let info ← InstanceInfo.ofDefinitionVal i
@@ -155,8 +175,11 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := fun (name,
         return some <| classInductiveInfo (← ClassInductiveInfo.ofInductiveVal i)
       else
         return some <| inductiveInfo (← InductiveInfo.ofInductiveVal i)
+  | ConstantInfo.ctorInfo i =>
+    let info ← Info.ofConstantVal i.toConstantVal
+    return some <| ctorInfo { info with render := false }
   -- we ignore these for now
-  | ConstantInfo.ctorInfo _ | ConstantInfo.recInfo _ | ConstantInfo.quotInfo _ => return none
+  | ConstantInfo.recInfo _ | ConstantInfo.quotInfo _ => return none
 
 def getKindDescription : DocInfo → String
 | axiomInfo i => if i.isUnsafe then "unsafe axiom" else "axiom"
@@ -191,6 +214,7 @@ def getKindDescription : DocInfo → String
 | structureInfo _ => "structure"
 | classInfo _ => "class"
 | classInductiveInfo _ => "class inductive"
+| ctorInfo _ => "constructor"
 
 end DocInfo
 

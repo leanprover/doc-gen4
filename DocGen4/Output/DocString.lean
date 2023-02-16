@@ -78,7 +78,7 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
     else
       match (← getCurrentName) with
       | some currentName =>
-        match res.moduleInfo.find! currentName |>.members |> filterMapDocInfo |>.find? (sameEnd ·.getName name) with
+        match res.moduleInfo.find! currentName |>.members |> filterDocInfo |>.find? (sameEnd ·.getName name) with
         | some info =>
           declNameToLink info.getName
         | _ => return none

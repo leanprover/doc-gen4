@@ -60,6 +60,10 @@ structure Info extends NameInfo where
   A list of (known) attributes that are attached to the declaration.
   -/
   attrs : Array String
+  /--
+  Whether this info item should be rendered
+  -/
+  render : Bool := true
   deriving Inhabited
 
 /--
@@ -147,6 +151,12 @@ Information about a `class inductive` declaration.
 -/
 abbrev ClassInductiveInfo := InductiveInfo
 
+
+/--
+Information about a constructor of an inductive type
+-/
+abbrev ConstructorInfo := Info
+
 /--
 A general type for informations about declarations.
 -/
@@ -160,6 +170,7 @@ inductive DocInfo where
 | structureInfo (info : StructureInfo) : DocInfo
 | classInfo (info : ClassInfo) : DocInfo
 | classInductiveInfo (info : ClassInductiveInfo) : DocInfo
+| ctorInfo (info : ConstructorInfo) : DocInfo
   deriving Inhabited
 
 /--

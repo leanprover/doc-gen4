@@ -77,6 +77,10 @@ def getDocString : ModuleMember → Option String
 | docInfo i => i.getDocString
 | modDoc i => i.doc
 
+def shouldRender : ModuleMember → Bool
+| docInfo i => i.shouldRender
+| modDoc _ => true
+
 end ModuleMember
 
 inductive AnalyzeTask where
@@ -144,7 +148,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
   }
   return (analysis, hierarchy)
 
-def filterMapDocInfo (ms : Array ModuleMember) : Array DocInfo :=
+def filterDocInfo (ms : Array ModuleMember) : Array DocInfo :=
   ms.filterMap filter
   where
     filter : ModuleMember → Option DocInfo
