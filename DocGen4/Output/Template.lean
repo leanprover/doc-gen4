@@ -44,7 +44,7 @@ def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := d
 
         <header>
           <h1><label for="nav_toggle"></label>Documentation</h1>
-          <p class="header_filename break_within">{title}</p>
+          <p class="header_filename break_within">[breakWithin title]</p>
           <form action="https://google.com/search" method="get" id="search_form">
             <input type="hidden" name="sitesearch" value="https://leanprover-community.github.io/mathlib4_docs"/>
             <input type="text" name="q" autocomplete="off"/>&#32;

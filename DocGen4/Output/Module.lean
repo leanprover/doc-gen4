@@ -66,10 +66,7 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   nodes := nodes.push <| Html.element "span" false #[("class", "decl_kind")] #[doc.getKindDescription]
   nodes := nodes.push
     <span class="decl_name">
-      <a class="break_within" href={← declNameToLink doc.getName}>
-        -- TODO: HTMLify the name
-        {doc.getName.toString}
-      </a>
+      {← declNameToHtmlBreakWithinLink doc.getName}
     </span>
   for arg in doc.getArgs do
     nodes := nodes.push (← argToHtml arg)
@@ -160,7 +157,9 @@ def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := d
 
 def declarationToNavLink (module : Name) : Html :=
   <div class="nav_link">
-    <a class="break_within" href={s!"#{module.toString}"}>{module.toString}</a>
+    <a class="break_within" href={s!"#{module.toString}"}>
+      [breakWithin module.toString]
+    </a>
   </div>
 
 /--
@@ -184,7 +183,7 @@ Render the internal nav bar (the thing on the right on all module pages).
 def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
   pure
     <nav class="internal_nav">
-      <h3><a class="break_within" href="#top">{moduleName.toString}</a></h3>
+      <h3><a class="break_within" href="#top">[breakWithin moduleName.toString]</a></h3>
       <p class="gh_nav_link"><a href={← getSourceUrl moduleName none}>source</a></p>
       <div class="imports">
         <details>
