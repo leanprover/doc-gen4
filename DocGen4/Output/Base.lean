@@ -175,11 +175,24 @@ def declNameToInkLink (name : Name) : HtmlM String := do
   return (← moduleNameToInkLink module) ++ "#" ++ name.toString
 
 /--
+Returns a name splitted into parts.
+Together with "break_within" CSS class this helps browser to break a name
+nicely.
+-/
+def breakWithin (name: String) : (Array Html) :=
+  name.splitOn "."
+    |> .map (fun (s: String) => <span class="name">{s}</span>)
+    |> .intersperse "."
+    |> List.toArray
+
+/--
 Returns the HTML doc-gen4 link to a declaration name with "break_within"
 set as class.
 -/
 def declNameToHtmlBreakWithinLink (name : Name) : HtmlM Html := do
-  return <a class="break_within" href={← declNameToLink name}>{name.toString}</a>
+  return <a class="break_within" href={← declNameToLink name}>
+      [breakWithin name.toString]
+    </a>
 
 /--
 In Lean syntax declarations the following pattern is quite common:
