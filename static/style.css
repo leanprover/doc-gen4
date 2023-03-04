@@ -335,6 +335,12 @@ nav {
     overflow-wrap: break-word;
 }
 
+/* Add a linebreak after a declaration name. */
+.decl_name::after {
+    content: "\A";
+    white-space: pre;
+}
+
 .nav_link {
     overflow-wrap: break-word;
 }
@@ -474,7 +480,7 @@ main h2, main h3, main h4, main h5, main h6 {
 
 .implicits, .impl_arg {
     color: black;
-    white-space: nowrap;
+    white-space: normal;
 }
 
 .decl_kind, .decl_name, .decl_extends {
