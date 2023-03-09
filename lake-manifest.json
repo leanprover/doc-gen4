@@ -1,5 +1,5 @@
 {"version": 4,
- "packagesDir": "./lake-packages",
+ "packagesDir": "lake-packages",
  "packages":
  [{"git":
    {"url": "https://github.com/xubaiw/CMark.lean",
@@ -10,7 +10,7 @@
   {"git":
    {"url": "https://github.com/leanprover/lake",
     "subDir?": null,
-    "rev": "d0b530530f14dde97a547b03abf87eee06360d60",
+    "rev": "c2c609b37f200b2c7b59dfcac4eefebd909295e3",
     "name": "lake",
     "inputRev?": "master"}},
   {"git":
