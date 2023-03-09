@@ -6,7 +6,7 @@ Authors: Henrik Böving
 import Lean
 import Lake.Load
 
-namespace DocGen4.Output
+namespace DocGen4.Output.SourceLinker
 
 open Lean
 
@@ -86,4 +86,4 @@ def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange �
     | some range => s!"{basic}#L{range.pos.line}-L{range.endPos.line}"
     | none => basic
 
-end DocGen4.Output
+end DocGen4.Output.SourceLinker

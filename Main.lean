@@ -17,14 +17,14 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   | Except.ok ws =>
     let (doc, hierarchy) ← load <| .loadAllLimitAnalysis relevantModules
     IO.println "Outputting HTML"
-    let baseConfig := getSimpleBaseContext hierarchy
+    let baseConfig ← getSimpleBaseContext hierarchy
     htmlOutputResults baseConfig doc ws (p.hasFlag "ink")
     return 0
   | Except.error rc => pure rc
 
 def runIndexCmd (_p : Parsed) : IO UInt32 := do
   let hierarchy ← Hierarchy.fromDirectory Output.basePath
-  let baseConfig := getSimpleBaseContext hierarchy
+  let baseConfig ← getSimpleBaseContext hierarchy
   htmlOutputIndex baseConfig
   return 0
 
@@ -34,7 +34,7 @@ def runGenCoreCmd (_p : Parsed) : IO UInt32 := do
   | Except.ok ws =>
     let (doc, hierarchy) ← loadCore
     IO.println "Outputting HTML"
-    let baseConfig := getSimpleBaseContext hierarchy
+    let baseConfig ← getSimpleBaseContext hierarchy
     htmlOutputResults baseConfig doc ws (ink := False) 
     return 0
   | Except.error rc => pure rc

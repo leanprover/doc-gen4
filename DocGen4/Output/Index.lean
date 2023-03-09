@@ -16,7 +16,7 @@ def index : BaseHtmlM Html := do templateExtends (baseHtml "Index") <|
     <main>
       <a id="top"></a>
       <h1> Welcome to the documentation page </h1>
-      What is up?
+      <p>This was built for commit <a href={s!"{← getProjectGithubUrl}/tree/{← getProjectCommit}"}>{s!"{← getProjectCommit} "}</a> using Lean 4 at commit <a href={s!"https://github.com/leanprover/lean4/tree/{Lean.githash}"}>{Lean.githash}</a></p>
     </main>
 
 end Output

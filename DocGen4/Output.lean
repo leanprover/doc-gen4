@@ -81,7 +81,7 @@ def htmlOutputDeclarationDatas (result : AnalyzerResult) : HtmlT IO Unit := do
 def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (ws : Lake.Workspace) (ink : Bool) : IO Unit := do
   let config : SiteContext := {
     result := result,
-    sourceLinker := ←sourceLinker ws
+    sourceLinker := ← SourceLinker.sourceLinker ws
     leanInkEnabled := ink
   }
 
@@ -114,11 +114,13 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
         let baseConfig := {baseConfig with depthToRoot := modName.components.length }
         Process.LeanInk.runInk inputPath |>.run config baseConfig
 
-def getSimpleBaseContext (hierarchy : Hierarchy) : SiteBaseContext :=
-  {
+def getSimpleBaseContext (hierarchy : Hierarchy) : IO SiteBaseContext := do
+  return {
     depthToRoot := 0,
     currentName := none,
     hierarchy
+    projectGithubUrl := ← SourceLinker.getProjectGithubUrl
+    projectCommit := ← SourceLinker.getProjectCommit
   }
 
 def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
@@ -141,7 +143,7 @@ The main entrypoint for outputting the documentation HTML based on an
 `AnalyzerResult`.
 -/
 def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Workspace) (ink : Bool) : IO Unit := do
-  let baseConfig := getSimpleBaseContext hierarchy
+  let baseConfig ← getSimpleBaseContext hierarchy
   htmlOutputResults baseConfig result ws ink
   htmlOutputIndex baseConfig
 

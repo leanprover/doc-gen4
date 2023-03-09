@@ -33,6 +33,14 @@ structure SiteBaseContext where
   pages that don't have a module name.
   -/
   currentName : Option Name
+  /--
+  The Github URL of the project that we are building docs for.
+  -/
+  projectGithubUrl : String
+  /--
+  The commit of the project that we are building docs for.
+  -/
+  projectCommit : String
 
 /--
 The context used in the `HtmlM` monad for HTML templating.
@@ -86,6 +94,8 @@ def getCurrentName : BaseHtmlM (Option Name) := do return (← read).currentName
 def getResult : HtmlM AnalyzerResult := do return (← read).result
 def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do return (← read).sourceLinker module range
 def leanInkEnabled? : HtmlM Bool := do return (← read).leanInkEnabled
+def getProjectGithubUrl : BaseHtmlM String := do return (← read).projectGithubUrl
+def getProjectCommit : BaseHtmlM String := do return (← read).projectCommit
 
 /--
 If a template is meant to be extended because it for example only provides the
