@@ -55,13 +55,12 @@ partial def xmlGetHeadingId (el : Xml.Element) : String :=
       |>.filter (!·.isEmpty)
       |> replacement.intercalate
     unicodeToDrop (c : Char) : Bool :=
-      let generalCategory := Unicode.getGeneralCategory c
       let cats := [
         Unicode.GeneralCategory.P, -- punctuation
         Unicode.GeneralCategory.S, -- separator
         Unicode.GeneralCategory.C -- other
       ]
-      cats.elem generalCategory
+      cats.any (Unicode.isInGeneralCategory c)
 
 /--
   This function try to find the given name, both globally and in current module.
@@ -179,12 +178,11 @@ def autoLink (el : Element) : HtmlM Element := do
         | none =>
           return [Content.Character s]
     unicodeToSplit (c : Char) : Bool :=
-      let generalCategory := Unicode.getGeneralCategory c
       let cats := [
         Unicode.GeneralCategory.S, -- separator
         Unicode.GeneralCategory.C -- other
       ]
-      cats.elem generalCategory
+      cats.any (Unicode.isInGeneralCategory c)
 
 /-- Core function of modifying the cmark rendered docstring html. -/
 partial def modifyElement (element : Element) : HtmlM Element :=
