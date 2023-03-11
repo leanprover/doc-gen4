@@ -10,7 +10,7 @@
   {"git":
    {"url": "https://github.com/leanprover/lake",
     "subDir?": null,
-    "rev": "c2c609b37f200b2c7b59dfcac4eefebd909295e3",
+    "rev": "f59328e3d9b23f0266e40ceb31cb4353d9bf0dae",
     "name": "lake",
     "inputRev?": "master"}},
   {"git":
@@ -26,8 +26,8 @@
     "name": "leanInk",
     "inputRev?": "doc-gen"}},
   {"git":
-   {"url": "https://github.com/xubaiw/Unicode.lean",
+   {"url": "https://github.com/fgdorais/UnicodeData",
     "subDir?": null,
-    "rev": "6dd6ae3a3839c8350a91876b090eda85cf538d1d",
-    "name": "Unicode",
+    "rev": "ece7fa88d13ae92b670e46035119bab89e5225df",
+    "name": "UnicodeData",
     "inputRev?": "main"}}]}
