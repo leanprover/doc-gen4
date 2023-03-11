@@ -1,11 +1,8 @@
-name: build and deploy docs
+name: build and deploy mathlib4 docs
 
 on:
-  push:
-    branches:
-      - "main"
-  pull_request:
-
+  schedule:
+    - cron: '0 */8 * * *' # every 8 hours
 jobs:
   build:
     name: build and deploy docs
@@ -25,14 +22,11 @@ jobs:
         run: |
           lake build
 
-      - name: Checkout and compile mathlib4
+      - name: generate and deploy docs
+      	if: github.repository == 'leanprover/doc-gen4'
         run: |
           cd ../
-          git clone https://github.com/leanprover/std4
-          cd std4
-          lake build
-
-      - name: generate docs
-        run: |
-          cd ../
-          ./doc-gen4/test_docs.sh "std4" "doc-gen4"
+          ./doc-gen4/deploy_docs.sh
+        env:
+          MATHLIB4_DOCS_KEY: ${{ secrets.MATHLIB4_DOCS_KEY }}
+          DOC_GEN_REF: ${{ github.sha }}
