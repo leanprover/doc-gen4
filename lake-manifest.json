@@ -26,8 +26,8 @@
     "name": "leanInk",
     "inputRev?": "doc-gen"}},
   {"git":
-   {"url": "https://github.com/fgdorais/UnicodeData",
+   {"url": "https://github.com/fgdorais/lean4-unicode-basic",
     "subDir?": null,
-    "rev": "fb9efcfc2b832c2aff45a220779f35b79f62da11",
-    "name": "UnicodeData",
+    "rev": "4653d015b3ebd3d7980886a4daa75722d1d4e518",
+    "name": "UnicodeBasic",
     "inputRev?": "main"}}]}
