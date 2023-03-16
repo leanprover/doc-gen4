@@ -17,7 +17,8 @@ def index : BaseHtmlM Html := do templateExtends (baseHtml "Index") <|
       <a id="top"></a>
       <h1> Welcome to the documentation page </h1>
       -- Temporary comment until the lake issue is resolved
-      <p>This was built /-for commit <a href={s!"{← getProjectGithubUrl}/tree/{← getProjectCommit}"}>{s!"{← getProjectCommit} "}</a>-/ using Lean 4 at commit <a href={s!"https://github.com/leanprover/lean4/tree/{Lean.githash}"}>{Lean.githash}</a></p>
+      -- for commit <a href={s!"{← getProjectGithubUrl}/tree/{← getProjectCommit}"}>{s!"{← getProjectCommit} "}</a>
+      <p>This was built using Lean 4 at commit <a href={s!"https://github.com/leanprover/lean4/tree/{Lean.githash}"}>{Lean.githash}</a></p>
     </main>
 
 end Output
