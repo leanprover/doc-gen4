@@ -28,6 +28,6 @@
   {"git":
    {"url": "https://github.com/fgdorais/lean4-unicode-basic",
     "subDir?": null,
-    "rev": "4653d015b3ebd3d7980886a4daa75722d1d4e518",
+    "rev": "8851eecfe12ec9afa4fb8fcf55eea994ec12423d",
     "name": "UnicodeBasic",
     "inputRev?": "main"}}]}
