@@ -57,7 +57,7 @@ partial def xmlGetHeadingId (el : Xml.Element) : String :=
     unicodeToDrop (c : Char) : Bool :=
       let cats := [
         Unicode.GeneralCategory.P, -- punctuation
-        Unicode.GeneralCategory.S, -- separator
+        Unicode.GeneralCategory.Z, -- separator
         Unicode.GeneralCategory.C -- other
       ]
       cats.any (Unicode.isInGeneralCategory c)
@@ -179,7 +179,7 @@ def autoLink (el : Element) : HtmlM Element := do
           return [Content.Character s]
     unicodeToSplit (c : Char) : Bool :=
       let cats := [
-        Unicode.GeneralCategory.S, -- separator
+        Unicode.GeneralCategory.Z, -- separator
         Unicode.GeneralCategory.C -- other
       ]
       cats.any (Unicode.isInGeneralCategory c)
