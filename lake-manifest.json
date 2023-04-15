@@ -10,7 +10,7 @@
   {"git":
    {"url": "https://github.com/leanprover/lake",
     "subDir?": null,
-    "rev": "9e00151251d3e550f1ef4b24e59fd0d0419b0602",
+    "rev": "f120dbcaf8dafe864a5a4c28b34500352dbf1e60",
     "name": "lake",
     "inputRev?": "master"}},
   {"git":
@@ -28,6 +28,6 @@
   {"git":
    {"url": "https://github.com/fgdorais/lean4-unicode-basic",
     "subDir?": null,
-    "rev": "0930d561409bc8b36551b22e85575009289e602e",
+    "rev": "be1f061688faa1dbb224773c54901661253fb4b8",
     "name": "UnicodeBasic",
     "inputRev?": "main"}}]}

@@ -71,7 +71,7 @@ library_facet docs (lib) : FilePath := do
 
   -- XXX: Workaround remove later
   let coreJob ← if h : docGen4Pkg.name = _package.name then
-    have : Fact (docGen4Pkg.name = _package.name) := Fact.mk h
+    have : PackageName docGen4Pkg _package.name := ⟨h⟩
     let job := fetch <| docGen4Pkg.target `coreDocs
     job
   else
