@@ -52,8 +52,8 @@ abbrev ParametricAttrWrapper := ValueAttrWrapper ParametricAttribute
 The list of all tag based attributes doc-gen knows about and can recover.
 -/
 def tagAttributes : Array TagAttribute :=
-  #[IR.UnboxResult.unboxAttr, neverExtractAttr, Elab.Term.elabWithoutExpectedTypeAttr,
-    SynthInstance.inferTCGoalsRLAttr, matchPatternAttr]
+  #[IR.UnboxResult.unboxAttr, neverExtractAttr,
+    Elab.Term.elabWithoutExpectedTypeAttr, matchPatternAttr]
 
 deriving instance Repr for Compiler.InlineAttributeKind
 deriving instance Repr for Compiler.SpecializeAttributeKind
