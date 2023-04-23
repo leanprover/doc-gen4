@@ -34,8 +34,12 @@ def getGithubBaseUrl (gitUrl : String) : String := Id.run do
 /--
 Obtain the Github URL of a project by parsing the origin remote.
 -/
-def getProjectGithubUrl : IO String := do
-  let out ← IO.Process.output {cmd := "git", args := #["remote", "get-url", "origin"]}
+def getProjectGithubUrl (directory : System.FilePath := "." ) : IO String := do
+  let out ← IO.Process.output {
+    cmd := "git",
+    args := #["remote", "get-url", "origin"],
+    cwd := directory
+  }
   if out.exitCode != 0 then
     throw <| IO.userError <| "git exited with code " ++ toString out.exitCode
   return out.stdout.trimRight
@@ -43,8 +47,12 @@ def getProjectGithubUrl : IO String := do
 /--
 Obtain the git commit hash of the project that is currently getting analyzed.
 -/
-def getProjectCommit : IO String := do
-  let out ← IO.Process.output {cmd := "git", args := #["rev-parse", "HEAD"]}
+def getProjectCommit (directory : System.FilePath := "." ) : IO String := do
+  let out ← IO.Process.output {
+    cmd := "git",
+    args := #["rev-parse", "HEAD"]
+    cwd := directory
+  }
   if out.exitCode != 0 then
     throw <| IO.userError <| "git exited with code " ++ toString out.exitCode
   return out.stdout.trimRight
@@ -65,8 +73,12 @@ def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange �
       |>.run (Lake.MonadLog.eio .normal)
       |>.toIO (fun _ => IO.userError "Failed to load lake manifest")
   for pkg in manifest.entryArray do
-    if let  .git _ url rev .. := pkg then
-      gitMap := gitMap.insert pkg.name (getGithubBaseUrl url, rev)
+    match pkg with
+    | .git _ url rev .. => gitMap := gitMap.insert pkg.name (getGithubBaseUrl url, rev)
+    | .path _ path =>
+      let pkgBaseUrl := getGithubBaseUrl (← getProjectGithubUrl path)
+      let pkgCommit ← getProjectCommit path
+      gitMap := gitMap.insert pkg.name (pkgBaseUrl, pkgCommit)
 
   return fun module range =>
     let parts := module.components.map Name.toString
