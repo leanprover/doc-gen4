@@ -98,7 +98,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   -- extra information like equations and instances
   let extraInfoHtml ← match doc with
   | DocInfo.classInfo i => pure #[← classInstancesToHtml i.name]
-  | DocInfo.definitionInfo i => equationsToHtml i
+  | DocInfo.definitionInfo i => pure ((← equationsToHtml i) ++ #[← instancesForToHtml i.name])
   | DocInfo.instanceInfo i => equationsToHtml i.toDefinitionInfo
   | DocInfo.classInductiveInfo i => pure #[← classInstancesToHtml i.name]
   | DocInfo.inductiveInfo i => pure #[← instancesForToHtml i.name]
