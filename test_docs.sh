@@ -7,7 +7,7 @@ set -x
 
 # carry the already built doc-gen4 over
 mkdir -p "$1"/lake-packages
-cp -r "$2"/lake-packages/* "$1"/lake-packages
+rsync -av --exclude=".*" "$2"/lake-packages/* "$1"/lake-packages
 
 # generate the docs
 cd "$1"
