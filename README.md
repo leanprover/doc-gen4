@@ -8,6 +8,12 @@ to do this you have to add it to your `lakefile.lean` like this:
 meta if get_config? env = some "dev" then -- dev is so not everyone has to build it
 require «doc-gen4» from git "https://github.com/leanprover/doc-gen4" @ "main"
 ```
+
+Then update your dependencies:
+```
+lake -Kenv=dev update
+```
+
 Then you can generate documentation for an entire library using:
 ```
 lake -Kenv=dev build Test:docs
