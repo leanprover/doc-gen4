@@ -10,7 +10,7 @@
   {"git":
    {"url": "https://github.com/leanprover/lake",
     "subDir?": null,
-    "rev": "257fc59a6464f5732a4f49e7dda0fc37475819fb",
+    "rev": "0d4da61cbfe65f19ac7070c2c9f62f36db529c4c",
     "name": "lake",
     "inputRev?": "master"}},
   {"git":
