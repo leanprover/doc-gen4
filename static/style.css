@@ -22,7 +22,6 @@ body { line-height: 1.5; }
 nav { line-height: normal; }
 
 :root {
-    color-scheme: light;
     --header-height: 3em;
     --fragment-offset: calc(var(--header-height) + 1em);
     --content-width: 55vw;
@@ -54,10 +53,10 @@ nav { line-height: normal; }
     --fragment-offset: calc(var(--header-height) + 1em);
     --content-width: 55vw;
 }
+
+/* automatic dark theme if no javascript */
 @media (prefers-color-scheme: dark) {
     :root {
-        color-scheme: dark;
-
         --header-bg: #111010;
         --body-bg: #171717;
         --code-bg: #363333;
@@ -82,6 +81,34 @@ nav { line-height: normal; }
 
         --tags-border-color: #AAA;
     }
+}
+
+[data-theme="dark"] {
+    color-scheme: dark;
+
+    --header-bg: #111010;
+    --body-bg: #171717;
+    --code-bg: #363333;
+    --text-color: #eee;
+    --link-color: #58a6ff;
+
+    --implicit-arg-text-color: var(--text-color);
+
+    --def-color: #1F497F;
+    --def-color-hsl-angle: 214;
+    --theorem-color: #134E2D;
+    --theorem-color-hsl-angle: 146;
+    --axiom-and-constant-color: #6B1B1A;
+    --axiom-and-constant-color-hsl-angle: 1;
+    --structure-and-inductive-color: #73461C;
+    --structure-and-inductive-color-hsl-angle: 29;
+    --starting-percentage: 30;
+
+    --hamburger-bg-color: #2d2c2c;
+    --hamburger-active-color: black;
+    --hamburger-border-color: #717171;
+
+    --tags-border-color: #AAA;
 }
 
 @supports (width: min(10px, 5vw)) {
@@ -411,6 +438,44 @@ nav {
 
 .navframe {
     --header-height: 0;
+}
+
+#settings {
+    margin-top: 5em;
+}
+#settings h3 {
+    font-size: inherit;
+}
+
+#color-theme-switcher {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 2ex;
+    flex-flow: row wrap;
+}
+
+/* custom radio buttons for dark/light switch */
+#color-theme-switcher input {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    display: inline-block;
+    box-sizing: content-box;
+    height: 1em;
+    width: 1em;
+    background-clip: content-box;
+    padding: 2px;
+    border: 2px solid transparent;
+    margin-bottom: -4px;
+    border-radius: 50%;
+}
+#color-theme-dark { background-color: #444; }
+#color-theme-light { background-color: #ccc; }
+#color-theme-system {
+    background-image: linear-gradient(60deg, #444, #444 50%, #CCC 50%, #CCC);
+}
+#color-theme-switcher input:checked {
+    border-color: var(--text-color);
 }
 
 .decl > div, .mod_doc {

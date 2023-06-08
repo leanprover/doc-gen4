@@ -62,6 +62,7 @@ def navbar : BaseHtmlM Html := do
         [← baseHtmlHeadDeclarations]
 
         <script type="module" src={s!"{← getRoot}nav.js"}></script>
+        <script type="module" src={s!"{← getRoot}color-scheme.js"}></script>
         <base target="_parent" />
       </head>
 
@@ -82,6 +83,18 @@ def navbar : BaseHtmlM Html := do
           -/
           <h3>Library</h3>
           {← moduleList}
+          <div id="settings">
+            -- `input` is a void tag, but can be self-closed to make parsing easier.
+            <h3>Color scheme</h3>
+            <form id="color-theme-switcher">
+                <label for="color-theme-dark">
+                    <input type="radio" name="color_theme" id="color-theme-dark" value="dark" autocomplete="off"/>dark</label>
+                <label for="color-theme-system" title="Match system theme settings">
+                    <input type="radio" name="color_theme" id="color-theme-system" value="system" autocomplete="off"/>system</label>
+                <label for="color-theme-light">
+                    <input type="radio" name="color_theme" id="color-theme-light" value="light" autocomplete="off"/>light</label>
+            </form>
+          </div>
         </nav>
         </div>
       </body>
