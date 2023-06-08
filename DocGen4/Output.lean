@@ -40,6 +40,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let docGenStatic := #[
     ("style.css", styleCss),
     ("declaration-data.js", declarationDataCenterJs),
+    ("color-scheme.js", colorSchemeJs),
     ("nav.js", navJs),
     ("how-about.js", howAboutJs),
     ("search.html", searchHtml),

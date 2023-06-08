@@ -85,6 +85,7 @@ library_facet docs (lib) : FilePath := do
   let staticFiles := #[
     basePath / "style.css",
     basePath / "declaration-data.js",
+    basePath / "color-scheme.js",
     basePath / "nav.js",
     basePath / "how-about.js",
     basePath / "search.js",
