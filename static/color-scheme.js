@@ -5,10 +5,12 @@ function getTheme() {
 function setTheme(themeName) {
     localStorage.setItem('theme', themeName);
     if (themeName == "system") {
-        themeName = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        themeName = parent.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }
     // the navbar is in an iframe, so we need to set this variable in the parent document
-    parent.document.documentElement.setAttribute('data-theme', themeName);
+    for (const win of [window, parent]) {
+        win.document.documentElement.setAttribute('data-theme', themeName);
+    }
 }
 
 setTheme(getTheme())
@@ -22,7 +24,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     // also check to see if the user changes their theme settings while the page is loaded.
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+    parent.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
         setTheme(getTheme());
     })
 });
