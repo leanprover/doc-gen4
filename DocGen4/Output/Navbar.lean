@@ -83,7 +83,7 @@ def navbar : BaseHtmlM Html := do
           -/
           <h3>Library</h3>
           {← moduleList}
-          <div id="settings">
+          <div id="settings" hidden="hidden">
             -- `input` is a void tag, but can be self-closed to make parsing easier.
             <h3>Color scheme</h3>
             <form id="color-theme-switcher">
