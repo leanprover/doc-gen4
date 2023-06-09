@@ -26,3 +26,6 @@ document.addEventListener("DOMContentLoaded", function() {
         setTheme(getTheme());
     })
 });
+
+// un-hide the colorscheme picker
+document.querySelector("#settings").removeAttribute('hidden');
