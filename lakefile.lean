@@ -40,7 +40,7 @@ module_facet docs (mod) : FilePath := do
       logInfo s!"Documenting module: {mod.name}"
       proc {
         cmd := exeFile.toString
-        args := #["single", mod.name.toString, "--ink"]
+        args := #["single", mod.name.toString]
         env := #[("LEAN_PATH", (← getAugmentedLeanPath).toString)]
       }
     return (docFile, trace)
