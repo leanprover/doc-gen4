@@ -62,7 +62,8 @@ export class DeclarationDataCenter {
       // undefined. then fetch the data from the server.
       const dataListRes = await fetch(dataListUrl);
       const data = await dataListRes.json();
-      await cacheDeclarationData(data);
+      // TODO https://github.com/leanprover/doc-gen4/issues/133
+      // await cacheDeclarationData(data);
       return new DeclarationDataCenter(data);
     }
   }
@@ -272,7 +273,12 @@ async function fetchCachedDeclarationData() {
   return new Promise((resolve, reject) => {
     let transactionRequest = store.get(CACHE_DB_KEY);
     transactionRequest.onsuccess = function (event) {
-      resolve(event.target.result);
+      // TODO: This API is not thought 100% through. If we have a DB cached
+      // already it will not even ask the remote for a new one so we end up
+      // with outdated declaration-data. This has to have some form of cache
+      // invalidation: https://github.com/leanprover/doc-gen4/issues/133
+      //resolve(event.target.result);
+      resolve(undefined);
     };
     transactionRequest.onerror = function (event) {
       reject(new Error(`fail to store declaration data`));
