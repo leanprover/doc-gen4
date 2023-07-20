@@ -25,6 +25,7 @@ export class DeclarationDataCenter {
    * Used to implement the singleton, in case we need to fetch data mutiple times in the same page.
    */
   static singleton = null;
+  static requestSingleton = null;
 
   /**
    * Construct a DeclarationDataCenter with given data.
@@ -41,26 +42,33 @@ export class DeclarationDataCenter {
    * @returns {Promise<DeclarationDataCenter>}
    */
   static async init() {
-    if (!DeclarationDataCenter.singleton) {
-      const dataListUrl = new URL(
-        `${SITE_ROOT}/declarations/declaration-data.bmp`,
-        window.location
-      );
-
-      // try to use cache first
-      const data = await fetchCachedDeclarationData().catch(_e => null);
-      if (data) {
-        // if data is defined, use the cached one.
-        DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
-      } else {
-        // undefined. then fetch the data from the server.
-        const dataListRes = await fetch(dataListUrl);
-        const data = await dataListRes.json();
-        await cacheDeclarationData(data);
-        DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
+    if (DeclarationDataCenter.singleton === null) {
+      if (DeclarationDataCenter.requestSingleton === null) {
+        DeclarationDataCenter.requestSingleton = DeclarationDataCenter.getData();
       }
+      await DeclarationDataCenter.requestSingleton;
     }
     return DeclarationDataCenter.singleton;
+  }
+
+  static async getData() {
+    const dataListUrl = new URL(
+      `${SITE_ROOT}/declarations/declaration-data.bmp`,
+      window.location
+    );
+
+    // try to use cache first
+    const data = await fetchCachedDeclarationData().catch(_e => null);
+    if (data) {
+      // if data is defined, use the cached one.
+      DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
+    } else {
+      // undefined. then fetch the data from the server.
+      const dataListRes = await fetch(dataListUrl);
+      const data = await dataListRes.json();
+      await cacheDeclarationData(data);
+      DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
+    }
   }
 
   /**
