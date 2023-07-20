@@ -24,7 +24,6 @@ export class DeclarationDataCenter {
   /**
    * Used to implement the singleton, in case we need to fetch data mutiple times in the same page.
    */
-  static singleton = null;
   static requestSingleton = null;
 
   /**
@@ -42,13 +41,10 @@ export class DeclarationDataCenter {
    * @returns {Promise<DeclarationDataCenter>}
    */
   static async init() {
-    if (DeclarationDataCenter.singleton === null) {
-      if (DeclarationDataCenter.requestSingleton === null) {
-        DeclarationDataCenter.requestSingleton = DeclarationDataCenter.getData();
-      }
-      await DeclarationDataCenter.requestSingleton;
+    if (DeclarationDataCenter.requestSingleton === null) {
+      DeclarationDataCenter.requestSingleton = DeclarationDataCenter.getData();
     }
-    return DeclarationDataCenter.singleton;
+    return await DeclarationDataCenter.requestSingleton;
   }
 
   static async getData() {
@@ -61,13 +57,13 @@ export class DeclarationDataCenter {
     const data = await fetchCachedDeclarationData().catch(_e => null);
     if (data) {
       // if data is defined, use the cached one.
-      DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
+      return new DeclarationDataCenter(data);
     } else {
       // undefined. then fetch the data from the server.
       const dataListRes = await fetch(dataListUrl);
       const data = await dataListRes.json();
       await cacheDeclarationData(data);
-      DeclarationDataCenter.singleton = new DeclarationDataCenter(data);
+      return new DeclarationDataCenter(data);
     }
   }
 
