@@ -272,7 +272,7 @@ async function fetchCachedDeclarationData() {
   return new Promise((resolve, reject) => {
     let transactionRequest = store.get(CACHE_DB_KEY);
     transactionRequest.onsuccess = function (event) {
-      resolve(event.result);
+      resolve(event.target.result);
     };
     transactionRequest.onerror = function (event) {
       reject(new Error(`fail to store declaration data`));
