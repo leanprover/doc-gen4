@@ -60,21 +60,10 @@ target coreDocs : FilePath := do
     return (dataFile, trace)
 
 library_facet docs (lib) : FilePath := do
-  let some docGen4Pkg ← findPackage? `«doc-gen4»
-    | error "no doc-gen4 package found in workspace"
-  let some docGen4 := docGen4Pkg.findLeanExe? `«doc-gen4»
-    | error "no doc-gen4 executable configuration found in workspace"
-  let exeJob ← docGen4.exe.fetch
-
-  -- XXX: Workaround remove later
-  let coreJob ← if docGen4Pkg.name = _package.name then
-    let job := fetch <| docGen4Pkg.target `coreDocs
-    job
-  else
-    error "wrong package"
-
   let mods ← lib.modules.fetch
   let moduleJobs ← BuildJob.mixArray <| ← mods.mapM (fetch <| ·.facet `docs)
+  let coreJob : BuildJob FilePath ← coreDocs.fetch
+  let exeJob ← «doc-gen4».fetch
   -- Shared with DocGen4.Output
   let basePath := (←getWorkspace).root.buildDir / "doc"
   let dataFile := basePath / "declarations" / "declaration-data.bmp"
