@@ -20,9 +20,6 @@ require UnicodeBasic from git
 require Cli from git
   "https://github.com/mhuisi/lean4-cli" @ "nightly"
 
-require lake from git
-  "https://github.com/leanprover/lake" @ "master"
-
 require leanInk from git
   "https://github.com/hargonix/LeanInk" @ "doc-gen"
 
@@ -70,8 +67,7 @@ library_facet docs (lib) : FilePath := do
   let exeJob ← docGen4.exe.fetch
 
   -- XXX: Workaround remove later
-  let coreJob ← if h : docGen4Pkg.name = _package.name then
-    have : PackageName docGen4Pkg _package.name := ⟨h⟩
+  let coreJob ← if docGen4Pkg.name = _package.name then
     let job := fetch <| docGen4Pkg.target `coreDocs
     job
   else

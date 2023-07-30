@@ -4,15 +4,9 @@
  [{"git":
    {"url": "https://github.com/xubaiw/CMark.lean",
     "subDir?": null,
-    "rev": "2cc7cdeef67184f84db6731450e4c2b258c28fe8",
+    "rev": "0077cbbaa92abf855fc1c0413e158ffd8195ec77",
     "name": "CMark",
     "inputRev?": "main"}},
-  {"git":
-   {"url": "https://github.com/leanprover/lake",
-    "subDir?": null,
-    "rev": "0d4da61cbfe65f19ac7070c2c9f62f36db529c4c",
-    "name": "lake",
-    "inputRev?": "master"}},
   {"git":
    {"url": "https://github.com/mhuisi/lean4-cli",
     "subDir?": null,
@@ -28,6 +22,6 @@
   {"git":
    {"url": "https://github.com/fgdorais/lean4-unicode-basic",
     "subDir?": null,
-    "rev": "ce508dcd1fd49ba15675861aafd864572a0b8252",
+    "rev": "f09250282cea3ed8c010f430264d9e8e50d7bc32",
     "name": "UnicodeBasic",
     "inputRev?": "main"}}]}
