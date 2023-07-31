@@ -30,18 +30,18 @@ structure JsonModule where
 
 structure JsonIndex where
   declarations : List (String × JsonDeclaration) := []
-  instances : HashMap String (Array String) := .empty
+  instances : HashMap String (RBTree String Ord.compare) := .empty
   importedBy : HashMap String (Array String) := .empty
   modules : List (String × String) := []
-  instancesFor : HashMap String (Array String) := .empty
+  instancesFor : HashMap String (RBTree String Ord.compare) := .empty
 
 instance : ToJson JsonIndex where
   toJson idx := Id.run do
     let jsonDecls := Json.mkObj <| idx.declarations.map (fun (k, v) => (k, toJson v))
-    let jsonInstances := Json.mkObj <| idx.instances.toList.map (fun (k, v) => (k, toJson v))
+    let jsonInstances := Json.mkObj <| idx.instances.toList.map (fun (k, v) => (k, toJson v.toArray))
     let jsonImportedBy := Json.mkObj <| idx.importedBy.toList.map (fun (k, v) => (k, toJson v))
     let jsonModules := Json.mkObj <| idx.modules.map (fun (k, v) => (k, toJson v))
-    let jsonInstancesFor := Json.mkObj <| idx.instancesFor.toList.map (fun (k, v) => (k, toJson v))
+    let jsonInstancesFor := Json.mkObj <| idx.instancesFor.toList.map (fun (k, v) => (k, toJson v.toArray))
     let finalJson := Json.mkObj [
       ("declarations", jsonDecls),
       ("instances", jsonInstances),
@@ -61,12 +61,12 @@ def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM Js
   }
   -- TODO: In theory one could sort instances and imports by name and batch the writes
   for inst in module.instances do
-    let mut insts := index.instances.findD inst.className #[]
-    insts := insts.push inst.name
+    let mut insts := index.instances.findD inst.className {}
+    insts := insts.insert inst.name
     index := { index with instances := index.instances.insert inst.className insts }
     for typeName in inst.typeNames do
-      let mut instsFor := index.instancesFor.findD typeName #[]
-      instsFor := instsFor.push inst.name
+      let mut instsFor := index.instancesFor.findD typeName {}
+      instsFor := instsFor.insert inst.name
       index := { index with instancesFor := index.instancesFor.insert typeName instsFor }
 
   for imp in module.imports do
