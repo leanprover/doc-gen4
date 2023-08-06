@@ -21,10 +21,6 @@ jobs:
           ~/.elan/bin/lean --version
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
-      - name: Compile doc-gen4
-        run: |
-          lake build
-
       - name: Checkout and compile std4
         run: |
           cd ../
