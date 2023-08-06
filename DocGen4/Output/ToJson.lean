@@ -1,19 +1,26 @@
 import Lean
 import DocGen4.Process
 import DocGen4.Output.Base
+import DocGen4.Output.Module
 import Lean.Data.RBMap
 
 namespace DocGen4.Output
 
 open Lean
 
-structure JsonDeclaration where
+structure JsonDeclarationInfo where
   name : String
   kind : String
   doc : String
   docLink : String
   sourceLink : String
+  line : Nat
   deriving FromJson, ToJson
+
+structure JsonDeclaration where
+  info : JsonDeclarationInfo
+  header : String
+deriving FromJson, ToJson
 
 structure JsonInstance where
   name : String
@@ -28,12 +35,18 @@ structure JsonModule where
   imports : Array String
   deriving FromJson, ToJson
 
+structure JsonHeaderIndex where
+  headers : List (String × String) := []
+
 structure JsonIndex where
-  declarations : List (String × JsonDeclaration) := []
+  declarations : List (String × JsonDeclarationInfo) := []
   instances : HashMap String (RBTree String Ord.compare) := .empty
   importedBy : HashMap String (Array String) := .empty
   modules : List (String × String) := []
   instancesFor : HashMap String (RBTree String Ord.compare) := .empty
+
+instance : ToJson JsonHeaderIndex where
+  toJson idx := Json.mkObj <| idx.headers.map (fun (k, v) => (k, toJson v))
 
 instance : ToJson JsonIndex where
   toJson idx := Id.run do
@@ -51,10 +64,14 @@ instance : ToJson JsonIndex where
     ]
     return finalJson
 
+def JsonHeaderIndex.addModule (index : JsonHeaderIndex) (module : JsonModule) : JsonHeaderIndex :=
+  let merge idx decl := { idx with headers := (decl.info.name, decl.header) :: idx.headers }
+  module.declarations.foldl merge index
+
 def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM JsonIndex := do
   let mut index := index
   let newModule := (module.name, ← moduleNameToLink (String.toName module.name))
-  let newDecls := module.declarations.map (fun d => (d.name, d))
+  let newDecls := module.declarations.map (fun d => (d.info.name, d.info))
   index := { index with
     modules := newModule :: index.modules
     declarations := newDecls ++ index.declarations
@@ -81,7 +98,10 @@ def DocInfo.toJson (module : Name) (info : Process.DocInfo) : HtmlM JsonDeclarat
   let doc := info.getDocString.getD ""
   let docLink ← declNameToLink info.getName
   let sourceLink ← getSourceUrl module info.getDeclarationRange
-  return { name, kind, doc, docLink, sourceLink }
+  let line := info.getDeclarationRange.pos.line
+  let header := (← docInfoHeader info).toString
+  let info := { name, kind, doc, docLink, sourceLink, line }
+  return { info, header }
 
 def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
     let mut jsonDecls := []
