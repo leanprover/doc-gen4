@@ -22,8 +22,8 @@ def ctorToHtml (c : Process.NameInfo) : HtmlM Html := do
     let renderedDoc ← docStringToHtml doc
     pure
       <li class="constructor" id={name}>
-        <div class="inductive_ctor_doc">[renderedDoc]</div>
         {shortName} : [← infoFormatToHtml c.type]
+        <div class="inductive_ctor_doc">[renderedDoc]</div>
       </li>
   else
     pure
