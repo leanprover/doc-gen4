@@ -1,27 +1,35 @@
-{"version": 4,
+{"version": 5,
  "packagesDir": "lake-packages",
  "packages":
  [{"git":
    {"url": "https://github.com/xubaiw/CMark.lean",
     "subDir?": null,
     "rev": "0077cbbaa92abf855fc1c0413e158ffd8195ec77",
+    "opts": {},
     "name": "CMark",
-    "inputRev?": "main"}},
+    "inputRev?": "main",
+    "inherited": false}},
   {"git":
    {"url": "https://github.com/fgdorais/lean4-unicode-basic",
     "subDir?": null,
     "rev": "f09250282cea3ed8c010f430264d9e8e50d7bc32",
-    "name": "lean4-unicode-basic",
-    "inputRev?": "main"}},
+    "opts": {},
+    "name": "«lean4-unicode-basic»",
+    "inputRev?": "main",
+    "inherited": false}},
   {"git":
    {"url": "https://github.com/mhuisi/lean4-cli",
     "subDir?": null,
     "rev": "5a858c32963b6b19be0d477a30a1f4b6c120be7e",
+    "opts": {},
     "name": "Cli",
-    "inputRev?": "nightly"}},
+    "inputRev?": "nightly",
+    "inherited": false}},
   {"git":
    {"url": "https://github.com/hargonix/LeanInk",
     "subDir?": null,
     "rev": "2447df5cc6e48eb965c3c3fba87e46d353b5e9f1",
+    "opts": {},
     "name": "leanInk",
-    "inputRev?": "doc-gen"}}]}
+    "inputRev?": "doc-gen",
+    "inherited": false}}]}
