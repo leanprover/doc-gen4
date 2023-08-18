@@ -701,13 +701,11 @@ pre code { padding: 0 0; }
 
 .inductive_ctor_doc  {
     text-indent: 2ex;
-    padding-top: 1ex;
     font-family: 'Open Sans', sans-serif;
 }
 
 .structure_field_doc {
     text-indent: 0;
-    padding-top: 1ex;
     font-family: 'Open Sans', sans-serif;
 }
 
