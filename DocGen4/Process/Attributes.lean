@@ -62,34 +62,42 @@ open Compiler in
 instance : ToString InlineAttributeKind where
   toString kind :=
     match kind with
-    | InlineAttributeKind.inline => "inline"
-    | InlineAttributeKind.noinline => "noinline"
-    | InlineAttributeKind.macroInline => "macro_inline"
-    | InlineAttributeKind.inlineIfReduce => "inline_if_reduce"
-    | InlineAttributeKind.alwaysInline => "always_inline"
+    | .inline => "inline"
+    | .noinline => "noinline"
+    | .macroInline => "macro_inline"
+    | .inlineIfReduce => "inline_if_reduce"
+    | .alwaysInline => "always_inline"
 
 open Compiler in
 instance : ToString SpecializeAttributeKind where
   toString kind :=
     match kind with
-    | SpecializeAttributeKind.specialize => "specialize"
-    | SpecializeAttributeKind.nospecialize => "nospecialize"
+    | .specialize => "specialize"
+    | .nospecialize => "nospecialize"
+
+instance : ToString ReducibilityStatus where
+  toString kind :=
+    match kind with
+    | .reducible => "reducible"
+    | .semireducible => "semireducible"
+    | .irreducible => "irreducible"
 
 /--
 The list of all enum based attributes doc-gen knows about and can recover.
 -/
-def enumAttributes : Array EnumAttrWrapper := #[⟨Compiler.inlineAttrs⟩]
+@[reducible]
+def enumAttributes : Array EnumAttrWrapper := #[⟨Compiler.inlineAttrs⟩, ⟨reducibilityAttrs⟩]
 
 instance : ToString ExternEntry where
   toString entry :=
     match entry with
-    | ExternEntry.adhoc `all => ""
-    | ExternEntry.adhoc backend => s!"{backend} adhoc"
-    | ExternEntry.standard `all fn => fn
-    | ExternEntry.standard backend fn => s!"{backend} {fn}"
-    | ExternEntry.inline backend pattern => s!"{backend} inline {String.quote pattern}"
+    | .adhoc `all => ""
+    | .adhoc backend => s!"{backend} adhoc"
+    | .standard `all fn => fn
+    | .standard backend fn => s!"{backend} {fn}"
+    | .inline backend pattern => s!"{backend} inline {String.quote pattern}"
     -- TODO: The docs in the module dont specific how to render this
-    | ExternEntry.foreign backend fn  => s!"{backend} foreign {fn}"
+    | .foreign backend fn  => s!"{backend} foreign {fn}"
 
 instance : ToString ExternAttrData where
   toString data := (data.arity?.map toString |>.getD "") ++ " " ++ String.intercalate " " (data.entries.map toString)

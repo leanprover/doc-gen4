@@ -190,17 +190,19 @@ def getKindDescription : DocInfo → String
   | DefinitionSafety.unsafe => "unsafe opaque"
   | DefinitionSafety.partial => "partial def"
 | definitionInfo i => Id.run do
-  if i.hints.isAbbrev then
-    return "abbrev"
-  else
-    let mut modifiers := #[]
-    if i.isUnsafe then
-      modifiers := modifiers.push "unsafe"
-    if i.isNonComputable then
-      modifiers := modifiers.push "noncomputable"
+  let mut modifiers := #[]
+  if i.isUnsafe then
+    modifiers := modifiers.push "unsafe"
+  if i.isNonComputable then
+    modifiers := modifiers.push "noncomputable"
 
-    modifiers := modifiers.push "def"
-    return String.intercalate " " modifiers.toList
+  let defKind :=
+    if i.hints.isAbbrev then
+      "abbrev"
+    else
+      "def"
+  modifiers := modifiers.push defKind
+  return String.intercalate " " modifiers.toList
 | instanceInfo i => Id.run do
   let mut modifiers := #[]
   if i.isUnsafe then
