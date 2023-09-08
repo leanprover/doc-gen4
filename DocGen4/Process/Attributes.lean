@@ -124,7 +124,15 @@ def getValues {attrKind : Type → Type} [ValueAttr attrKind] (decl : Name) (att
   return res
 
 def getEnumValues (decl : Name) : MetaM (Array String) := getValues decl enumAttributes
-def getParametricValues (decl : Name) : MetaM (Array String) := getValues decl parametricAttributes
+def getParametricValues (decl : Name) : MetaM (Array String) := do
+  let mut uniform ← getValues decl parametricAttributes
+  -- This attribute contains an `Option Name` but we would like to pretty print it better
+  if let some depTag := Linter.deprecatedAttr.getParam? (← getEnv) decl then
+    let str := match depTag with
+    | some alt => s!"deprecated {alt.toString}"
+    | none => "deprecated"
+    uniform := uniform.push str
+  return uniform
 
 def getDefaultInstance (decl : Name) (className : Name) : MetaM (Option String) := do
   let insts ← getDefaultInstances className
