@@ -30,7 +30,10 @@ def argToHtml (arg : Arg) : HtmlM Html := do
   | BinderInfo.implicit => ("{", "}", true)
   | BinderInfo.strictImplicit => ("⦃", "⦄", true)
   | BinderInfo.instImplicit => ("[", "]", true)
-  let mut nodes := #[Html.text s!"{l}{arg.name.toString} : "]
+  let mut nodes :=
+    match arg.name with
+    | some name => #[Html.text s!"{l}{name.toString} : "]
+    | none => #[Html.text s!"{l}"]
   nodes := nodes.append (← infoFormatToHtml arg.type)
   nodes := nodes.push r
   let inner := <span class="fn">[nodes]</span>

@@ -15,17 +15,20 @@ def NameInfo.ofTypedName (n : Name) (t : Expr) : MetaM NameInfo := do
   let env ← getEnv
   return { name := n, type := ← prettyPrintTerm t, doc := ← findDocString? env n}
 
-partial def typeToArgsType (e : Expr) : (Array (Name × Expr × BinderInfo) × Expr) :=
+partial def typeToArgsType (e : Expr) : (Array ((Option Name) × Expr × BinderInfo) × Expr) :=
   let helper := fun name type body data =>
     -- Once we hit a name with a macro scope we stop traversing the expression
     -- and print what is left after the : instead. The only exception
     -- to this is instances since these almost never have a name
     -- but should still be printed as arguments instead of after the :.
-    if name.hasMacroScopes && !data.isInstImplicit then
+    if data.isInstImplicit then
+      let arg := (none, type, data)
+      let (args, final) := typeToArgsType (Expr.instantiate1 body (mkFVar ⟨name⟩))
+      (#[arg] ++ args, final)
+    else if name.hasMacroScopes then
       (#[], e)
     else
-      let name := name.eraseMacroScopes
-      let arg := (name, type, data)
+      let arg := (some name, type, data)
       let (args, final) := typeToArgsType (Expr.instantiate1 body (mkFVar ⟨name⟩))
       (#[arg] ++ args, final)
   match e.consumeMData with

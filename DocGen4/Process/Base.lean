@@ -27,14 +27,16 @@ structure NameInfo where
   doc : Option String
   deriving Inhabited
 
+
 /--
 An argument to a declaration, e.g. the `(x : Nat)` in `def foo (x : Nat) := x`.
 -/
 structure Arg where
   /--
-  The name of the argument.
+  The name of the argument. For auto generated argument names like `[Monad α]`
+  this is none
   -/
-  name : Name
+  name : Option Name
   /--
   The pretty printed type of the argument.
   -/
