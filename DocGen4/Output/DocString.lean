@@ -22,7 +22,7 @@ namespace Output
       splitAroundAux s p b (s.next i) r
 
 /--
-  Similar to `Stirng.split` in Lean core, but keeps the separater.
+  Similar to `String.split` in Lean core, but keeps the separater.
   e.g. `splitAround "a,b,c" (fun c => c = ',') = ["a", ",", "b", ",", "c"]`
 -/
 def splitAround (s : String) (p : Char → Bool) : List String := splitAroundAux s p 0 0 []
@@ -195,7 +195,9 @@ partial def modifyElement (element : Element) : HtmlM Element :=
     else if name = "a" then
       extendAnchor el
     -- auto link for inline <code></code>
-    else if name = "code" then
+    else if name = "code" ∧
+      -- don't linkify code blocks explicitly tagged with a language other than lean
+      (((attrs.find? "class").getD "").splitOn.all (fun s => s == "language-lean" || !s.startsWith "language-")) then
       autoLink el
     -- recursively modify
     else
