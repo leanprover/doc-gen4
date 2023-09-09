@@ -21,7 +21,7 @@ partial def typeToArgsType (e : Expr) : (Array ((Option Name) × Expr × BinderI
     -- and print what is left after the : instead. The only exception
     -- to this is instances since these almost never have a name
     -- but should still be printed as arguments instead of after the :.
-    if data.isInstImplicit then
+    if data.isInstImplicit && name.hasMacroScopes then
       let arg := (none, type, data)
       let (args, final) := typeToArgsType (Expr.instantiate1 body (mkFVar ⟨name⟩))
       (#[arg] ++ args, final)
