@@ -137,10 +137,21 @@ function handleSearch(dataCenter, err, ev, sr, maxResults, autocomplete) {
   sr.setAttribute("state", "done");
 }
 
+// https://www.joshwcomeau.com/snippets/javascript/debounce/
+const debounce = (callback, wait) => {
+  let timeoutId = null;
+  return (...args) => {
+    window.clearTimeout(timeoutId);
+    timeoutId = window.setTimeout(() => {
+      callback.apply(null, args);
+    }, wait);
+  };
+}
+
 DeclarationDataCenter.init()
   .then((dataCenter) => {
     // Search autocompletion.
-    SEARCH_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev, ac_results, AC_MAX_RESULTS, true));
+    SEARCH_INPUT.addEventListener("input", debounce(ev => handleSearch(dataCenter, null, ev, ac_results, AC_MAX_RESULTS, true), 500));
     if(SEARCH_PAGE_INPUT) {
       SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS, false))
       document.querySelectorAll(".kind_checkbox").forEach((checkbox) =>
@@ -151,7 +162,7 @@ DeclarationDataCenter.init()
     SEARCH_INPUT.dispatchEvent(new Event("input"))
   })
   .catch(e => {
-    SEARCH_INPUT.addEventListener("input", ev => handleSearch(null, e, ev, ac_results, AC_MAX_RESULTS,true ));
+    SEARCH_INPUT.addEventListener("input", debounce(ev => handleSearch(null, e, ev, ac_results, AC_MAX_RESULTS, true), 500));
     if(SEARCH_PAGE_INPUT) {
       SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(null, e, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS, false));
     }
