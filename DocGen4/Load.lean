@@ -43,7 +43,6 @@ to process for documentation.
 -/
 def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy) := do
   let env ← envOfImports task.getLoad
-  IO.println "Processing modules"
   let config := {
     -- TODO: parameterize maxHeartbeats
     maxHeartbeats := 100000000,

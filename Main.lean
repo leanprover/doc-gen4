@@ -16,7 +16,6 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   match res with
   | Except.ok ws =>
     let (doc, hierarchy) ← load <| .loadAllLimitAnalysis relevantModules
-    IO.println "Outputting HTML"
     let baseConfig ← getSimpleBaseContext hierarchy
     htmlOutputResults baseConfig doc ws (p.hasFlag "ink")
     return 0
@@ -33,7 +32,6 @@ def runGenCoreCmd (_p : Parsed) : IO UInt32 := do
   match res with
   | Except.ok ws =>
     let (doc, hierarchy) ← loadCore
-    IO.println "Outputting HTML"
     let baseConfig ← getSimpleBaseContext hierarchy
     htmlOutputResults baseConfig doc ws (ink := False) 
     return 0

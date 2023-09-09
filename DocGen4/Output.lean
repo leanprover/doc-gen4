@@ -109,7 +109,6 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     FS.writeFile filePath moduleHtml.toString
     if ink then
       if let some inputPath ← Lean.SearchPath.findModuleWithExt sourceSearchPath "lean" module.name then
-        IO.println s!"Inking: {modName.toString}"
         -- path: 'basePath/src/module/components/till/last.html'
         -- The last component is the file name, however we are in src/ here so dont drop it this time
         let baseConfig := {baseConfig with depthToRoot := modName.components.length }
