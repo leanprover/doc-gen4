@@ -134,7 +134,11 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
         let module := res.find! moduleName
         res := res.insert moduleName {module with members := module.members.push (ModuleMember.docInfo dinfo)}
     catch e =>
-      IO.println s!"WARNING: Failed to obtain information for: {name}: {← e.toMessageData.toString}"
+      if let some pos := e.getRef.getPos? then
+        let pos := (← getFileMap).toPosition pos
+        IO.println s!"WARNING: Failed to obtain information in file: {pos}, for: {name}, {← e.toMessageData.toString}"
+      else
+        IO.println s!"WARNING: Failed to obtain information for: {name}: {← e.toMessageData.toString}"
 
   -- TODO: This could probably be faster if we did sorted insert above instead
   for (moduleName, module) in res.toArray do
