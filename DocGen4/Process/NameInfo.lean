@@ -32,7 +32,6 @@ partial def typeToArgsType (e : Expr) : (Array ((Option Name) × Expr × BinderI
       let (args, final) := typeToArgsType (Expr.instantiate1 body (mkFVar ⟨name⟩))
       (#[arg] ++ args, final)
   match e.consumeMData with
-  | Expr.lam name type body binderInfo => helper name type body binderInfo
   | Expr.forallE name type body binderInfo => helper name type body binderInfo
   | _ => (#[], e)
 
