@@ -112,7 +112,7 @@ function handleSearch(dataCenter, err, ev, sr, maxResults, autocomplete) {
   
     // update autocomplete results
     removeAllChildren(sr);
-    for (const { name, kind, doc, docLink } of result) {
+    for (const { name, kind, docLink } of result) {
       const row = sr.appendChild(document.createElement("div"));
       row.classList.add("search_result")
       const linkdiv = row.appendChild(document.createElement("div"))
@@ -121,11 +121,6 @@ function handleSearch(dataCenter, err, ev, sr, maxResults, autocomplete) {
       link.innerText = name;
       link.title = name;
       link.href = SITE_ROOT + docLink;
-      if (!autocomplete) {
-        const doctext = row.appendChild(document.createElement("div"));
-        doctext.innerText = doc
-        doctext.classList.add("result_doc")
-      }
     }
   }
   // handle error

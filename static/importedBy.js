@@ -3,7 +3,7 @@ import { DeclarationDataCenter } from "./declaration-data.js";
 fillImportedBy();
 
 async function fillImportedBy() {
-  if (!MODULE_NAME) {
+  if (typeof(MODULE_NAME) == "undefined") {
     return;
   }
   const dataCenter = await DeclarationDataCenter.init();

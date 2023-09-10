@@ -168,12 +168,9 @@ function getMatches(declarations, pattern, allowedKinds = undefined, maxResults 
   const lowerPats = pattern.toLowerCase().split(/\s/g);
   const patNoSpaces = pattern.replace(/\s/g, "");
   const results = [];
-  for (const [_, {
-    name,
+  for (const [name, {
     kind,
-    doc,
     docLink,
-    sourceLink,
   }] of Object.entries(declarations)) {
     // Apply "kind" filter
     if (allowedKinds !== undefined) {
@@ -182,26 +179,14 @@ function getMatches(declarations, pattern, allowedKinds = undefined, maxResults 
       }
     }
     const lowerName = name.toLowerCase();
-    const lowerDoc = doc.toLowerCase();
     let err = matchCaseSensitive(name, lowerName, patNoSpaces);
-    // match all words as substrings of docstring
-    if (
-      err >= 3 &&
-      pattern.length > 3 &&
-      lowerPats.every((l) => lowerDoc.indexOf(l) != -1)
-    ) {
-      err = 3;
-    }
     if (err !== undefined) {
       results.push({
         name,
         kind,
-        doc,
         err,
         lowerName,
-        lowerDoc,
         docLink,
-        sourceLink,
       });
     }
   }

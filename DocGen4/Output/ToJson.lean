@@ -38,8 +38,13 @@ structure JsonModule where
 structure JsonHeaderIndex where
   headers : List (String × String) := []
 
+structure JsonIndexedDeclarationInfo where
+  kind : String
+  docLink : String
+  deriving FromJson, ToJson
+
 structure JsonIndex where
-  declarations : List (String × JsonDeclarationInfo) := []
+  declarations : List (String × JsonIndexedDeclarationInfo) := []
   instances : HashMap String (RBTree String Ord.compare) := .empty
   importedBy : HashMap String (Array String) := .empty
   modules : List (String × String) := []
@@ -71,7 +76,10 @@ def JsonHeaderIndex.addModule (index : JsonHeaderIndex) (module : JsonModule) : 
 def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM JsonIndex := do
   let mut index := index
   let newModule := (module.name, ← moduleNameToLink (String.toName module.name))
-  let newDecls := module.declarations.map (fun d => (d.info.name, d.info))
+  let newDecls := module.declarations.map (fun d => (d.info.name, {
+    kind := d.info.kind,
+    docLink := d.info.docLink,
+  }))
   index := { index with
     modules := newModule :: index.modules
     declarations := newDecls ++ index.declarations
