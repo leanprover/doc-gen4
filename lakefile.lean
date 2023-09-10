@@ -34,7 +34,7 @@ module_facet docs (mod) : FilePath := do
   modJob.bindSync fun _ modTrace => do
     let depTrace := exeTrace.mix modTrace
     let trace ← buildFileUnlessUpToDate docFile depTrace do
-      logInfo s!"Documenting module: {mod.name}"
+      logStep s!"Documenting module: {mod.name}"
       proc {
         cmd := exeFile.toString
         args := #["single", mod.name.toString]
@@ -51,7 +51,7 @@ target coreDocs : FilePath := do
   let dataFile := basePath / "declarations" / "declaration-data-Lean.bmp"
   exeJob.bindSync fun exeFile exeTrace => do
     let trace ← buildFileUnlessUpToDate dataFile exeTrace do
-      logInfo "Documenting Lean core: Init and Lean"
+      logStep "Documenting Lean core: Init and Lean"
       proc {
         cmd := exeFile.toString
         args := #["genCore"]
