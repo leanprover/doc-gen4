@@ -254,11 +254,12 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
       | .sort _ =>
         match t with
         | .text t =>
-          let mut sortPrefix :: rest := t.splitOn " " | unreachable!
+          let sortPrefix :: rest := t.splitOn " " | unreachable!
           let sortLink := <a href={s!"{← getRoot}foundational_types.html"}>{sortPrefix}</a>
-          if rest != [] then
-            rest := " " :: rest
-          return #[sortLink, Html.text <| String.join rest]
+          let mut restStr := String.intercalate " " rest
+          if restStr.length != 0 then
+            restStr := " " ++ restStr
+          return #[sortLink, Html.text restStr]
         | _ =>
           return #[<a href={s!"{← getRoot}foundational_types.html"}>[← infoFormatToHtml t]</a>]
       | _ =>
