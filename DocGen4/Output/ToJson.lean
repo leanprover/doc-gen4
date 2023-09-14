@@ -36,7 +36,7 @@ structure JsonModule where
   deriving FromJson, ToJson
 
 structure JsonHeaderIndex where
-  headers : List (String × String) := []
+  declarations : List (String × JsonDeclaration) := []
 
 structure JsonIndexedDeclarationInfo where
   kind : String
@@ -51,7 +51,7 @@ structure JsonIndex where
   instancesFor : HashMap String (RBTree String Ord.compare) := .empty
 
 instance : ToJson JsonHeaderIndex where
-  toJson idx := Json.mkObj <| idx.headers.map (fun (k, v) => (k, toJson v))
+  toJson idx := Json.mkObj <| idx.declarations.map (fun (k, v) => (k, toJson v))
 
 instance : ToJson JsonIndex where
   toJson idx := Id.run do
@@ -70,7 +70,7 @@ instance : ToJson JsonIndex where
     return finalJson
 
 def JsonHeaderIndex.addModule (index : JsonHeaderIndex) (module : JsonModule) : JsonHeaderIndex :=
-  let merge idx decl := { idx with headers := (decl.info.name, decl.header) :: idx.headers }
+  let merge idx decl := { idx with declarations := (decl.info.name, decl) :: idx.declarations }
   module.declarations.foldl merge index
 
 def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM JsonIndex := do
