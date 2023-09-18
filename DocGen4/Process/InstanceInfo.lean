@@ -28,7 +28,7 @@ where
 
 def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
   let mut info ← DefinitionInfo.ofDefinitionVal v
-  let some className ← isClass? v.type | unreachable!
+  let some className ← isClass? v.type | panic! s!"isClass? on {v.name} returned none"
   if let some instAttr ← getDefaultInstance v.name className then
     info := { info with attrs := info.attrs.push instAttr }
   let typeNames ← getInstanceTypes v.type
