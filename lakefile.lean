@@ -27,7 +27,7 @@ module_facet docs (mod) : FilePath := do
   let some docGen4 ← findLeanExe? `«doc-gen4»
     | error "no doc-gen4 executable configuration found in workspace"
   let exeJob ← docGen4.exe.fetch
-  let modJob ← mod.leanBin.fetch
+  let modJob ← mod.leanArts.fetch
   let buildDir := (← getWorkspace).root.buildDir
   let docFile := mod.filePath (buildDir / "doc") "html"
   exeJob.bindAsync fun exeFile exeTrace => do

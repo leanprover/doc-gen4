@@ -72,7 +72,7 @@ def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange �
   let manifest ← Lake.Manifest.loadOrEmpty ws.root.manifestFile
       |>.run (Lake.MonadLog.eio .normal)
       |>.toIO (fun _ => IO.userError "Failed to load lake manifest")
-  for pkg in manifest.entryArray do
+  for pkg in manifest.packages do
     match pkg with
     | .git _ _ _ url rev .. => gitMap := gitMap.insert pkg.name (getGithubBaseUrl url, rev)
     | .path _ _ _ path =>
@@ -89,7 +89,7 @@ def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange �
     else if root == `Lake then
       s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/lake/{path}.lean"
     else
-      match ws.packageArray.find? (·.isLocalModule module) with
+      match ws.packages.find? (·.isLocalModule module) with
       | some pkg =>
         match gitMap.find? pkg.name with
         | some (baseUrl, commit) => s!"{baseUrl}/blob/{commit}/{path}.lean"

@@ -84,10 +84,10 @@ def shouldRender : ModuleMember → Bool
 end ModuleMember
 
 inductive AnalyzeTask where
-| loadAll (load : List Name) : AnalyzeTask
-| loadAllLimitAnalysis (analyze : List Name) : AnalyzeTask
+| loadAll (load : Array Name) : AnalyzeTask
+| loadAllLimitAnalysis (analyze : Array Name) : AnalyzeTask
 
-def AnalyzeTask.getLoad : AnalyzeTask → List Name
+def AnalyzeTask.getLoad : AnalyzeTask → Array Name
 | loadAll load => load
 | loadAllLimitAnalysis load => load
 
@@ -110,7 +110,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
   let env ← getEnv
   let relevantModules := match task with
     | .loadAll _ => HashSet.fromArray env.header.moduleNames
-    | .loadAllLimitAnalysis analysis => HashSet.fromArray analysis.toArray
+    | .loadAllLimitAnalysis analysis => HashSet.fromArray analysis
   let allModules := env.header.moduleNames
 
   let mut res ← getAllModuleDocs relevantModules.toArray

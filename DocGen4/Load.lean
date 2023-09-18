@@ -19,7 +19,7 @@ the Lean search path with the path to the proper compiler from lean-toolchain
 as well as all the dependencies.
 -/
 def lakeSetup : IO (Except UInt32 Lake.Workspace) := do
-  let (leanInstall?, lakeInstall?) ← Lake.findInstall?
+  let (_, leanInstall?, lakeInstall?) ← Lake.findInstall?
   let config := Lake.mkLoadConfig.{0} {leanInstall?, lakeInstall?}
   match ←(EIO.toIO' config) with
   | .ok config =>
@@ -30,10 +30,10 @@ def lakeSetup : IO (Except UInt32 Lake.Workspace) := do
   | .error err =>
     throw <| IO.userError err.toString
 
-def envOfImports (imports : List Name) : IO Environment := do
+def envOfImports (imports : Array Name) : IO Environment := do
  importModules (imports.map (Import.mk · false)) Options.empty
 
-def loadInit (imports : List Name) : IO Hierarchy := do
+def loadInit (imports : Array Name) : IO Hierarchy := do
  let env ← envOfImports imports
  pure <| Hierarchy.fromArray env.header.moduleNames
 
@@ -55,6 +55,6 @@ def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy)
   Prod.fst <$> Meta.MetaM.toIO (Process.process task) config { env := env } {} {}
 
 def loadCore : IO (Process.AnalyzerResult × Hierarchy) := do
-  load <| .loadAll [`Init, `Lean, `Lake]
+  load <| .loadAll #[`Init, `Lean, `Lake]
 
 end DocGen4

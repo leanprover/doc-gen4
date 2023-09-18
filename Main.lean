@@ -11,7 +11,7 @@ def getTopLevelModules (p : Parsed) : IO (List String) :=  do
   return topLevelModules
 
 def runSingleCmd (p : Parsed) : IO UInt32 := do
-  let relevantModules := [p.positionalArg! "module" |>.as! String |> String.toName]
+  let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
   let res ← lakeSetup
   match res with
   | Except.ok ws =>
