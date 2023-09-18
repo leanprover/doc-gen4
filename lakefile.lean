@@ -72,6 +72,7 @@ library_facet docs (lib) : FilePath := do
     basePath / "declaration-data.js",
     basePath / "color-scheme.js",
     basePath / "nav.js",
+    basePath / "expand-nav.js",
     basePath / "how-about.js",
     basePath / "search.js",
     basePath / "mathjax-config.js",

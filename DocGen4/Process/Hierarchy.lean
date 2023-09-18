@@ -95,6 +95,7 @@ def baseDirBlackList : HashSet String :=
     "mathjax-config.js",
     "navbar.html",
     "nav.js",
+    "expand-nav.js",
     "search.js",
     "src",
     "style.css"

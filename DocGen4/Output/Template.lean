@@ -33,6 +33,7 @@ def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := d
         <script>{s!"const SITE_ROOT={String.quote (← getRoot)};"}</script>
         [moduleConstant]
         <script type="module" src={s!"{← getRoot}search.js"}></script>
+        <script type="module" src={s!"{← getRoot}expand-nav.js"}></script>
         <script type="module" src={s!"{← getRoot}how-about.js"}></script>
         <script type="module" src={s!"{← getRoot}instances.js"}></script>
         <script type="module" src={s!"{← getRoot}importedBy.js"}></script>
