@@ -15,9 +15,10 @@ document.querySelector('.navframe').addEventListener('load', function() {
                 while (el) {
                     el.open = true;
                     el = el.parentNode.closest('details');
-                }}
-            // seeing as we found the link we were looking for, stop
-            break;
+                }
+                // seeing as we found the link we were looking for, stop
+                break;
+            }
         }
     }
 });
