@@ -42,6 +42,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
     ("declaration-data.js", declarationDataCenterJs),
     ("color-scheme.js", colorSchemeJs),
     ("nav.js", navJs),
+    ("jump-src.js", jumpSrcJs),
     ("expand-nav.js", expandNavJs),
     ("how-about.js", howAboutJs),
     ("search.html", searchHtml),

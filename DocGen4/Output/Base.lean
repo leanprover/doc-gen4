@@ -149,6 +149,7 @@ are used in documentation generation, notably JS and CSS ones.
   def styleCss : String := include_str "../../static/style.css"
   def declarationDataCenterJs : String := include_str "../../static/declaration-data.js"
   def colorSchemeJs : String := include_str "../../static/color-scheme.js"
+  def jumpSrcJs : String := include_str "../../static/jump-src.js"
   def navJs : String := include_str "../../static/nav.js"
   def expandNavJs : String := include_str "../../static/expand-nav.js"
   def howAboutJs : String := include_str "../../static/how-about.js"
