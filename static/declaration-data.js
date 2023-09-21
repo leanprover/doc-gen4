@@ -140,7 +140,7 @@ export class DeclarationDataCenter {
   }
 }
 
-function isSeparater(char) {
+function isSeparator(char) {
   return char === "." || char === "_";
 }
 
@@ -153,11 +153,11 @@ function matchCaseSensitive(declName, lowerDeclName, pattern) {
     lastMatch = 0;
   while (i < declName.length && j < pattern.length) {
     if (pattern[j] === declName[i] || pattern[j] === lowerDeclName[i]) {
-      err += (isSeparater(pattern[j]) ? 0.125 : 1) * (i - lastMatch);
+      err += (isSeparator(pattern[j]) ? 0.125 : 1) * (i - lastMatch);
       if (pattern[j] !== declName[i]) err += 0.5;
       lastMatch = i + 1;
       j++;
-    } else if (isSeparater(declName[i])) {
+    } else if (isSeparator(declName[i])) {
       err += 0.125 * (i + 1 - lastMatch);
       lastMatch = i + 1;
     }

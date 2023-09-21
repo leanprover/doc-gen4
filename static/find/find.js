@@ -80,6 +80,9 @@ async function findAndRedirect(pattern, strict, view) {
         window.location.replace(result.link);
       } else if (view == "doc") {
         window.location.replace(result.docLink);
+      } else if (view == "src") {
+        const [module, decl] = result.docLink.split("#", 2);
+        window.location.replace(`${module}?jump=src#${decl}`);
       } else {
         // fallback to doc page
         window.location.replace(result.docLink);
