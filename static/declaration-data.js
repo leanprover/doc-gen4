@@ -54,7 +54,12 @@ export class DeclarationDataCenter {
     );
 
     // try to use cache first
-    const data = await fetchCachedDeclarationData().catch(_e => null);
+    // TODO: This API is not thought 100% through. If we have a DB cached
+    // already it will not even ask the remote for a new one so we end up
+    // with outdated declaration-data. This has to have some form of cache
+    // invalidation: https://github.com/leanprover/doc-gen4/issues/133
+    // const data = await fetchCachedDeclarationData().catch(_e => null);
+    const data = null;
     if (data) {
       // if data is defined, use the cached one.
       return new DeclarationDataCenter(data);
@@ -72,7 +77,7 @@ export class DeclarationDataCenter {
    * Search for a declaration.
    * @returns {Array<any>}
    */
-  search(pattern, strict = true, allowedKinds=undefined, maxResults=undefined) {
+  search(pattern, strict = true, allowedKinds = undefined, maxResults = undefined) {
     if (!pattern) {
       return [];
     }
@@ -258,12 +263,7 @@ async function fetchCachedDeclarationData() {
   return new Promise((resolve, reject) => {
     let transactionRequest = store.get(CACHE_DB_KEY);
     transactionRequest.onsuccess = function (event) {
-      // TODO: This API is not thought 100% through. If we have a DB cached
-      // already it will not even ask the remote for a new one so we end up
-      // with outdated declaration-data. This has to have some form of cache
-      // invalidation: https://github.com/leanprover/doc-gen4/issues/133
-      //resolve(event.target.result);
-      resolve(undefined);
+      resolve(event.target.result);
     };
     transactionRequest.onerror = function (event) {
       reject(new Error(`fail to store declaration data`));
