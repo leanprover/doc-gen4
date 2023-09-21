@@ -49,7 +49,7 @@ const queryParams = new Map(
 const fragmentPaths = fragment?.split(LEAN_FRIENDLY_SLASH_SEPARATOR) ?? [];
 
 const encodedPattern = queryParams.get("pattern") ?? fragmentPaths[1]; // if first fail then second, may be undefined
-const pattern = decodeURIComponent(encodedPattern);
+const pattern = encodedPattern && decodeURIComponent(encodedPattern);
 const strict = (queryParams.get("strict") ?? "true") === "true"; // default to true
 const view = fragmentPaths[0];
 
