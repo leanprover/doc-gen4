@@ -41,7 +41,7 @@ def getProjectGithubUrl (directory : System.FilePath := "." ) : IO String := do
     cwd := directory
   }
   if out.exitCode != 0 then
-    throw <| IO.userError <| "git exited with code " ++ toString out.exitCode
+    throw <| IO.userError <| s!"git exited with code {out.exitCode} while looking for the git remote in {directory}"
   return out.stdout.trimRight
 
 /--
@@ -54,7 +54,7 @@ def getProjectCommit (directory : System.FilePath := "." ) : IO String := do
     cwd := directory
   }
   if out.exitCode != 0 then
-    throw <| IO.userError <| "git exited with code " ++ toString out.exitCode
+    throw <| IO.userError <| s!"git exited with code {out.exitCode} while looking for the current commit in {directory}"
   return out.stdout.trimRight
 
 /--
