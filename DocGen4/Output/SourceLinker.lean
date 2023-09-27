@@ -57,6 +57,11 @@ def getProjectCommit (directory : System.FilePath := "." ) : IO String := do
     throw <| IO.userError <| s!"git exited with code {out.exitCode} while looking for the current commit in {directory}"
   return out.stdout.trimRight
 
+def modulePath (ws : Lake.Workspace) (module : Name) : Option (Lake.Package × Lake.LeanLibConfig) := do
+  let pkg ← ws.packages.find? (·.isLocalModule module)
+  let libConfig ← pkg.leanLibConfigs.toArray.find? (·.isLocalModule module)
+  return (pkg, libConfig)
+
 /--
 Given a lake workspace with all the dependencies as well as the hash of the
 compiler release to work with this provides a function to turn names of
@@ -82,17 +87,20 @@ def sourceLinker (ws : Lake.Workspace) : IO (Name → Option DeclarationRange �
 
   return fun module range =>
     let parts := module.components.map Name.toString
-    let path := (parts.intersperse "/").foldl (· ++ ·) ""
+    let path := String.intercalate "/" parts
     let root := module.getRoot
     let basic := if root == `Lean ∨ root == `Init then
       s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/{path}.lean"
     else if root == `Lake then
       s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/lake/{path}.lean"
     else
-      match ws.packages.find? (·.isLocalModule module) with
-      | some pkg =>
+      match modulePath ws module with
+      | some (pkg, lib) =>
         match gitMap.find? pkg.name with
-        | some (baseUrl, commit) => s!"{baseUrl}/blob/{commit}/{path}.lean"
+        | some (baseUrl, commit) =>
+          let libPath := pkg.config.srcDir / lib.srcDir
+          let basePath := String.intercalate "/" (libPath.components.filter (· != "."))
+          s!"{baseUrl}/blob/{commit}/{basePath}/{path}.lean"
         | none => "https://example.com"
       | none => "https://example.com"
 
