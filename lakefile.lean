@@ -29,6 +29,9 @@ module_facet docs (mod) : FilePath := do
   let exeJob ← docGen4.exe.fetch
   let modJob ← mod.leanArts.fetch
   let buildDir := (← getWorkspace).root.buildDir
+  -- Build all documentation imported modules
+  let imports ← mod.imports.fetch
+  imports.forM fun mod => discard <| fetch <| mod.facet `docs
   let docFile := mod.filePath (buildDir / "doc") "html"
   exeJob.bindAsync fun exeFile exeTrace => do
   modJob.bindSync fun _ modTrace => do
