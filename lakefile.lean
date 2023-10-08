@@ -31,11 +31,12 @@ module_facet docs (mod) : FilePath := do
   let buildDir := (← getWorkspace).root.buildDir
   -- Build all documentation imported modules
   let imports ← mod.imports.fetch
-  imports.forM fun mod => discard <| fetch <| mod.facet `docs
+  let depDocJobs ← BuildJob.mixArray <| ← imports.mapM fun mod => fetch <| mod.facet `docs
   let docFile := mod.filePath (buildDir / "doc") "html"
+  depDocJobs.bindAsync fun _ depDocTrace => do
   exeJob.bindAsync fun exeFile exeTrace => do
   modJob.bindSync fun _ modTrace => do
-    let depTrace := exeTrace.mix modTrace
+    let depTrace := mixTraceArray #[exeTrace, modTrace, depDocTrace]
     let trace ← buildFileUnlessUpToDate docFile depTrace do
       logStep s!"Documenting module: {mod.name}"
       proc {
