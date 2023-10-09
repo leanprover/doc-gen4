@@ -12,14 +12,11 @@ def getTopLevelModules (p : Parsed) : IO (List String) :=  do
 
 def runSingleCmd (p : Parsed) : IO UInt32 := do
   let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
-  let res ← lakeSetup
-  match res with
-  | Except.ok ws =>
-    let (doc, hierarchy) ← load <| .loadAllLimitAnalysis relevantModules
-    let baseConfig ← getSimpleBaseContext hierarchy
-    htmlOutputResults baseConfig doc ws (p.hasFlag "ink")
-    return 0
-  | Except.error rc => pure rc
+  let gitUrl := p.positionalArg! "gitUrl" |>.as! String
+  let (doc, hierarchy) ← load <| .loadAllLimitAnalysis relevantModules
+  let baseConfig ← getSimpleBaseContext hierarchy
+  htmlOutputResults baseConfig doc (some gitUrl) (p.hasFlag "ink")
+  return 0
 
 def runIndexCmd (_p : Parsed) : IO UInt32 := do
   let hierarchy ← Hierarchy.fromDirectory Output.basePath
@@ -28,14 +25,10 @@ def runIndexCmd (_p : Parsed) : IO UInt32 := do
   return 0
 
 def runGenCoreCmd (_p : Parsed) : IO UInt32 := do
-  let res ← lakeSetup
-  match res with
-  | Except.ok ws =>
-    let (doc, hierarchy) ← loadCore
-    let baseConfig ← getSimpleBaseContext hierarchy
-    htmlOutputResults baseConfig doc ws (ink := False) 
-    return 0
-  | Except.error rc => pure rc
+  let (doc, hierarchy) ← loadCore
+  let baseConfig ← getSimpleBaseContext hierarchy
+  htmlOutputResults baseConfig doc none (ink := False) 
+  return 0
 
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
   IO.println "You most likely want to use me via Lake now, check my README on Github on how to:"
@@ -51,6 +44,7 @@ def singleCmd := `[Cli|
 
   ARGS:
     module : String; "The module to generate the HTML for. Does not have to be part of topLevelModules."
+    gitUrl : String; "The gitUrl as computed by the Lake facet"
 ]
 
 def indexCmd := `[Cli|

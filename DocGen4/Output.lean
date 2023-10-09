@@ -4,7 +4,6 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
 import Lean
-import Lake
 import DocGen4.Process
 import DocGen4.Output.Base
 import DocGen4.Output.Index
@@ -81,19 +80,18 @@ def htmlOutputDeclarationDatas (result : AnalyzerResult) : HtmlT IO Unit := do
     let jsonDecls ← Module.toJson mod
     FS.writeFile (declarationsBasePath / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
 
-def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (ws : Lake.Workspace) (ink : Bool) : IO Unit := do
+def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (gitUrl? : Option String) (ink : Bool) : IO Unit := do
   let config : SiteContext := {
     result := result,
-    sourceLinker := ← SourceLinker.sourceLinker ws
+    sourceLinker := ← SourceLinker.sourceLinker gitUrl?
     leanInkEnabled := ink
   }
 
   FS.createDirAll basePath
   FS.createDirAll declarationsBasePath
 
-  -- Rendering the entire lean compiler takes time....
-  --let sourceSearchPath := ((←Lean.findSysroot) / "src" / "lean") :: ws.root.srcDir :: ws.leanSrcPath
-  let sourceSearchPath := ws.root.srcDir :: ws.leanSrcPath
+  let some p := (← IO.getEnv "LEAN_SRC_PATH") | throw <| IO.userError "LEAN_SRC_PATH not found in env"
+  let sourceSearchPath := System.SearchPath.parse p
 
   discard <| htmlOutputDeclarationDatas result |>.run config baseConfig
 
@@ -121,8 +119,6 @@ def getSimpleBaseContext (hierarchy : Hierarchy) : IO SiteBaseContext := do
     depthToRoot := 0,
     currentName := none,
     hierarchy
-    projectGithubUrl := ← SourceLinker.getProjectGithubUrl
-    projectCommit := ← SourceLinker.getProjectCommit
   }
 
 def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
@@ -148,9 +144,9 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
 The main entrypoint for outputting the documentation HTML based on an
 `AnalyzerResult`.
 -/
-def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (ws : Lake.Workspace) (ink : Bool) : IO Unit := do
+def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (gitUrl? : Option String) (ink : Bool) : IO Unit := do
   let baseConfig ← getSimpleBaseContext hierarchy
-  htmlOutputResults baseConfig result ws ink
+  htmlOutputResults baseConfig result gitUrl? ink
   htmlOutputIndex baseConfig
 
 end DocGen4

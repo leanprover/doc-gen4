@@ -5,30 +5,12 @@ Authors: Henrik Böving
 -/
 
 import Lean
-import Lake
-import Lake.CLI.Main
 import DocGen4.Process
 import Lean.Data.HashMap
 
 namespace DocGen4
 
 open Lean System IO
-/--
-Sets up a lake workspace for the current project. Furthermore initialize
-the Lean search path with the path to the proper compiler from lean-toolchain
-as well as all the dependencies.
--/
-def lakeSetup : IO (Except UInt32 Lake.Workspace) := do
-  let (_, leanInstall?, lakeInstall?) ← Lake.findInstall?
-  let config := Lake.mkLoadConfig.{0} {leanInstall?, lakeInstall?}
-  match ←(EIO.toIO' config) with
-  | .ok config =>
-    let ws : Lake.Workspace ← Lake.loadWorkspace config
-      |>.run Lake.MonadLog.eio
-      |>.toIO (λ _ => IO.userError "Failed to load Lake workspace")
-    pure <| Except.ok ws
-  | .error err =>
-    throw <| IO.userError err.toString
 
 def envOfImports (imports : Array Name) : IO Environment := do
  importModules (imports.map (Import.mk · false)) Options.empty
@@ -42,6 +24,7 @@ Load a list of modules from the current Lean search path into an `Environment`
 to process for documentation.
 -/
 def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy) := do
+  initSearchPath (← findSysroot)
   let env ← envOfImports task.getLoad
   let config := {
     -- TODO: parameterize maxHeartbeats
