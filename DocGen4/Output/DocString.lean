@@ -210,11 +210,11 @@ partial def modifyElement (element : Element) : HtmlM Element :=
 
 /-- Convert docstring to Html. -/
 def docStringToHtml (s : String) : HtmlM (Array Html) := do
-  let rendered := CMark.renderHtml s
+  let rendered := CMark.renderHtml (Html.escape s)
   match manyDocument rendered.mkIterator with
   | Parsec.ParseResult.success _ res =>
     res.mapM fun x => do return Html.text <| toString (← modifyElement x)
-  | _ => return #[Html.text rendered]
+  | _ => return #[Html.text <| rendered]
 
 end Output
 end DocGen4

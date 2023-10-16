@@ -53,10 +53,10 @@ partial def textLength : Html → Nat
 
 def escapePairs : Array (String × String) :=
   #[
-    ("&", "&amp"),
-    ("<", "&lt"),
-    (">", "&gt"),
-    ("\"", "&quot")
+    ("&", "&amp;"),
+    ("<", "&lt;"),
+    (">", "&gt;"),
+    ("\"", "&quot;")
   ]
 
 def escape (s : String) : String :=
