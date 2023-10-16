@@ -214,7 +214,7 @@ def docStringToHtml (s : String) : HtmlM (Array Html) := do
   match manyDocument rendered.mkIterator with
   | Parsec.ParseResult.success _ res =>
     res.mapM fun x => do return Html.text <| toString (← modifyElement x)
-  | _ => return #[Html.text <| rendered]
+  | _ => return #[Html.text rendered]
 
 end Output
 end DocGen4
