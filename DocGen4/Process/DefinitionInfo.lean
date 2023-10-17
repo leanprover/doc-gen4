@@ -12,12 +12,13 @@ namespace DocGen4.Process
 
 open Lean Meta Widget
 
-partial def stripArgs (e : Expr) : Expr :=
+partial def stripArgs (e : Expr) (k : Expr → MetaM α) : MetaM α :=
   match e.consumeMData with
-  | Expr.forallE name _ body _ =>
+  | Expr.forallE name type body bi =>
     let name := name.eraseMacroScopes
-    stripArgs (Expr.instantiate1 body (mkFVar ⟨name⟩))
-  | _ => e
+    Meta.withLocalDecl name bi type fun fvar => do
+      stripArgs (Expr.instantiate1 body fvar) k
+  | _ => k e
 
 def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
   withOptions (tactic.hygienic.set . false) do
@@ -29,8 +30,7 @@ def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
 
 def processEq (eq : Name) : MetaM CodeWithInfos := do
   let type ← (mkConstWithFreshMVarLevels eq >>= inferType)
-  let final := stripArgs type
-  prettyPrintTerm final
+  stripArgs type prettyPrintTerm
 
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
@@ -49,7 +49,7 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo :=
         isNonComputable
       }
     | none =>
-      let equations := #[← prettyPrintTerm <| stripArgs (← valueToEq v)]
+      let equations := #[← stripArgs (← valueToEq v) prettyPrintTerm]
       return {
         toInfo := info,
         isUnsafe,
