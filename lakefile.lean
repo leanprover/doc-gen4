@@ -14,7 +14,7 @@ lean_exe «doc-gen4» {
 require CMark from git
   "https://github.com/xubaiw/CMark.lean" @ "main"
 
-require «lean4-unicode-basic» from git
+require «UnicodeBasic» from git
   "https://github.com/fgdorais/lean4-unicode-basic" @ "main"
 
 require Cli from git

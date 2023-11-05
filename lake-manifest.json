@@ -1,4 +1,4 @@
-{"version": 5,
+{"version": 6,
  "packagesDir": "lake-packages",
  "packages":
  [{"git":
@@ -12,15 +12,15 @@
   {"git":
    {"url": "https://github.com/fgdorais/lean4-unicode-basic",
     "subDir?": null,
-    "rev": "f09250282cea3ed8c010f430264d9e8e50d7bc32",
+    "rev": "4ecf4f1f98d14d03a9e84fa1c082630fa69df88b",
     "opts": {},
-    "name": "«lean4-unicode-basic»",
+    "name": "UnicodeBasic",
     "inputRev?": "main",
     "inherited": false}},
   {"git":
    {"url": "https://github.com/mhuisi/lean4-cli",
     "subDir?": null,
-    "rev": "5a858c32963b6b19be0d477a30a1f4b6c120be7e",
+    "rev": "39229f3630d734af7d9cfb5937ddc6b41d3aa6aa",
     "opts": {},
     "name": "Cli",
     "inputRev?": "nightly",
@@ -32,4 +32,5 @@
     "opts": {},
     "name": "leanInk",
     "inputRev?": "doc-gen",
-    "inherited": false}}]}
+    "inherited": false}}],
+ "name": "«doc-gen4»"}
