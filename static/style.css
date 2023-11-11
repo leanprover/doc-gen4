@@ -1,11 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Merriweather&family=Open+Sans&family=Source+Code+Pro&family=Source+Code+Pro:wght@600&display=swap');
+@import url('https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css');
+@import url('https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.051/juliamono.css');
 
 * {
     box-sizing: border-box;
 }
 
 body {
-    font-family: 'Open Sans', sans-serif;
+    font-size: 17px;
+    font-variant-ligatures: none;
+    font-family: 'Lato Medium';
     color: var(--text-color);
     background: var(--body-bg);
 }
@@ -15,7 +18,7 @@ a {
 }
 
 h1, h2, h3, h4, h5, h6 {
-    font-family: 'Merriweather', serif;
+    font-family: 'Lato Medium';
 }
 
 body { line-height: 1.5; }
@@ -671,7 +674,8 @@ main h2, main h3, main h4, main h5, main h6 {
 
 .imports li, code, .decl_header, .attributes, .structure_field_info,
         .constructor, .instances li, .equation, .result_link, .structure_ext_ctor {
-    font-family: 'Source Code Pro', monospace;
+    font-size: 16px;
+    font-family: 'JuliaMono', monospace;
 }
 
 pre {
@@ -701,12 +705,12 @@ pre code { padding: 0 0; }
 
 .inductive_ctor_doc  {
     text-indent: 2ex;
-    font-family: 'Open Sans', sans-serif;
+    font-family: 'Lato Medium';
 }
 
 .structure_field_doc {
     text-indent: 0;
-    font-family: 'Open Sans', sans-serif;
+    font-family: 'Lato Medium';
 }
 
 .structure_ext_fields {
