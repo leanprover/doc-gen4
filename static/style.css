@@ -13,6 +13,8 @@ body {
     background: var(--body-bg);
 }
 
+input, select, textarea, button{font-family:inherit;}
+
 a {
    color: var(--link-color);
 }
