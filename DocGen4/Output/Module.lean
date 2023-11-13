@@ -133,8 +133,8 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
         [leanInkHtml]
         [attrsHtml]
         {← docInfoHeader doc}
-        [docInfoHtml]
         [docStringHtml]
+        [docInfoHtml]
         [extraInfoHtml]
       </div>
     </div>
