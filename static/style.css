@@ -21,6 +21,7 @@ a {
 
 h1, h2, h3, h4, h5, h6 {
     font-family: 'Lato Medium';
+    font-size: 17px;
 }
 
 body { line-height: 1.5; }
@@ -708,11 +709,13 @@ pre code { padding: 0 0; }
 .inductive_ctor_doc  {
     text-indent: 2ex;
     font-family: 'Lato Medium';
+    font-size: 17px;
 }
 
 .structure_field_doc {
     text-indent: 0;
     font-family: 'Lato Medium';
+    font-size: 17px;
 }
 
 .structure_ext_fields {
