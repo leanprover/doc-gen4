@@ -11,18 +11,19 @@ require «doc-gen4» from git "https://github.com/leanprover/doc-gen4" @ "main"
 
 Then update your dependencies:
 ```
-lake -Kenv=dev update
+lake -R -Kenv=dev update
 ```
 
 Then you can generate documentation for an entire library and all files imported
 by that library using:
 ```
-lake -Kenv=dev build Test:docs
+lake -R -Kenv=dev build Test:docs
 ```
 If you have multiple libraries you want to generate full documentation for:
 ```
-lake -Kenv=dev build Test:docs Foo:docs
+lake -R -Kenv=dev build Test:docs Foo:docs
 ```
+
 Note that `doc-gen4` currently always generates documentation for `Lean`, `Init`
 and `Lake` in addition to the provided targets.
 
