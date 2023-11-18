@@ -38,11 +38,7 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo :=
   let isNonComputable := isNoncomputable (← getEnv) v.name
 
   try
-    -- Temporary workaround until
-    -- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/maxRecDepth.20in.20getEqnsFor.3F/near/402917295
-    -- is adddressed
-    let eqs? : Option (Array Name) := none
-    -- let eqs? ←  getEqnsFor? v.name
+    let eqs? ← getEqnsFor? v.name
 
     match eqs? with
     | some eqs =>
