@@ -123,7 +123,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
 
     try
       let config := {
-        maxHeartbeats := 5000000,
+        maxHeartbeats := 50000000,
         options := ← getOptions,
         fileName := ← getFileName,
         fileMap := ← getFileMap
