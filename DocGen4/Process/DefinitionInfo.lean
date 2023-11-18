@@ -36,8 +36,14 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo :=
   let info ← Info.ofConstantVal v.toConstantVal
   let isUnsafe := v.safety == DefinitionSafety.unsafe
   let isNonComputable := isNoncomputable (← getEnv) v.name
+
   try
-    let eqs? ← getEqnsFor? v.name
+    -- Temporary workaround until
+    -- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/maxRecDepth.20in.20getEqnsFor.3F/near/402917295
+    -- is adddressed
+    let eqs? : Option (Array Name) := none
+    -- let eqs? ←  getEqnsFor? v.name
+
     match eqs? with
     | some eqs =>
       let equations ← eqs.mapM processEq
