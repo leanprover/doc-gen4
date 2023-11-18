@@ -11,7 +11,7 @@ namespace DocGen4.Output
 open scoped DocGen4.Jsx
 open Lean System Widget Elab Process
 
-def basePath := FilePath.mk "." / "build" / "doc"
+def basePath := FilePath.mk "." / ".lake" / "build" / "doc"
 def srcBasePath := basePath / "src"
 def declarationsBasePath := basePath / "declarations"
 

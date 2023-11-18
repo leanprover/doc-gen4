@@ -27,11 +27,16 @@ lake -R -Kenv=dev build Test:docs Foo:docs
 Note that `doc-gen4` currently always generates documentation for `Lean`, `Init`
 and `Lake` in addition to the provided targets.
 
+The root of the built docs will be `.lake/build/docs/index.html`. However, due to the "Same Origin Policy", the
+generated website will be partially broken if you just open the generated html files in your browser.  You
+need to serve them from a proper http server for it to work. An easy way to do that is to run
+`python3 -m http.server` from the `.lake/build/docs` directory.
+
 ## Assumptions that `doc-gen4` makes
 The only requirement for the `lake -Kenv=dev build Test:docs` to work is that your
 target library builds, that is `lake build Test` exits without an error. If this requirement
 is not fulfilled, the documentation generation will fail and you will end up with
-partial build artefacts in `build/doc`. Note that `doc-gen4` is perfectly capable of
+partial build artefacts in `.lake/build/doc`. Note that `doc-gen4` is perfectly capable of
 generating documentation for Lean code that contains `sorry`, just not for code
 that doesn't compile.
 
@@ -62,12 +67,7 @@ meta if get_config? env = some "dev" then -- dev is so not everyone has to build
 require «doc-gen4» from "../doc-gen4"
 ```
 
-The root of the built docs will be `build/docs/index.html`.  However, due to the "Same Origin Policy", the
-generated website will be partially broken if you just open the generated html files in your browser.  You
-need to serve them from a proper http server for it to work.  An easy way to do that is to run
-`python3 -m http.server` from the `build/docs` directory.
-
 Note that if you modify the `.js` or `.css` files in `doc-gen4`, they won't necessarily be copied over when
-you rebuild the documentation.  You can manually copy the changes to the `build/docs` directory to make
+you rebuild the documentation.  You can manually copy the changes to the `.lake/build/docs` directory to make
 sure the changes appear, or just do a full recompilation (`lake clean` and `lake build` inside the `doc-gen4`
 directory.)
