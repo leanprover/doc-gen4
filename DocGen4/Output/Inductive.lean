@@ -10,9 +10,9 @@ open Lean
 
 def instancesForToHtml (typeName : Name) : BaseHtmlM Html := do
   pure
-    <details «class»="instances">
+    <details id={s!"instances-for-list-{typeName}"} «class»="instances-for-list">
         <summary>Instances For</summary>
-        <ul id={s!"instances-for-list-{typeName}"} class="instances-for-list"></ul>
+        <ul class="instances-for-enum"></ul>
     </details>
 
 def ctorToHtml (c : Process.NameInfo) : HtmlM Html := do
