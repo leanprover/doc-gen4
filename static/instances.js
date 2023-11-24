@@ -26,11 +26,17 @@ async function annotateInstancesFor() {
   for (const instanceForList of instanceForLists) {
     const typeName = instanceForList.id.slice("instances-for-list-".length);
     const instances = dataCenter.instancesForType(typeName);
-    var innerHTML = "";
-    for(var instance of instances) {
-      const instanceLink = dataCenter.declNameToLink(instance);
-      innerHTML += `<li><a href="${SITE_ROOT}${instanceLink}">${instance}</a></li>`
+
+    if (instances.length == 0) {
+      instanceForList.remove();
+    } else {
+      var innerHTML = "";
+      for(var instance of instances) {
+        const instanceLink = dataCenter.declNameToLink(instance);
+        innerHTML += `<li><a href="${SITE_ROOT}${instanceLink}">${instance}</a></li>`;
+      }
+      const instanceEnum = instanceForList.querySelector(".instances-for-enum");
+      instanceEnum.innerHTML = innerHTML;
     }
-    instanceForList.innerHTML = innerHTML;
   }
 }
