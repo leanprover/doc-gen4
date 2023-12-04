@@ -27,10 +27,10 @@ lake -R -Kenv=dev build Test:docs Foo:docs
 Note that `doc-gen4` currently always generates documentation for `Lean`, `Init`
 and `Lake` in addition to the provided targets.
 
-The root of the built docs will be `.lake/build/docs/index.html`. However, due to the "Same Origin Policy", the
+The root of the built docs will be `.lake/build/doc/index.html`. However, due to the "Same Origin Policy", the
 generated website will be partially broken if you just open the generated html files in your browser.  You
 need to serve them from a proper http server for it to work. An easy way to do that is to run
-`python3 -m http.server` from the `.lake/build/docs` directory.
+`python3 -m http.server` from the `.lake/build/doc` directory.
 
 ## Assumptions that `doc-gen4` makes
 The only requirement for the `lake -Kenv=dev build Test:docs` to work is that your
@@ -68,6 +68,6 @@ require «doc-gen4» from "../doc-gen4"
 ```
 
 Note that if you modify the `.js` or `.css` files in `doc-gen4`, they won't necessarily be copied over when
-you rebuild the documentation.  You can manually copy the changes to the `.lake/build/docs` directory to make
+you rebuild the documentation.  You can manually copy the changes to the `.lake/build/doc` directory to make
 sure the changes appear, or just do a full recompilation (`lake clean` and `lake build` inside the `doc-gen4`
 directory.)
