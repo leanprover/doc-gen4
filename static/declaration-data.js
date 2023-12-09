@@ -128,7 +128,7 @@ export class DeclarationDataCenter {
    * @returns {Array<String>}
    */
   moduleImportedBy(moduleName) {
-    return this.declarationData.importedBy[moduleName];
+    return this.declarationData.modules[moduleName].importedBy;
   }
 
   /**
@@ -136,7 +136,7 @@ export class DeclarationDataCenter {
    * @returns {String}
    */
   moduleNameToLink(moduleName) {
-    return this.declarationData.modules[moduleName];
+    return this.declarationData.modules[moduleName].url;
   }
 }
 
