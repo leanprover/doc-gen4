@@ -43,11 +43,15 @@ structure JsonIndexedDeclarationInfo where
   docLink : String
   deriving FromJson, ToJson
 
+structure JsonIndexedModule where
+  importedBy : Array String
+  url : String
+  deriving FromJson, ToJson
+
 structure JsonIndex where
   declarations : List (String × JsonIndexedDeclarationInfo) := []
   instances : HashMap String (RBTree String Ord.compare) := .empty
-  importedBy : HashMap String (Array String) := .empty
-  modules : List (String × String) := []
+  modules : HashMap String JsonIndexedModule := {}
   instancesFor : HashMap String (RBTree String Ord.compare) := .empty
 
 instance : ToJson JsonHeaderIndex where
@@ -57,13 +61,11 @@ instance : ToJson JsonIndex where
   toJson idx := Id.run do
     let jsonDecls := Json.mkObj <| idx.declarations.map (fun (k, v) => (k, toJson v))
     let jsonInstances := Json.mkObj <| idx.instances.toList.map (fun (k, v) => (k, toJson v.toArray))
-    let jsonImportedBy := Json.mkObj <| idx.importedBy.toList.map (fun (k, v) => (k, toJson v))
-    let jsonModules := Json.mkObj <| idx.modules.map (fun (k, v) => (k, toJson v))
+    let jsonModules := Json.mkObj <| idx.modules.toList.map (fun (k, v) => (k, toJson v))
     let jsonInstancesFor := Json.mkObj <| idx.instancesFor.toList.map (fun (k, v) => (k, toJson v.toArray))
     let finalJson := Json.mkObj [
       ("declarations", jsonDecls),
       ("instances", jsonInstances),
-      ("importedBy", jsonImportedBy),
       ("modules", jsonModules),
       ("instancesFor", jsonInstancesFor)
     ]
@@ -75,15 +77,14 @@ def JsonHeaderIndex.addModule (index : JsonHeaderIndex) (module : JsonModule) : 
 
 def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM JsonIndex := do
   let mut index := index
-  let newModule := (module.name, ← moduleNameToLink (String.toName module.name))
   let newDecls := module.declarations.map (fun d => (d.info.name, {
     kind := d.info.kind,
     docLink := d.info.docLink,
   }))
   index := { index with
-    modules := newModule :: index.modules
     declarations := newDecls ++ index.declarations
   }
+
   -- TODO: In theory one could sort instances and imports by name and batch the writes
   for inst in module.instances do
     let mut insts := index.instances.findD inst.className {}
@@ -94,10 +95,26 @@ def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM Js
       instsFor := instsFor.insert inst.name
       index := { index with instancesFor := index.instancesFor.insert typeName instsFor }
 
+  -- TODO: dedup
+  if index.modules.find? module.name |>.isNone then
+    let moduleLink ← moduleNameToLink (String.toName module.name)
+    let indexedModule := { url := moduleLink, importedBy := #[] }
+    index := { index with modules := index.modules.insert module.name indexedModule }
+
   for imp in module.imports do
-    let mut impBy := index.importedBy.findD imp #[]
-    impBy := impBy.push module.name
-    index := { index with importedBy := index.importedBy.insert imp impBy }
+    let indexedImp ←
+      match index.modules.find? imp with
+      | some i => pure i
+      | none =>
+        let impLink ← moduleNameToLink (String.toName imp)
+        let indexedModule := { url := impLink, importedBy := #[] }
+        pure indexedModule
+    index := { index with
+      modules :=
+        index.modules.insert
+        imp
+        { indexedImp with importedBy := indexedImp.importedBy.push module.name }
+    }
   return index
 
 def DocInfo.toJson (module : Name) (info : Process.DocInfo) : HtmlM JsonDeclaration := do
