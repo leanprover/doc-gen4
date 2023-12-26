@@ -44,7 +44,7 @@ def singleCmd := `[Cli|
 
   ARGS:
     module : String; "The module to generate the HTML for. Does not have to be part of topLevelModules."
-    gitUrl : String; "The gitUrl as computed by the Lake facet"
+    sourceUrl : String; "The sourceUrl as computed by the Lake facet"
 ]
 
 def indexCmd := `[Cli|
