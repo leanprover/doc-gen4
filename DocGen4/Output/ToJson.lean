@@ -117,12 +117,12 @@ def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM Js
     }
   return index
 
-def DocInfo.toJson (module : Name) (info : Process.DocInfo) : HtmlM JsonDeclaration := do
+def DocInfo.toJson (sourceLinker : Option DeclarationRange → String) (info : Process.DocInfo) : HtmlM JsonDeclaration := do
   let name := info.getName.toString
   let kind := info.getKind
   let doc := info.getDocString.getD ""
   let docLink ← declNameToLink info.getName
-  let sourceLink ← getSourceUrl module info.getDeclarationRange
+  let sourceLink := sourceLinker info.getDeclarationRange
   let line := info.getDeclarationRange.pos.line
   let header := (← docInfoHeader info).toString
   let info := { name, kind, doc, docLink, sourceLink, line }
@@ -131,9 +131,10 @@ def DocInfo.toJson (module : Name) (info : Process.DocInfo) : HtmlM JsonDeclarat
 def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
     let mut jsonDecls := []
     let mut instances := #[]
+    let sourceLinker := (← read).sourceLinker module.name
     let declInfo := Process.filterDocInfo module.members
     for decl in declInfo do
-      jsonDecls := (← DocInfo.toJson module.name decl) :: jsonDecls
+      jsonDecls := (← DocInfo.toJson sourceLinker decl) :: jsonDecls
       if let .instanceInfo i := decl then
         instances := instances.push {
           name := i.name.toString,
