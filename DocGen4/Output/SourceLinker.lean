@@ -16,8 +16,9 @@ def mkGithubSourceLinker (baseUrl : String) (range : Option DeclarationRange) : 
 
 def mkVscodeSourceLinker (baseUrl : String) (range : Option DeclarationRange) : String :=
   match range with
-  -- Note. We may want to verify Lean line and column numbers match VSCode.
-  | some range => s!"{baseUrl}:{range.pos.line}:{range.pos.column}"
+  -- Note. We may want to verify Lean column numbers match VSCode on complex unicode
+  -- characters.  There could be encoding mismatches.
+  | some range => s!"{baseUrl}:{range.pos.line}:{range.pos.column+1}"
   | none => baseUrl
 
 /--
