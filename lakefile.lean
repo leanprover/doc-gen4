@@ -48,10 +48,10 @@ def getGithubBaseUrl (gitUrl : String) : String := Id.run do
 /--
 Obtain the Github URL of a project by parsing the origin remote.
 -/
-def getProjectGithubUrl (directory : System.FilePath := "." ) : IO String := do
+def getProjectGithubUrl (directory : System.FilePath := "." ) (remote : String := "origin") : IO String := do
   let out ← IO.Process.output {
     cmd := "git",
-    args := #["remote", "get-url", "origin"],
+    args := #["remote", "get-url", remote],
     cwd := directory
   }
   if out.exitCode != 0 then
@@ -71,16 +71,31 @@ def getProjectCommit (directory : System.FilePath := "." ) : IO String := do
     throw <| IO.userError <| s!"git exited with code {out.exitCode} while looking for the current commit in {directory}"
   return out.stdout.trimRight
 
-def getGitUrl (pkg : Package) (lib : LeanLibConfig) (mod : Module) : IO String := do
-  let baseUrl := getGithubBaseUrl (← getProjectGithubUrl pkg.dir)
-  let commit ← getProjectCommit pkg.dir
+def filteredPath (path : FilePath) : List String := path.components.filter (· != ".")
 
-  let parts := mod.name.components.map toString
-  let path := String.intercalate "/" parts
-  let libPath := pkg.config.srcDir / lib.srcDir
-  let basePath := String.intercalate "/" (libPath.components.filter (· != "."))
-  let url := s!"{baseUrl}/blob/{commit}/{basePath}/{path}.lean"
-  return url
+def getGitPkgUrl (pkg : Package) : IO (List String) := do
+  let baseUrl := getGithubBaseUrl (← getProjectGithubUrl pkg.dir "origin")
+  let commit ← getProjectCommit pkg.dir
+  let srcDir := filteredPath pkg.config.srcDir
+  return baseUrl :: "blob" :: commit :: srcDir
+
+def getVsCodeUrl (pkg : Package) := do
+  let dir ← IO.FS.realPath pkg.config.srcDir
+  pure [s!"vscode://file/{dir}"]
+
+def getGitChanged (directory : System.FilePath := ".") : IO Bool := do
+  let out ← IO.Process.output {
+    cmd := "git",
+    args := #["status", "--porcelain=v1"]
+    cwd := directory
+  }
+  return out.exitCode != 0 || out.stdout.trim != ""
+
+def getGitUrl (pkg : Package) (lib : LeanLibConfig) (mod : Module) : IO String := do
+  let baseUrl ← if ← getGitChanged then getVsCodeUrl pkg else getGitPkgUrl pkg
+  let libPath := filteredPath lib.srcDir
+  let modPath := mod.name.components.map toString
+  return s!"{String.intercalate "/" (baseUrl ++ libPath ++ modPath)}.lean"
 
 module_facet docs (mod) : FilePath := do
   let some docGen4 ← findLeanExe? `«doc-gen4»

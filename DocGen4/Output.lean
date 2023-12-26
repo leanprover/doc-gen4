@@ -80,10 +80,10 @@ def htmlOutputDeclarationDatas (result : AnalyzerResult) : HtmlT IO Unit := do
     let jsonDecls ← Module.toJson mod
     FS.writeFile (declarationsBasePath / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
 
-def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (gitUrl? : Option String) (ink : Bool) : IO Unit := do
+def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String) (ink : Bool) : IO Unit := do
   let config : SiteContext := {
     result := result,
-    sourceLinker := ← SourceLinker.sourceLinker gitUrl?
+    sourceLinker := SourceLinker.sourceLinker sourceUrl?
     leanInkEnabled := ink
   }
 
@@ -144,10 +144,9 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
 The main entrypoint for outputting the documentation HTML based on an
 `AnalyzerResult`.
 -/
-def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (gitUrl? : Option String) (ink : Bool) : IO Unit := do
+def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (sourceUrl? : Option String) (ink : Bool) : IO Unit := do
   let baseConfig ← getSimpleBaseContext hierarchy
-  htmlOutputResults baseConfig result gitUrl? ink
+  htmlOutputResults baseConfig result sourceUrl? ink
   htmlOutputIndex baseConfig
 
 end DocGen4
-

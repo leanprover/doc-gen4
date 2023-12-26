@@ -12,10 +12,10 @@ def getTopLevelModules (p : Parsed) : IO (List String) :=  do
 
 def runSingleCmd (p : Parsed) : IO UInt32 := do
   let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
-  let gitUrl := p.positionalArg! "gitUrl" |>.as! String
+  let sourceUrl := p.positionalArg! "sourceUrl" |>.as! String
   let (doc, hierarchy) ← load <| .loadAllLimitAnalysis relevantModules
   let baseConfig ← getSimpleBaseContext hierarchy
-  htmlOutputResults baseConfig doc (some gitUrl) (p.hasFlag "ink")
+  htmlOutputResults baseConfig doc (some sourceUrl) (p.hasFlag "ink")
   return 0
 
 def runIndexCmd (_p : Parsed) : IO UInt32 := do
@@ -27,7 +27,7 @@ def runIndexCmd (_p : Parsed) : IO UInt32 := do
 def runGenCoreCmd (_p : Parsed) : IO UInt32 := do
   let (doc, hierarchy) ← loadCore
   let baseConfig ← getSimpleBaseContext hierarchy
-  htmlOutputResults baseConfig doc none (ink := False) 
+  htmlOutputResults baseConfig doc none (ink := False)
   return 0
 
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
