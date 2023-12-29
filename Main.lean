@@ -12,10 +12,10 @@ def getTopLevelModules (p : Parsed) : IO (List String) :=  do
 
 def runSingleCmd (p : Parsed) : IO UInt32 := do
   let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
-  let sourceUrl := p.positionalArg! "sourceUrl" |>.as! String
+  let sourceUri := p.positionalArg! "sourceUri" |>.as! String
   let (doc, hierarchy) ← load <| .loadAllLimitAnalysis relevantModules
   let baseConfig ← getSimpleBaseContext hierarchy
-  htmlOutputResults baseConfig doc (some sourceUrl) (p.hasFlag "ink")
+  htmlOutputResults baseConfig doc (some sourceUri) (p.hasFlag "ink")
   return 0
 
 def runIndexCmd (_p : Parsed) : IO UInt32 := do
@@ -44,7 +44,7 @@ def singleCmd := `[Cli|
 
   ARGS:
     module : String; "The module to generate the HTML for. Does not have to be part of topLevelModules."
-    sourceUrl : String; "The sourceUrl as computed by the Lake facet"
+    sourceUri : String; "The sourceUri as computed by the Lake facet"
 ]
 
 def indexCmd := `[Cli|
