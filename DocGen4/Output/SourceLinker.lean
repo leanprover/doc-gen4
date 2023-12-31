@@ -31,19 +31,22 @@ def sourceLinker (gitUrl? : Option String) (module : Name) : Option DeclarationR
   let leanHash := Lean.githash
   if root == `Lean ∨ root == `Init then
     let parts := module.components.map Name.toString
-    let path := String.intercalate "/" parts
+    let path := "/".intercalate parts
     mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/{path}.lean"
   else if root == `Lake then
     let parts := module.components.map Name.toString
-    let path := String.intercalate "/" parts
+    let path := "/".intercalate parts
     mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/lake/{path}.lean"
   else
     match gitUrl? with
     | .some url =>
       if url.startsWith "vscode://file/" then
         mkVscodeSourceLinker url
-      else
+      else if url.startsWith "https://github.com" then
         mkGithubSourceLinker url
+      else
+        -- Other urls do not have range added.
+        fun _ => url
     | .none => panic! s!"Github URL must be defined for {module}."
 
 end DocGen4.Output.SourceLinker

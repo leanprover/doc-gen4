@@ -23,32 +23,10 @@ require Cli from git
 require leanInk from git
   "https://github.com/hargonix/LeanInk" @ "doc-gen"
 
-
-/--
-Turns a Github git remote URL into an HTTPS Github URL.
-Three link types from git supported:
-- https://github.com/org/repo
-- https://github.com/org/repo.git
-- git@github.com:org/repo.git
-
-TODO: This function is quite brittle and very Github specific, we can
-probably do better.
--/
-def getGithubBaseUrl (gitUrl : String) : String := Id.run do
-  let mut url := gitUrl
-  if url.startsWith "git@" then
-    url := url.drop 15
-    url := url.dropRight 4
-    return s!"https://github.com/{url}"
-  else if url.endsWith ".git" then
-    return url.dropRight 4
-  else
-    return url
-
 /--
 Obtain the Github URL of a project by parsing the origin remote.
 -/
-def getProjectGithubUrl (directory : System.FilePath := "." ) (remote : String := "origin") : IO String := do
+def getGitRemoteUrl (directory : System.FilePath := "." ) (remote : String := "origin") : IO String := do
   let out ← IO.Process.output {
     cmd := "git",
     args := #["remote", "get-url", remote],
@@ -73,29 +51,75 @@ def getProjectCommit (directory : System.FilePath := "." ) : IO String := do
 
 def filteredPath (path : FilePath) : List String := path.components.filter (· != ".")
 
-def getGitPkgUrl (pkg : Package) : IO (List String) := do
-  let baseUrl := getGithubBaseUrl (← getProjectGithubUrl pkg.dir "origin")
+
+/--
+Append the module path to a string with the separator used for name components.
+-/
+def appendModPath (libUri : String) (pathSep : Char) (mod : Module)  : String :=
+  mod.name.components.foldl (init := libUri) (·.push pathSep ++ ·.toString) ++ ".lean"
+
+/--
+Append the library and mod path to the given Uri referring to the package source.
+-/
+def appendLibModPath (pkgUri : String) (pathSep : Char) (lib : LeanLibConfig) (mod : Module) : String :=
+  let libPath := filteredPath lib.srcDir
+  appendModPath (pathSep.toString.intercalate (pkgUri :: libPath)) pathSep mod
+
+/--
+Turns a Github git remote URL into an HTTPS Github URL.
+Three link types from git supported:
+- https://github.com/org/repo
+- https://github.com/org/repo.git
+- git@github.com:org/repo.git
+-/
+def getGithubBaseUrl (url : String) : Option String :=
+  if url.startsWith "git@github.com:" && url.endsWith ".git" then
+    let url := url.drop "git@github.com:".length
+    let url := url.dropRight ".git".length
+    .some s!"https://github.com/{url}"
+  else if url.startsWith "https://github.com/" then
+    if url.endsWith ".git" then
+      .some <| url.dropRight ".git".length
+    else
+      .some url
+  else
+    .none
+
+def getGithubUrl (pkg : Package) (lib : LeanLibConfig) (mod : Module) : IO String := do
+  let url ←  getGitRemoteUrl pkg.dir "origin"
+  let .some baseUrl := getGithubBaseUrl url
+      | throw <| IO.userError <|
+        s!"Could not interpret Git remote uri {url} as a Github source repo.\n"
+          ++ "See README on source URIs for more details."
   let commit ← getProjectCommit pkg.dir
   let srcDir := filteredPath pkg.config.srcDir
-  return baseUrl :: "blob" :: commit :: srcDir
+  let pkgUri := "/".intercalate <| baseUrl :: "blob" :: commit :: srcDir
 
-def getVsCodeUrl (pkg : Package) := do
-  let dir ← IO.FS.realPath pkg.config.srcDir
-  pure [s!"vscode://file/{dir}"]
+  pure <| appendLibModPath pkgUri '/' lib mod
 
-def getGitChanged (directory : System.FilePath := ".") : IO Bool := do
-  let out ← IO.Process.output {
-    cmd := "git",
-    args := #["status", "--porcelain=v1"]
-    cwd := directory
-  }
-  return out.exitCode != 0 || out.stdout.trim != ""
+/--
+Return a File uri for the module.
+-/
+def getFileUri (pkg : Package) (lib : LeanLibConfig) (mod : Module) := do
+  let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
+  pure <| appendLibModPath s!"file://{dir}" FilePath.pathSeparator lib mod
 
-def getGitUrl (pkg : Package) (lib : LeanLibConfig) (mod : Module) : IO String := do
-  let baseUrl ← if ← getGitChanged then getVsCodeUrl pkg else getGitPkgUrl pkg
-  let libPath := filteredPath lib.srcDir
-  let modPath := mod.name.components.map toString
-  return s!"{String.intercalate "/" (baseUrl ++ libPath ++ modPath)}.lean"
+/--
+Return a VSCode uri for the module.
+-/
+def getVSCodeUri (pkg : Package) (lib : LeanLibConfig) (mod : Module) : IO String := do
+  let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
+  pure <| appendLibModPath s!"vscode://file/{dir}" FilePath.pathSeparator lib mod
+
+/--
+Attempt to determine URI to use for the module source file.
+-/
+def getSrcUri (pkg : Package) (lib : LeanLibConfig) (mod : Module) : IO String := do
+  match ←IO.getEnv "DOCGEN_SRC" with
+  | .none | .some "github" | .some "" => getGithubUrl pkg lib mod
+  | .some "vscode" => getVSCodeUri pkg lib mod
+  | .some "file" => getFileUri pkg lib mod
+  | .some _ => throw <| IO.userError "$DOCGEN_SRC should be github, file, or vscode."
 
 module_facet docs (mod) : FilePath := do
   let some docGen4 ← findLeanExe? `«doc-gen4»
@@ -108,7 +132,7 @@ module_facet docs (mod) : FilePath := do
   -- Build all documentation imported modules
   let imports ← mod.imports.fetch
   let depDocJobs ← BuildJob.mixArray <| ← imports.mapM fun mod => fetch <| mod.facet `docs
-  let gitUrl ← getGitUrl pkg libConfig mod
+  let srcUri ← getSrcUri pkg libConfig mod
   let buildDir := ws.root.buildDir
   let docFile := mod.filePath (buildDir / "doc") "html"
   depDocJobs.bindAsync fun _ depDocTrace => do
@@ -119,7 +143,7 @@ module_facet docs (mod) : FilePath := do
       logStep s!"Documenting module: {mod.name}"
       proc {
         cmd := exeFile.toString
-        args := #["single", mod.name.toString, gitUrl]
+        args := #["single", mod.name.toString, srcUri]
         env := ← getAugmentedEnv
       }
     return (docFile, trace)
