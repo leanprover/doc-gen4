@@ -143,8 +143,8 @@ const debounce = (callback, wait) => {
   };
 }
 
-// The debounce delay for the search. 17 ms corresponds to approximately 60hz so the search feeling should be real time.
-const SEARCH_DEBOUNCE = 17;
+// The debounce delay for the search. 90 ms is below the noticable input lag for me
+const SEARCH_DEBOUNCE = 90;
 
 DeclarationDataCenter.init()
   .then((dataCenter) => {
