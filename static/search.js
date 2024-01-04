@@ -143,10 +143,13 @@ const debounce = (callback, wait) => {
   };
 }
 
+// The debounce delay for the search. 17 ms corresponds to approximately 60hz so the search feeling should be real time.
+const SEARCH_DEBOUNCE = 17;
+
 DeclarationDataCenter.init()
   .then((dataCenter) => {
     // Search autocompletion.
-    SEARCH_INPUT.addEventListener("input", debounce(ev => handleSearch(dataCenter, null, ev, ac_results, AC_MAX_RESULTS, true), 300));
+    SEARCH_INPUT.addEventListener("input", debounce(ev => handleSearch(dataCenter, null, ev, ac_results, AC_MAX_RESULTS, true), SEARCH_DEBOUNCE));
     if(SEARCH_PAGE_INPUT) {
       SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(dataCenter, null, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS, false))
       document.querySelectorAll(".kind_checkbox").forEach((checkbox) =>
@@ -157,7 +160,7 @@ DeclarationDataCenter.init()
     SEARCH_INPUT.dispatchEvent(new Event("input"))
   })
   .catch(e => {
-    SEARCH_INPUT.addEventListener("input", debounce(ev => handleSearch(null, e, ev, ac_results, AC_MAX_RESULTS, true), 300));
+    SEARCH_INPUT.addEventListener("input", debounce(ev => handleSearch(null, e, ev, ac_results, AC_MAX_RESULTS, true), SEARCH_DEBOUNCE));
     if(SEARCH_PAGE_INPUT) {
       SEARCH_PAGE_INPUT.addEventListener("input", ev => handleSearch(null, e, ev, SEARCH_RESULTS, SEARCH_PAGE_MAX_RESULTS, false));
     }
