@@ -186,7 +186,7 @@ Render the internal nav bar (the thing on the right on all module pages).
 def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
   pure
     <nav class="internal_nav">
-      <h3><a class="break_within" href="#top">[breakWithin moduleName.toString]</a></h3>
+      <p><a href="#top">return to top</a></p>
       <p class="gh_nav_link"><a href={← getSourceUrl moduleName none}>source</a></p>
       <div class="imports">
         <details>
