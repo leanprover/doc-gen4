@@ -570,7 +570,8 @@ https://bugs.webkit.org/show_bug.cgi?id=189265
 }
 
 main h2, main h3, main h4, main h5, main h6 {
-    margin-top: 2rem;
+    margin-top: 1rem;
+    margin-bottom: -0.4rem;
 }
 .decl + .mod_doc > h2,
         .decl + .mod_doc > h3,
