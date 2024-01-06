@@ -261,13 +261,10 @@ header > * {
     vertical-align: middle;
 }
 
-header h1 {
-    font-weight: normal;
-    font-size: 160%;
-}
-
-header header_filename {
-    font-size: 150%;
+header .header_filename {
+    color: gray;
+    text-align: center;
+    line-height: 95%;
 }
 @media (max-width: 80em) {
     .header .header_filename {
