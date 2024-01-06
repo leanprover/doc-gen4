@@ -267,7 +267,7 @@ header .header_filename {
     line-height: 95%;
 }
 @media (max-width: 80em) {
-    .header .header_filename {
+    header .header_filename {
         display: none;
     }
 }
