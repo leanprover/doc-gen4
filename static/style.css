@@ -21,7 +21,6 @@ a {
 
 h1, h2, h3, h4, h5, h6 {
     font-family: 'Lato Medium';
-    font-size: 17px;
 }
 
 body { line-height: 1.5; }
@@ -677,7 +676,7 @@ main h2, main h3, main h4, main h5, main h6 {
 
 .imports li, code, .decl_header, .attributes, .structure_field_info,
         .constructor, .instances li, .instances-for-list li, .equation, .structure_ext_ctor {
-    font-size: 16px;
+    font-size: 92%;
     font-family: 'JuliaMono', monospace;
 }
 
