@@ -172,7 +172,7 @@ header {
     left: 0;
     right: 0;
     top: 0;
-    --header-side-padding: 2em;
+    --header-side-padding: 1em;
     padding: 0 var(--header-side-padding);
     background: var(--header-bg);
     z-index: 1;
@@ -182,7 +182,7 @@ header {
 }
 @supports (width: min(10px, 5vw)) {
     header {
-        --header-side-padding: calc(max(2em, (100vw - var(--content-width) - 30em) / 2));
+        --header-side-padding: calc(max(1em, (100vw - var(--content-width) - 30em) / 2));
     }
 }
 @media screen and (max-width: 1000px) {
@@ -257,7 +257,7 @@ header {
 header > * {
     display: inline-block;
     padding: 0;
-    margin: 0 1em;
+    margin: 0;
     vertical-align: middle;
 }
 
