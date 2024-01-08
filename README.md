@@ -52,19 +52,19 @@ out things that you intend to complete later.
 
 ## Source locations
 
-Source locations default to guessing the Github repo for the library, but different different schemas can be used by setting the `DOCGEN_SOURCE` environment variable.  For
+Source locations default to guessing the Github repo for the library, but different different schemas can be used by setting the `DOCGEN_SRC` environment variable.  For
 example, one can use links that open the local source file in VSCode by running lake with:
 ```
-DOCGEN_SOURCE="vscode" lake -R -Kenv=dev ...
+DOCGEN_SRC="vscode" lake -R -Kenv=dev ...
 ```
 
 The different options are:
 
- * `DOCGEN_SOURCE="github"` infers the
+ * `DOCGEN_SRC="github"` infers the
    Github project for each library and uses source links to the Github source view.
-   This is the default if `DOCGEN_SOURCE` is unset.
- * `DOCGEN_SOURCE="file"` creates references to local file references.
- * `DOCGEN_SOURCE="vscode"` creates [VSCode URLs](https://code.visualstudio.com/docs/editor/command-line#_opening-vs-code-with-urls) to local files.
+   This is the default if `DOCGEN_SRC` is unset.
+ * `DOCGEN_SRC="file"` creates references to local file references.
+ * `DOCGEN_SRC="vscode"` creates [VSCode URLs](https://code.visualstudio.com/docs/editor/command-line#_opening-vs-code-with-urls) to local files.
 
 ## How does `docs#Nat.add` from the Lean Zulip work?
 If someone sends a message that contains `docs#Nat.add` on the Lean Zulip this will
