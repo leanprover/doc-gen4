@@ -10,7 +10,7 @@ import DocGen4.Process.NameInfo
 
 namespace DocGen4.Process
 
-open Lean Meta 
+open Lean Meta
 
 /--
   Execute `k` with an array containing pairs `(fieldName, fieldType)`.
@@ -20,7 +20,7 @@ def withFields (info : InductiveVal) (k : Array (Name × Expr) → MetaM α) (in
   let structName := info.name
   let us := info.levelParams.map mkLevelParam
   forallTelescopeReducing info.type fun params _ =>
-  withLocalDeclD `s (mkAppN (mkConst structName us) params) fun s => do
+  withLocalDeclD `self (mkAppN (mkConst structName us) params) fun s => do
     let mut info := #[]
     for fieldName in getStructureFieldsFlattened (← getEnv) structName includeSubobjectFields do
       let proj ← mkProjection s fieldName
