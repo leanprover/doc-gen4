@@ -32,8 +32,13 @@ generated website will be partially broken if you just open the generated html f
 need to serve them from a proper http server for it to work. An easy way to do that is to run
 `python3 -m http.server` from the `.lake/build/doc` directory.
 
-## Assumptions that `doc-gen4` makes
-The only requirement for the `lake -Kenv=dev build Test:docs` to work is that your
+## Requirements to run `doc-gen4`
+In order to compile itself `doc-gen4` requires:
+- a Lean 4 or `elan` installation
+- a C compiler
+- being on a Linux or MacOS machine (other operating systems, including Windows, are not tested)
+
+Apart from this the only requirement for `lake -Kenv=dev build Test:docs` to work is that your
 target library builds, that is `lake build Test` exits without an error. If this requirement
 is not fulfilled, the documentation generation will fail and you will end up with
 partial build artefacts in `.lake/build/doc`. Note that `doc-gen4` is perfectly capable of
@@ -52,19 +57,19 @@ out things that you intend to complete later.
 
 ## Source locations
 
-Source locations default to guessing the Github repo for the library, but different different schemas can be used by setting the `DOCGEN_SOURCE` environment variable.  For
+Source locations default to guessing the Github repo for the library, but different different schemas can be used by setting the `DOCGEN_SRC` environment variable.  For
 example, one can use links that open the local source file in VSCode by running lake with:
 ```
-DOCGEN_SOURCE="vscode" lake -R -Kenv=dev ...
+DOCGEN_SRC="vscode" lake -R -Kenv=dev ...
 ```
 
 The different options are:
 
- * `DOCGEN_SOURCE="github"` infers the
+ * `DOCGEN_SRC="github"` infers the
    Github project for each library and uses source links to the Github source view.
-   This is the default if `DOCGEN_SOURCE` is unset.
- * `DOCGEN_SOURCE="file"` creates references to local file references.
- * `DOCGEN_SOURCE="vscode"` creates [VSCode URLs](https://code.visualstudio.com/docs/editor/command-line#_opening-vs-code-with-urls) to local files.
+   This is the default if `DOCGEN_SRC` is unset.
+ * `DOCGEN_SRC="file"` creates references to local file references.
+ * `DOCGEN_SRC="vscode"` creates [VSCode URLs](https://code.visualstudio.com/docs/editor/command-line#_opening-vs-code-with-urls) to local files.
 
 ## How does `docs#Nat.add` from the Lean Zulip work?
 If someone sends a message that contains `docs#Nat.add` on the Lean Zulip this will
