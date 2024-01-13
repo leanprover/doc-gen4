@@ -32,8 +32,13 @@ generated website will be partially broken if you just open the generated html f
 need to serve them from a proper http server for it to work. An easy way to do that is to run
 `python3 -m http.server` from the `.lake/build/doc` directory.
 
-## Assumptions that `doc-gen4` makes
-The only requirement for the `lake -Kenv=dev build Test:docs` to work is that your
+## Requirements to run `doc-gen4`
+In order to compile itself `doc-gen4` requires:
+- a Lean 4 or `elan` installation
+- a C compiler
+- being on a Linux or MacOS machine (other operating systems, including Windows, are not tested)
+
+Apart from this the only requirement for `lake -Kenv=dev build Test:docs` to work is that your
 target library builds, that is `lake build Test` exits without an error. If this requirement
 is not fulfilled, the documentation generation will fail and you will end up with
 partial build artefacts in `.lake/build/doc`. Note that `doc-gen4` is perfectly capable of
