@@ -180,11 +180,7 @@ header {
     align-items: center;
     justify-content: space-between;
 }
-@supports (width: min(10px, 5vw)) {
-    header {
-        --header-side-padding: calc(max(1em, (100vw - var(--content-width) - 30em) / 2));
-    }
-}
+
 @media screen and (max-width: 1000px) {
     :root {
         --content-width: 100vw;
@@ -271,11 +267,6 @@ header .header_filename {
     color: gray;
     text-align: center;
     line-height: 95%;
-}
-@media (max-width: 80em) {
-    header .header_filename {
-        display: none;
-    }
 }
 
 /* inserted by nav.js */
