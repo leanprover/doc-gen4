@@ -33,7 +33,9 @@ def getGitRemoteUrl (directory : System.FilePath := "." ) (remote : String := "o
     cwd := directory
   }
   if out.exitCode != 0 then
-    throw <| IO.userError <| s!"git exited with code {out.exitCode} while looking for the git remote in {directory}"
+    let explanation := "Failed to find a git remote in your project, consider reading: https://github.com/leanprover/doc-gen4#source-locations"
+    let err := s!"git exited with code {out.exitCode} while looking for the git remote in {directory}"
+    throw <| IO.userError <| explanation ++ "\n" ++ err
   return out.stdout.trimRight
 
 /--
