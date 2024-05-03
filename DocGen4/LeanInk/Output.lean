@@ -129,26 +129,26 @@ def Message.toHtml (m : Message) : AlectryonM Html := do
     </blockquote>
 
 def Sentence.toHtml (s : Sentence) : AlectryonM Html := do
-  let messages :=
+  let messages ← do
     if s.messages.size > 0 then
-      #[
+      pure #[
         <div class="alectryon-messages">
           [← s.messages.mapM Message.toHtml]
         </div>
       ]
     else
-      #[]
-  
-  let goals :=
+      pure #[]
+
+  let goals ←
     if s.goals.size > 0 then
       -- TODO: Alectryon has a "alectryon-extra-goals" here, implement it
-      #[
+      pure #[
         <div class="alectryon-goals">
           [← s.goals.mapM Goal.toHtml]
         </div>
       ]
     else
-      #[]
+      pure #[]
 
   let buttonLabel ← getNextButtonLabel
 

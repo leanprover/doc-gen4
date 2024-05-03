@@ -1,4 +1,5 @@
 import Lean
+import Lean.ReducibilityAttrs
 
 namespace DocGen4
 
@@ -86,7 +87,7 @@ instance : ToString ReducibilityStatus where
 The list of all enum based attributes doc-gen knows about and can recover.
 -/
 @[reducible]
-def enumAttributes : Array EnumAttrWrapper := #[⟨Compiler.inlineAttrs⟩, ⟨reducibilityAttrs⟩]
+def enumAttributes : Array EnumAttrWrapper := #[⟨Compiler.inlineAttrs⟩]
 
 instance : ToString ExternEntry where
   toString entry :=
@@ -127,8 +128,8 @@ def getEnumValues (decl : Name) : MetaM (Array String) := getValues decl enumAtt
 def getParametricValues (decl : Name) : MetaM (Array String) := do
   let mut uniform ← getValues decl parametricAttributes
   -- This attribute contains an `Option Name` but we would like to pretty print it better
-  if let some depTag := Linter.deprecatedAttr.getParam? (← getEnv) decl then
-    let str := match depTag with
+  if let some depEntry := Linter.deprecatedAttr.getParam? (← getEnv) decl then
+    let str := match depEntry.newName? with
     | some alt => s!"deprecated {alt.toString}"
     | none => "deprecated"
     uniform := uniform.push str
@@ -155,11 +156,19 @@ def hasCsimp (decl : Name) : MetaM (Option String) := do
   else
     return none
 
+def getReducibility (decl : Name) : MetaM (Option String) := do
+  let status ← getReducibilityStatus decl
+  match status with
+  | .reducible => return some "reducible"
+  | .irreducible => return some "irreducible"
+  -- This is the default so we don't print it.
+  | .semireducible => return none
+
 /--
 The list of custom attributes, that don't fit in the parametric or enum
 attribute kinds, doc-gen konws about and can recover.
 -/
-def customAttrs := #[hasSimp, hasCsimp]
+def customAttrs := #[hasSimp, hasCsimp, getReducibility]
 
 def getCustomAttrs (decl : Name) : MetaM (Array String) := do
   let mut values := #[]
