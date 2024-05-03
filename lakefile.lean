@@ -63,8 +63,8 @@ def appendModPath (libUri : String) (pathSep : Char) (mod : Module)  : String :=
 /--
 Append the library and mod path to the given Uri referring to the package source.
 -/
-def appendLibModPath (pkgUri : String) (pathSep : Char) (lib : LeanLibConfig) (mod : Module) : String :=
-  let libPath := filteredPath lib.srcDir
+def appendLibModPath (pkgUri : String) (pathSep : Char) (mod : Module) : String :=
+  let libPath := filteredPath mod.lib.srcDir
   appendModPath (pathSep.toString.intercalate (pkgUri :: libPath)) pathSep mod
 
 /--
@@ -87,62 +87,55 @@ def getGithubBaseUrl (url : String) : Option String :=
   else
     .none
 
-def getGithubUrl (pkg : Package) (lib : LeanLibConfig) (mod : Module) : IO String := do
-  let url ←  getGitRemoteUrl pkg.dir "origin"
+def getGithubUrl (mod : Module) : IO String := do
+  let url ← getGitRemoteUrl mod.pkg.dir "origin"
   let .some baseUrl := getGithubBaseUrl url
       | throw <| IO.userError <|
         s!"Could not interpret Git remote uri {url} as a Github source repo.\n"
           ++ "See README on source URIs for more details."
-  let commit ← getProjectCommit pkg.dir
-  let srcDir := filteredPath pkg.config.srcDir
+  let commit ← getProjectCommit mod.pkg.dir
+  let srcDir := filteredPath mod.pkg.config.srcDir
   let pkgUri := "/".intercalate <| baseUrl :: "blob" :: commit :: srcDir
-
-  pure <| appendLibModPath pkgUri '/' lib mod
+  return appendLibModPath pkgUri '/' mod
 
 /--
 Return a File uri for the module.
 -/
-def getFileUri (pkg : Package) (lib : LeanLibConfig) (mod : Module) := do
-  let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
-  pure <| appendLibModPath s!"file://{dir}" FilePath.pathSeparator lib mod
+def getFileUri (mod : Module) : IO String := do
+  let dir ← IO.FS.realPath (mod.pkg.dir / mod.pkg.config.srcDir)
+  return appendLibModPath s!"file://{dir}" FilePath.pathSeparator mod
 
 /--
 Return a VSCode uri for the module.
 -/
-def getVSCodeUri (pkg : Package) (lib : LeanLibConfig) (mod : Module) : IO String := do
-  let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
-  pure <| appendLibModPath s!"vscode://file/{dir}" FilePath.pathSeparator lib mod
+def getVSCodeUri (mod : Module) : IO String := do
+  let dir ← IO.FS.realPath (mod.pkg.dir / mod.pkg.config.srcDir)
+  return appendLibModPath s!"vscode://file/{dir}" FilePath.pathSeparator mod
 
 /--
 Attempt to determine URI to use for the module source file.
 -/
-def getSrcUri (pkg : Package) (lib : LeanLibConfig) (mod : Module) : IO String := do
+def getSrcUri (mod : Module) : IO String := do
   match ←IO.getEnv "DOCGEN_SRC" with
-  | .none | .some "github" | .some "" => getGithubUrl pkg lib mod
-  | .some "vscode" => getVSCodeUri pkg lib mod
-  | .some "file" => getFileUri pkg lib mod
+  | .none | .some "github" | .some "" => getGithubUrl mod
+  | .some "vscode" => getVSCodeUri mod
+  | .some "file" => getFileUri mod
   | .some _ => throw <| IO.userError "$DOCGEN_SRC should be github, file, or vscode."
 
 module_facet docs (mod) : FilePath := do
-  let some docGen4 ← findLeanExe? `«doc-gen4»
-    | error "no doc-gen4 executable configuration found in workspace"
-  let exeJob ← docGen4.exe.fetch
+  let exeJob ← «doc-gen4».fetch
   let modJob ← mod.leanArts.fetch
-  let ws ← getWorkspace
-  let pkg ← ws.packages.find? (·.isLocalModule mod.name)
-  let libConfig ← pkg.leanLibConfigs.toArray.find? (·.isLocalModule mod.name)
   -- Build all documentation imported modules
   let imports ← mod.imports.fetch
   let depDocJobs ← BuildJob.mixArray <| ← imports.mapM fun mod => fetch <| mod.facet `docs
-  let srcUri ← getSrcUri pkg libConfig mod
-  let buildDir := ws.root.buildDir
+  let srcUri ← getSrcUri mod
+  let buildDir := (←getWorkspace).root.buildDir
   let docFile := mod.filePath (buildDir / "doc") "html"
   depDocJobs.bindAsync fun _ depDocTrace => do
   exeJob.bindAsync fun exeFile exeTrace => do
   modJob.bindSync fun _ modTrace => do
     let depTrace := mixTraceArray #[exeTrace, modTrace, depDocTrace]
     let trace ← buildFileUnlessUpToDate docFile depTrace do
-      logStep s!"Documenting module: {mod.name}"
       proc {
         cmd := exeFile.toString
         args := #["single", mod.name.toString, srcUri]
@@ -150,16 +143,13 @@ module_facet docs (mod) : FilePath := do
       }
     return (docFile, trace)
 
--- TODO: technically speaking this facet does not show all file dependencies
+-- TODO: technically speaking this target does not show all file dependencies
 target coreDocs : FilePath := do
-  let some docGen4 ← findLeanExe? `«doc-gen4»
-    | error "no doc-gen4 executable configuration found in workspace"
-  let exeJob ← docGen4.exe.fetch
+  let exeJob ← «doc-gen4».fetch
   let basePath := (←getWorkspace).root.buildDir / "doc"
   let dataFile := basePath / "declarations" / "declaration-data-Lean.bmp"
   exeJob.bindSync fun exeFile exeTrace => do
     let trace ← buildFileUnlessUpToDate dataFile exeTrace do
-      logStep "Documenting Lean core: Init and Lean"
       proc {
         cmd := exeFile.toString
         args := #["genCore"]
@@ -170,7 +160,7 @@ target coreDocs : FilePath := do
 library_facet docs (lib) : FilePath := do
   let mods ← lib.modules.fetch
   let moduleJobs ← BuildJob.mixArray <| ← mods.mapM (fetch <| ·.facet `docs)
-  let coreJob : BuildJob FilePath ← coreDocs.fetch
+  let coreJob ← coreDocs.fetch
   let exeJob ← «doc-gen4».fetch
   -- Shared with DocGen4.Output
   let basePath := (←getWorkspace).root.buildDir / "doc"
