@@ -29,12 +29,11 @@ partial def moduleListDir (h : Hierarchy) : BaseHtmlM Html := do
   let dirNodes ← dirs.mapM moduleListDir
   let fileNodes ← files.mapM moduleListFile
   let moduleLink ← moduleNameToLink h.getName
-  let summary :=
+  let summary ← do
     if h.isFile then
-      <summary>{s!"{h.getName.getString!} ({<a href={← moduleNameToLink h.getName}>file</a>})"} </summary>
+      pure <summary>{s!"{h.getName.getString!} ({<a href={← moduleNameToLink h.getName}>file</a>})"} </summary>
     else
-      <summary>{h.getName.getString!}</summary>
-
+      pure <summary>{h.getName.getString!}</summary>
   pure
     <details class="nav_sect" "data-path"={moduleLink} [if (← getCurrentName).any (h.getName.isPrefixOf ·) then #[("open", "")] else #[]]>
       {summary}

@@ -137,7 +137,7 @@ def isProjFn (declName : Name) : MetaM Bool := do
     if isStructure env parent then
       match getStructureInfo? env parent with
       | some i =>
-        match i.fieldNames.find? (· == name) with
+        match i.fieldNames.find? (·.toString == name) with
         | some _ => return true
         | none => return false
       | none => panic! s!"{parent} is not a structure"

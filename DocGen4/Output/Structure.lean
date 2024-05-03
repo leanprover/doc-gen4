@@ -31,20 +31,22 @@ def fieldToHtml (f : Process.NameInfo) : HtmlM Html := do
 Render all information about a structure as HTML.
 -/
 def structureToHtml (i : Process.StructureInfo) : HtmlM (Array Html) := do
-  let structureHtml :=
+  let structureHtml ← do
     if Name.isSuffixOf `mk i.ctor.name then
-      (<ul class="structure_fields" id={i.ctor.name.toString}>
-        [← i.fieldInfo.mapM fieldToHtml]
-      </ul>)
-    else
-      let ctorShortName := i.ctor.name.componentsRev.head!.toString
-      (<ul class="structure_ext">
-        <li id={i.ctor.name.toString} class="structure_ext_ctor">{s!"{ctorShortName} "} :: (</li>
-        <ul class="structure_ext_fields">
+      pure
+        <ul class="structure_fields" id={i.ctor.name.toString}>
           [← i.fieldInfo.mapM fieldToHtml]
         </ul>
-        <li class="structure_ext_ctor">)</li>
-      </ul>)
+    else
+      let ctorShortName := i.ctor.name.componentsRev.head!.toString
+      pure
+        <ul class="structure_ext">
+          <li id={i.ctor.name.toString} class="structure_ext_ctor">{s!"{ctorShortName} "} :: (</li>
+          <ul class="structure_ext_fields">
+            [← i.fieldInfo.mapM fieldToHtml]
+          </ul>
+          <li class="structure_ext_ctor">)</li>
+        </ul>
   return #[structureHtml]
 
 end Output

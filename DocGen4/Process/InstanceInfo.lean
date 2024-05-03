@@ -21,9 +21,9 @@ def getInstanceTypes (typ : Expr) : MetaM (Array Name) := do
   return names
 where
   findName : BinderInfo × Expr → StateRefT (Array Name) MetaM Unit
-    | (.default, .sort .zero) => modify (·.push "_builtin_prop")
-    | (.default, .sort (.succ _)) => modify (·.push "_builtin_typeu")
-    | (.default, .sort _) => modify (·.push "_builtin_sortu")
+    | (.default, .sort .zero) => modify (·.push `_builtin_prop)
+    | (.default, .sort (.succ _)) => modify (·.push `_builtin_typeu)
+    | (.default, .sort _) => modify (·.push `_builtin_sortu)
     | (.default, e) =>
       match e.getAppFn with
       | .const name .. => modify (·.push name)
