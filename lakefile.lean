@@ -64,8 +64,9 @@ def appendModPath (libUri : String) (pathSep : Char) (mod : Module)  : String :=
 Append the library and mod path to the given Uri referring to the package source.
 -/
 def appendLibModPath (pkgUri : String) (pathSep : Char) (mod : Module) : String :=
-  let libPath := filteredPath mod.lib.srcDir
-  appendModPath (pathSep.toString.intercalate (pkgUri :: libPath)) pathSep mod
+  let libPath := filteredPath mod.lib.config.srcDir
+  let newBase := (pathSep.toString.intercalate (pkgUri :: libPath))
+  appendModPath newBase pathSep mod
 
 /--
 Turns a Github git remote URL into an HTTPS Github URL.
