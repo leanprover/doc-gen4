@@ -21,14 +21,14 @@ jobs:
           ~/.elan/bin/lean --version
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
-      - name: Checkout and compile std4
+      - name: Checkout and compile batteries
         run: |
           cd ../
-          git clone https://github.com/leanprover/std4
-          cd std4
+          git clone https://github.com/leanprover-community/batteries
+          cd batteries
           lake build
 
       - name: generate docs
         run: |
           cd ../
-          ./doc-gen4/test_docs.sh "std4" "doc-gen4"
+          ./doc-gen4/test_docs.sh "batteries" "doc-gen4"
