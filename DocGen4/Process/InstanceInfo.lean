@@ -30,16 +30,33 @@ where
       | _ => return ()
     | _ => return ()
 
+def getInstPriority (name : Name) : MetaM (Option Nat) := do
+  let instances := instanceExtension.getState (← getEnv)
+  let some instEntry := instances.instanceNames.find? name
+    | panic! s!"instance not in instance extension"
+  let priority := instEntry.priority
+  if priority == 1000 then
+    return none
+  else
+    return some priority
+
+
 def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
   let mut info ← DefinitionInfo.ofDefinitionVal v
+
+  if let some priority ← getInstPriority v.name then
+    info := { info with attrs := info.attrs.push s!"instance {priority}" }
+
   let some className ← isClass? v.type | panic! s!"isClass? on {v.name} returned none"
   if let some instAttr ← getDefaultInstance v.name className then
     info := { info with attrs := info.attrs.push instAttr }
+
   let typeNames ← getInstanceTypes v.type
+
   return {
     toDefinitionInfo := info,
     className,
-    typeNames
+    typeNames,
   }
 
 end DocGen4.Process
