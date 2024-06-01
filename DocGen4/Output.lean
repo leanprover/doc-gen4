@@ -38,6 +38,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let searchHtml := ReaderT.run search config |>.toString
   let docGenStatic := #[
     ("style.css", styleCss),
+    ("favicon.svg", faviconSvg),
     ("declaration-data.js", declarationDataCenterJs),
     ("color-scheme.js", colorSchemeJs),
     ("nav.js", navJs),

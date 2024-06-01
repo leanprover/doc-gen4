@@ -168,6 +168,7 @@ library_facet docs (lib) : FilePath := do
   let dataFile := basePath / "declarations" / "declaration-data.bmp"
   let staticFiles := #[
     basePath / "style.css",
+    basePath / "favicon.svg",
     basePath / "declaration-data.js",
     basePath / "color-scheme.js",
     basePath / "nav.js",

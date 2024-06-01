@@ -99,7 +99,8 @@ def baseDirBlackList : HashSet String :=
     "search.html",
     "search.js",
     "src",
-    "style.css"
+    "style.css",
+    "favicon.svg"
   ]
 
 partial def fromDirectoryAux (dir : System.FilePath) (previous : Name) : IO (Array Name) := do
