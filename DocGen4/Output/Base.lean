@@ -137,6 +137,7 @@ The following section contains all the statically included files that
 are used in documentation generation, notably JS and CSS ones.
 -/
   def styleCss : String := include_str "../../static/style.css"
+  def faviconSvg : String := include_str "../../static/favicon.svg"
   def declarationDataCenterJs : String := include_str "../../static/declaration-data.js"
   def colorSchemeJs : String := include_str "../../static/color-scheme.js"
   def jumpSrcJs : String := include_str "../../static/jump-src.js"
@@ -264,7 +265,8 @@ def baseHtmlHeadDeclarations : BaseHtmlM (Array Html) := do
     <meta name="viewport" content="width=device-width, initial-scale=1"/>,
     <link rel="stylesheet" href={s!"{← getRoot}style.css"}/>,
     <link rel="stylesheet" href={s!"{← getRoot}src/pygments.css"}/>,
-    <link rel="shortcut icon" href={s!"{← getRoot}favicon.ico"}/>,
+    <link rel="icon" href={s!"{← getRoot}favicon.svg"}/>,
+    <link rel="mask-icon" href={s!"{← getRoot}favicon.svg"} color="#000000"/>,
     <link rel="prefetch" href={s!"{← getRoot}/declarations/declaration-data.bmp"} as="image"/>
   ]
 

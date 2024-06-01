@@ -188,7 +188,8 @@ def baseHtml (content : Array Html) : AlectryonM Html := do
         <link rel="stylesheet" href={s!"{← getRoot}src/alectryon.css"}/>
         <link rel="stylesheet" href={s!"{← getRoot}src/pygments.css"}/>
         <link rel="stylesheet" href={s!"{← getRoot}src/docutils_basic.css"}/>
-        <link rel="shortcut icon" href={s!"{← getRoot}favicon.ico"}/>
+        <link rel="icon" href={s!"{← getRoot}favicon.svg"}/>,
+        <link rel="mask-icon" href={s!"{← getRoot}favicon.svg"} color="#000000"/>,
 
         <script defer="true" src={s!"{← getRoot}src/alectryon.js"}></script>
       </head>
