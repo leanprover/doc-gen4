@@ -36,7 +36,6 @@ def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy)
     -- TODO: Figure out whether this could cause some bugs
     fileName := default,
     fileMap := default,
-    catchRuntimeEx := true,
   }
 
   Prod.fst <$> Meta.MetaM.toIO (Process.process task) config { env := env } {} {}
