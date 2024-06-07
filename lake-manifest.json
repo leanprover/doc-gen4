@@ -1,4 +1,4 @@
-{"version": 7,
+{"version": "1.0.0",
  "packagesDir": ".lake/packages",
  "packages":
  [{"url": "https://github.com/xubaiw/CMark.lean",
@@ -13,7 +13,7 @@
   {"url": "https://github.com/fgdorais/lean4-unicode-basic",
    "type": "git",
    "subDir": null,
-   "rev": "effd8b8771cfd7ece69db99448168078e113c61f",
+   "rev": "ef8b0ae5d48e7d5f5d538bf8d66f6cdc7daba296",
    "name": "UnicodeBasic",
    "manifestFile": "lake-manifest.json",
    "inputRev": "main",

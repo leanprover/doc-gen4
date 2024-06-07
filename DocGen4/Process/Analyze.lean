@@ -121,25 +121,30 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
     if !relevantModules.contains moduleName then
       continue
 
-    try
-      let config := {
-        maxHeartbeats := 5000000,
-        options := ← getOptions,
-        fileName := ← getFileName,
-        fileMap := ← getFileMap,
-        catchRuntimeEx := true,
-      }
-      let analysis ← Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant (name, cinfo)) config { env := env } {} {}
-      if let some dinfo := analysis then
-        let moduleName := env.allImportedModuleNames.get! modidx
-        let module := res.find! moduleName
-        res := res.insert moduleName {module with members := module.members.push (ModuleMember.docInfo dinfo)}
-    catch e =>
-      if let some pos := e.getRef.getPos? then
-        let pos := (← getFileMap).toPosition pos
-        IO.println s!"WARNING: Failed to obtain information in file: {pos}, for: {name}, {← e.toMessageData.toString}"
-      else
-        IO.println s!"WARNING: Failed to obtain information for: {name}: {← e.toMessageData.toString}"
+    res ← tryCatchRuntimeEx
+      (do
+        let config := {
+          maxHeartbeats := 5000000,
+          options := ← getOptions,
+          fileName := ← getFileName,
+          fileMap := ← getFileMap,
+        }
+        let analysis ← Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant (name, cinfo)) config { env := env } {} {}
+        if let some dinfo := analysis then
+          let moduleName := env.allImportedModuleNames.get! modidx
+          let module := res.find! moduleName
+          return res.insert moduleName {module with members := module.members.push (ModuleMember.docInfo dinfo)}
+        else
+          return res
+      )
+      (fun e => do
+        if let some pos := e.getRef.getPos? then
+          let pos := (← getFileMap).toPosition pos
+          IO.println s!"WARNING: Failed to obtain information in file: {pos}, for: {name}, {← e.toMessageData.toString}"
+        else
+          IO.println s!"WARNING: Failed to obtain information for: {name}: {← e.toMessageData.toString}"
+        return res
+      )
 
   -- TODO: This could probably be faster if we did sorted insert above instead
   for (moduleName, module) in res.toArray do

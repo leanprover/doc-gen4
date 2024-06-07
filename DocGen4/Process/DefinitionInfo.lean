@@ -32,43 +32,35 @@ def processEq (eq : Name) : MetaM CodeWithInfos := do
   let type ← (mkConstWithFreshMVarLevels eq >>= inferType)
   stripArgs type prettyPrintTerm
 
+def computeEquations? (v : DefinitionVal) : MetaM (Array CodeWithInfos) := do
+  let eqs? ← getEqnsFor? v.name
+  match eqs? with
+  | some eqs =>
+    let eqs ← eqs.mapM processEq
+    return eqs
+  | none =>
+    let equations := #[← stripArgs (← valueToEq v) prettyPrintTerm]
+    return equations
+
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let isUnsafe := v.safety == DefinitionSafety.unsafe
   let isNonComputable := isNoncomputable (← getEnv) v.name
 
-  try
-    let eqs? ← getEqnsFor? v.name
+  let equations ←
+    tryCatchRuntimeEx
+      (.some <$> computeEquations? v)
+      (fun err => do
+        IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {← err.toMessageData.toString}"
+        return none)
 
-    match eqs? with
-    | some eqs =>
-      let equations ← eqs.mapM processEq
-      return {
-        toInfo := info,
-        isUnsafe,
-        hints := v.hints,
-        equations,
-        isNonComputable
-      }
-    | none =>
-      let equations := #[← stripArgs (← valueToEq v) prettyPrintTerm]
-      return {
-        toInfo := info,
-        isUnsafe,
-        hints := v.hints,
-        equations,
-        isNonComputable
-      }
-  catch err =>
-    IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {← err.toMessageData.toString}"
-    return {
-      toInfo := info,
-      isUnsafe,
-      hints := v.hints,
-      equations := none,
-      isNonComputable
-    }
-
+  return {
+    toInfo := info,
+    isUnsafe,
+    hints := v.hints,
+    equations,
+    isNonComputable
+  }
 
 
 end DocGen4.Process
