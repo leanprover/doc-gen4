@@ -233,8 +233,8 @@ def docStringToHtml (s : String) : HtmlM (Array Html) := do
   | Parsec.ParseResult.success _ res =>
     -- TODO: use `toString` instead of `eToStringEscaped`
     -- once <https://github.com/leanprover/lean4/issues/4411> is fixed
-    res.mapM fun x => do return Html.text <| eToStringEscaped (← modifyElement x)
-  | _ => return #[Html.text rendered]
+    res.mapM fun x => do return Html.raw <| eToStringEscaped (← modifyElement x)
+  | _ => return #[Html.raw rendered]
 
 end Output
 end DocGen4
