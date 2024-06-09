@@ -208,12 +208,27 @@ partial def modifyElement (element : Element) : HtmlM Element :=
         | _ => pure c
       return ⟨ name, attrs, newContents ⟩
 
+private def _root_.Lean.Xml.Attributes.toStringEscaped (as : Attributes) : String :=
+  as.fold (fun s n v => s ++ s!" {n}=\"{Html.escape v}\"") ""
+
+mutual
+
+private partial def _root_.Lean.Xml.eToStringEscaped : Element → String
+| Element.Element n a c => s!"<{n}{a.toStringEscaped}>{c.map cToStringEscaped |>.foldl (· ++ ·) ""}</{n}>"
+
+private partial def _root_.Lean.Xml.cToStringEscaped : Content → String
+| Content.Element e => eToStringEscaped e
+| Content.Comment c => s!"<!--{c}-->"
+| Content.Character c => Html.escape c
+
+end
+
 /-- Convert docstring to Html. -/
 def docStringToHtml (s : String) : HtmlM (Array Html) := do
-  let rendered := CMark.renderHtml (Html.escape s)
+  let rendered := CMark.renderHtml s
   match manyDocument rendered.mkIterator with
   | Parsec.ParseResult.success _ res =>
-    res.mapM fun x => do return Html.text <| toString (← modifyElement x)
+    res.mapM fun x => do return Html.text <| eToStringEscaped (← modifyElement x)
   | _ => return #[Html.text rendered]
 
 end Output
