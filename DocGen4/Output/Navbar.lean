@@ -31,7 +31,7 @@ partial def moduleListDir (h : Hierarchy) : BaseHtmlM Html := do
   let moduleLink ← moduleNameToLink h.getName
   let summary ← do
     if h.isFile then
-      pure <summary>{s!"{h.getName.getString!} ("}<a href={← moduleNameToLink h.getName}>file</a></summary>
+      pure <summary>{s!"{h.getName.getString!} ({<a href={← moduleNameToLink h.getName}>file</a>})"} </summary>
     else
       pure <summary>{h.getName.getString!}</summary>
   pure
