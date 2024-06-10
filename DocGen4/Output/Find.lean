@@ -11,7 +11,7 @@ def find : BaseHtmlM Html := do
     <html lang="en">
       <head>
         <link rel="preload" href={s!"{← getRoot}/declarations/declaration-data.bmp"} as="image"/>
-        <script>{s!"const SITE_ROOT={String.quote (← getRoot)};"}</script>
+        <script>{.raw s!"const SITE_ROOT={String.quote (← getRoot)};"}</script>
         <script type="module" async="true" src="./find.js"></script>
       </head>
       <body></body>
@@ -19,4 +19,3 @@ def find : BaseHtmlM Html := do
 
 end Output
 end DocGen4
-
