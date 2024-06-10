@@ -17,7 +17,7 @@ The HTML template used for all pages.
 def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := do
   let moduleConstant :=
     if let some module := ← getCurrentName then
-      #[<script>{s!"const MODULE_NAME={String.quote module.toString};"}</script>]
+      #[<script>{.raw s!"const MODULE_NAME={String.quote module.toString};"}</script>]
     else
       #[]
   pure
