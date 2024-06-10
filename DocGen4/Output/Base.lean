@@ -224,7 +224,7 @@ to as much information as possible.
 -/
 partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
   match i with
-  | .text t => return #[t]
+  | .text t => return #[Html.escape t]
   | .append tt => tt.foldlM (fun acc t => do return acc ++ (← infoFormatToHtml t)) #[]
   | .tag a t =>
     match a.info.val.info with
@@ -237,7 +237,7 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
         if (← getResult).name2ModIdx.contains name then
           match t with
           | .text t =>
-            let (front, t, back) := splitWhitespaces t
+            let (front, t, back) := splitWhitespaces <| Html.escape t
             let elem := <a href={← declNameToLink name}>{t}</a>
             return #[Html.text front, elem, Html.text back]
           | _ =>

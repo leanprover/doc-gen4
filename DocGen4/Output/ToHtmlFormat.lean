@@ -20,16 +20,36 @@ inductive Html where
   -- TODO(WN): it's nameless for shorter JSON; re-add names when we have deriving strategies for From/ToJson
   -- element (tag : String) (flatten : Bool) (attrs : Array HtmlAttribute) (children : Array Html)
   | element : String → Bool → Array (String × String) → Array Html → Html
-  /-- A text node, which will be escaped in the output -/
   | text : String → Html
-  /-- An arbitrary string containing HTML -/
-  | raw : String → Html
   deriving Repr, BEq, Inhabited, FromJson, ToJson
 
 instance : Coe String Html :=
   ⟨Html.text⟩
 
 namespace Html
+
+def attributesToString (attrs : Array (String × String)) :String :=
+  attrs.foldl (fun acc (k, v) => acc ++ " " ++ k ++ "=\"" ++ v ++ "\"") ""
+
+-- TODO: Termination proof
+partial def toStringAux : Html → String
+| element tag false attrs #[text s] => s!"<{tag}{attributesToString attrs}>{s}</{tag}>\n"
+| element tag false attrs #[child] => s!"<{tag}{attributesToString attrs}>\n{child.toStringAux}</{tag}>\n"
+| element tag false attrs children => s!"<{tag}{attributesToString attrs}>\n{children.foldl (· ++ toStringAux ·) ""}</{tag}>\n"
+| element tag true attrs children => s!"<{tag}{attributesToString attrs}>{children.foldl (· ++ toStringAux ·) ""}</{tag}>"
+| text s => s
+
+def toString (html : Html) : String :=
+  html.toStringAux.trimRight
+
+instance : ToString Html :=
+  ⟨toString⟩
+
+partial def textLength : Html → Nat
+| text s => s.length
+| element _ _ _ children =>
+  let lengths := children.map textLength
+  lengths.foldl Nat.add 0
 
 def escapePairs : Array (String × String) :=
   #[
@@ -41,29 +61,6 @@ def escapePairs : Array (String × String) :=
 
 def escape (s : String) : String :=
   escapePairs.foldl (fun acc (o, r) => acc.replace o r) s
-
-def attributesToString (attrs : Array (String × String)) :String :=
-  attrs.foldl (fun acc (k, v) => acc ++ " " ++ k ++ "=\"" ++ escape v ++ "\"") ""
-
--- TODO: Termination proof
-partial def toStringAux : Html → String
-| element tag false attrs #[text s] => s!"<{tag}{attributesToString attrs}>{escape s}</{tag}>\n"
-| element tag false attrs #[raw s] => s!"<{tag}{attributesToString attrs}>{s}</{tag}>\n"
-| element tag false attrs #[child] => s!"<{tag}{attributesToString attrs}>\n{child.toStringAux}</{tag}>\n"
-| element tag false attrs children => s!"<{tag}{attributesToString attrs}>\n{children.foldl (· ++ toStringAux ·) ""}</{tag}>\n"
-| element tag true attrs children => s!"<{tag}{attributesToString attrs}>{children.foldl (· ++ toStringAux ·) ""}</{tag}>"
-| text s => escape s
-| raw s => s
-
-def toString (html : Html) : String :=
-  html.toStringAux.trimRight
-
-partial def textLength : Html → Nat
-| raw s => s.length  -- measures lengths of escape sequences too!
-| text s => s.length
-| element _ _ _ children =>
-  let lengths := children.map textLength
-  lengths.foldl Nat.add 0
 
 end Html
 
