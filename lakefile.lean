@@ -11,8 +11,8 @@ lean_exe «doc-gen4» {
   supportInterpreter := true
 }
 
-require CMark from git
-  "https://github.com/xubaiw/CMark.lean" @ "main"
+require MD4Lean from git
+  "https://github.com/acmepjz/md4lean" @ "main"
 
 require «UnicodeBasic» from git
   "https://github.com/fgdorais/lean4-unicode-basic" @ "main"
