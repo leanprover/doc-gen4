@@ -14,20 +14,20 @@ def foundationalTypes : BaseHtmlM Html := templateLiftExtends (baseHtml "Foundat
       <p>Some of Lean's types are not defined in any Lean source files (even the <code>prelude</code>) since they come from its foundational type theory. This page provides basic documentation for these types.</p>
       <p>For a more in-depth explanation of Lean's type theory, refer to
       <a href="https://leanprover.github.io/theorem_proving_in_lean4/dependent_type_theory.html">TPiL</a>.</p>
-      
-      
+
+
       <h2 id="codesort-ucode"><code>Sort u</code></h2>
       <p><code>Sort u</code> is the type of types in Lean, and <code>Sort u : Sort (u + 1)</code>.</p>
       {← instancesForToHtml `_builtin_sortu}
-    
+
       <h2 id="codetype-ucode"><code>Type u</code></h2>
-      <p><code>Type u</code> is notation for <code>Sort (u + 1)</code>.</p>    
+      <p><code>Type u</code> is notation for <code>Sort (u + 1)</code>.</p>
       {← instancesForToHtml `_builtin_typeu}
-      
+
       <h2 id="codepropcode"><code>Prop</code></h2>
-      <p><code>Prop</code> is notation for <code>Sort 0</code>.</p>    
+      <p><code>Prop</code> is notation for <code>Sort 0</code>.</p>
       {← instancesForToHtml `_builtin_prop}
-    
+
       <h2 id="pi-types-codeπ-a--α-β-acode">Pi types, <code>{"(a : α) → β a"}</code></h2>
       <p>The type of dependent functions is known as a pi type.
       Non-dependent functions and implications are a special case.</p>
