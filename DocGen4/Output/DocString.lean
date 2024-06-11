@@ -228,7 +228,9 @@ end
 
 /-- Convert docstring to Html. -/
 def docStringToHtml (s : String) : HtmlM (Array Html) := do
-  let rendered := MD4Lean.renderHtml s
+  let rendered := match MD4Lean.renderHtml s with
+    | .some res => res
+    | _ => "" -- TODO: should print some error message
   match manyDocument rendered.mkIterator with
   | Parsec.ParseResult.success _ res =>
     -- TODO: use `toString` instead of `eToStringEscaped`
