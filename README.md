@@ -35,8 +35,7 @@ need to serve them from a proper http server for it to work. An easy way to do t
 ## Requirements to run `doc-gen4`
 In order to compile itself `doc-gen4` requires:
 - a Lean 4 or `elan` installation
-- a C compiler
-- being on a Linux or MacOS machine (other operating systems, including Windows, are not tested)
+- a C compiler if on Linux or MacOS (on Windows it will use Lean's built-in clang compiler)
 
 Apart from this the only requirement for `lake -Kenv=dev build Test:docs` to work is that your
 target library builds, that is `lake build Test` exits without an error. If this requirement

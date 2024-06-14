@@ -4,7 +4,7 @@
  [{"url": "https://github.com/acmepjz/md4lean",
    "type": "git",
    "subDir": null,
-   "rev": "d812b96744f9b60879cbfa9c436de2b95003db2a",
+   "rev": "9148a0a7506099963925cf239c491fcda5ed0044",
    "name": "MD4Lean",
    "manifestFile": "lake-manifest.json",
    "inputRev": "main",
