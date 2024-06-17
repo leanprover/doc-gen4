@@ -11,7 +11,7 @@ namespace Output
 
 open scoped DocGen4.Jsx
 
-def search : BaseHtmlM Html := do templateExtends (baseHtml "Search") <|
+def search : BaseHtmlM Html := do templateExtends (baseHtml "Search") <| do
   pure <|
     <main>
       <h1> Search Results </h1>
