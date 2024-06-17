@@ -11,8 +11,8 @@ namespace Output
 
 open scoped DocGen4.Jsx
 
-def search : BaseHtmlM Html := do templateExtends (baseHtml "Search") <| do
-  pure
+def search : BaseHtmlM Html := do templateExtends (baseHtml "Search") <|
+  pure <|
     <main>
       <h1> Search Results </h1>
       <label for="search_page_query">Query:</label>
@@ -36,9 +36,9 @@ def search : BaseHtmlM Html := do templateExtends (baseHtml "Search") <| do
         <input type="checkbox" id="opaque_checkbox" class="kind_checkbox" value="opaque" checked="checked" />
         <label for="opaque_checkbox">opaque</label>
       </div>
-
+      
       <script>
-        {.raw "document.getElementById('search_page_query').value = new URL(window.location.href).searchParams.get('q')"}
+        {.raw "document.getElementById(\"search_page_query\").value = new URL(window.location.href).searchParams.get(\"q\")}
       </script>
       <div id="search_results">
       </div>
