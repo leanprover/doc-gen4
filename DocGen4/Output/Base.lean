@@ -46,10 +46,6 @@ structure SiteContext where
   A function to link declaration names to their source URLs, usually Github ones.
   -/
   sourceLinker : Name → Option DeclarationRange → String
-  /--
-  Whether LeanInk is enabled
-  -/
-  leanInkEnabled : Bool
 
 def setCurrentName (name : Name) (ctx : SiteBaseContext) := {ctx with currentName := some name}
 
@@ -85,7 +81,6 @@ def getHierarchy : BaseHtmlM Hierarchy := do return (← read).hierarchy
 def getCurrentName : BaseHtmlM (Option Name) := do return (← read).currentName
 def getResult : HtmlM AnalyzerResult := do return (← read).result
 def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do return (← read).sourceLinker module range
-def leanInkEnabled? : HtmlM Bool := do return (← read).leanInkEnabled
 
 /--
 If a template is meant to be extended because it for example only provides the
@@ -109,13 +104,6 @@ Returns the HTML doc-gen4 link to a module name.
 -/
 def moduleToHtmlLink (module : Name) : BaseHtmlM Html := do
   return <a href={← moduleNameToLink module}>{module.toString}</a>
-
-/--
-Returns the LeanInk link to a module name.
--/
-def moduleNameToInkLink (n : Name) : BaseHtmlM String := do
-  let parts := "src" :: n.components.map Name.toString
-  return (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 /--
 Returns the path to the HTML file that contains information about a module.
@@ -150,10 +138,6 @@ are used in documentation generation, notably JS and CSS ones.
   def findJs : String := include_str "../../static/find/find.js"
   def mathjaxConfigJs : String := include_str "../../static/mathjax-config.js"
 
-  def alectryonCss : String := include_str "../../static/alectryon/alectryon.css"
-  def alectryonJs : String := include_str "../../static/alectryon/alectryon.js"
-  def docUtilsCss : String  := include_str "../../static/alectryon/docutils_basic.css"
-  def pygmentsCss : String  := include_str "../../static/alectryon/pygments.css"
 end Static
 
 /--
@@ -169,14 +153,6 @@ Returns the HTML doc-gen4 link to a declaration name.
 -/
 def declNameToHtmlLink (name : Name) : HtmlM Html := do
   return <a href={← declNameToLink name}>{name.toString}</a>
-
-/--
-Returns the LeanInk link to a declaration name.
--/
-def declNameToInkLink (name : Name) : HtmlM String := do
-  let res ← getResult
-  let module := res.moduleNames[res.name2ModIdx.find! name |>.toNat]!
-  return (← moduleNameToInkLink module) ++ "#" ++ name.toString
 
 /--
 Returns a name splitted into parts.
@@ -264,7 +240,6 @@ def baseHtmlHeadDeclarations : BaseHtmlM (Array Html) := do
     <meta charset="UTF-8"/>,
     <meta name="viewport" content="width=device-width, initial-scale=1"/>,
     <link rel="stylesheet" href={s!"{← getRoot}style.css"}/>,
-    <link rel="stylesheet" href={s!"{← getRoot}src/pygments.css"}/>,
     <link rel="icon" href={s!"{← getRoot}favicon.svg"}/>,
     <link rel="mask-icon" href={s!"{← getRoot}favicon.svg"} color="#000000"/>,
     <link rel="prefetch" href={s!"{← getRoot}/declarations/declaration-data.bmp"} as="image"/>

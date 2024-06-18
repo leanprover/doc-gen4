@@ -20,9 +20,6 @@ require «UnicodeBasic» from git
 require Cli from git
   "https://github.com/mhuisi/lean4-cli" @ "nightly"
 
-require leanInk from git
-  "https://github.com/hargonix/LeanInk" @ "doc-gen"
-
 /--
 Obtain the Github URL of a project by parsing the origin remote.
 -/
@@ -184,11 +181,7 @@ library_facet docs (lib) : FilePath := do
     basePath / "navbar.html",
     basePath / "search.html",
     basePath / "find" / "index.html",
-    basePath / "find" / "find.js",
-    basePath / "src"  / "alectryon.css",
-    basePath / "src"  / "alectryon.js",
-    basePath / "src"  / "docutils_basic.css",
-    basePath / "src"  / "pygments.css"
+    basePath / "find" / "find.js"
   ]
   coreJob.bindAsync fun _ coreInputTrace => do
     exeJob.bindAsync fun exeFile exeTrace => do

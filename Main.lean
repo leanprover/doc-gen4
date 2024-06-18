@@ -15,7 +15,7 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   let sourceUri := p.positionalArg! "sourceUri" |>.as! String
   let (doc, hierarchy) ← load <| .loadAllLimitAnalysis relevantModules
   let baseConfig ← getSimpleBaseContext hierarchy
-  htmlOutputResults baseConfig doc (some sourceUri) (p.hasFlag "ink")
+  htmlOutputResults baseConfig doc (some sourceUri)
   return 0
 
 def runIndexCmd (_p : Parsed) : IO UInt32 := do
@@ -27,7 +27,7 @@ def runIndexCmd (_p : Parsed) : IO UInt32 := do
 def runGenCoreCmd (_p : Parsed) : IO UInt32 := do
   let (doc, hierarchy) ← loadCore
   let baseConfig ← getSimpleBaseContext hierarchy
-  htmlOutputResults baseConfig doc none (ink := False)
+  htmlOutputResults baseConfig doc none
   return 0
 
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
@@ -38,9 +38,6 @@ def runDocGenCmd (_p : Parsed) : IO UInt32 := do
 def singleCmd := `[Cli|
   single VIA runSingleCmd;
   "Only generate the documentation for the module it was given, might contain broken links unless all documentation is generated."
-
-  FLAGS:
-    ink; "Render the files with LeanInk in addition"
 
   ARGS:
     module : String; "The module to generate the HTML for. Does not have to be part of topLevelModules."

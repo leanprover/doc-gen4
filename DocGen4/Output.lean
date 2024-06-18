@@ -14,7 +14,6 @@ import DocGen4.Output.SourceLinker
 import DocGen4.Output.Search
 import DocGen4.Output.ToJson
 import DocGen4.Output.FoundationalTypes
-import DocGen4.LeanInk.Process
 import Lean.Data.HashMap
 
 namespace DocGen4
@@ -66,33 +65,19 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   for (fileName, content) in findStatic do
     FS.writeFile (findBasePath / fileName) content
 
-  let alectryonStatic := #[
-    ("alectryon.css", alectryonCss),
-    ("alectryon.js", alectryonJs),
-    ("docutils_basic.css", docUtilsCss),
-    ("pygments.css", pygmentsCss)
-  ]
-
-  for (fileName, content) in alectryonStatic do
-    FS.writeFile (srcBasePath / fileName) content
-
 def htmlOutputDeclarationDatas (result : AnalyzerResult) : HtmlT IO Unit := do
   for (_, mod) in result.moduleInfo.toArray do
     let jsonDecls ← Module.toJson mod
     FS.writeFile (declarationsBasePath / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
 
-def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String) (ink : Bool) : IO Unit := do
+def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String) : IO Unit := do
   let config : SiteContext := {
     result := result,
     sourceLinker := SourceLinker.sourceLinker sourceUrl?
-    leanInkEnabled := ink
   }
 
   FS.createDirAll basePath
   FS.createDirAll declarationsBasePath
-
-  let some p := (← IO.getEnv "LEAN_SRC_PATH") | throw <| IO.userError "LEAN_SRC_PATH not found in env"
-  let sourceSearchPath := System.SearchPath.parse p
 
   discard <| htmlOutputDeclarationDatas result |>.run config baseConfig
 
@@ -108,12 +93,6 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     let moduleHtml := moduleToHtml module |>.run config baseConfig
     FS.createDirAll fileDir
     FS.writeFile filePath moduleHtml.toString
-    if ink then
-      if let some inputPath ← Lean.SearchPath.findModuleWithExt sourceSearchPath "lean" module.name then
-        -- path: 'basePath/src/module/components/till/last.html'
-        -- The last component is the file name, however we are in src/ here so dont drop it this time
-        let baseConfig := {baseConfig with depthToRoot := modName.components.length }
-        Process.LeanInk.runInk inputPath |>.run config baseConfig
 
 def getSimpleBaseContext (hierarchy : Hierarchy) : IO SiteBaseContext := do
   return {
@@ -145,9 +124,9 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
 The main entrypoint for outputting the documentation HTML based on an
 `AnalyzerResult`.
 -/
-def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (sourceUrl? : Option String) (ink : Bool) : IO Unit := do
+def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (sourceUrl? : Option String) : IO Unit := do
   let baseConfig ← getSimpleBaseContext hierarchy
-  htmlOutputResults baseConfig result sourceUrl? ink
+  htmlOutputResults baseConfig result sourceUrl?
   htmlOutputIndex baseConfig
 
 end DocGen4
