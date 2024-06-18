@@ -114,23 +114,12 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
       #[Html.element "div" false #[("class", "attributes")] #[attrStr]]
     else
       #[]
-  let leanInkHtml ← do
-    if ← leanInkEnabled? then
-      pure #[
-        <div class="ink_link">
-          <a href={← declNameToInkLink doc.getName}>ink</a>
-        </div>
-      ]
-    else
-      pure #[]
-
   pure
     <div class="decl" id={doc.getName.toString}>
       <div class={doc.getKind}>
         <div class="gh_link">
           <a href={← getSourceUrl module doc.getDeclarationRange}>source</a>
         </div>
-        [leanInkHtml]
         [attrsHtml]
         {← docInfoHeader doc}
         [docStringHtml]
