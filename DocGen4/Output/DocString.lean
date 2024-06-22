@@ -195,10 +195,8 @@ def extendAnchor (el : Element) (funName : String) (backrefs : Array BackrefItem
         }
         let newBackrefs := backrefs.push newBackref
         let changeName : Bool :=
-          if contents.size = 1 then
-            match contents.get! 0 with
-            | .Character s => s == bibitem.citekey
-            | _ => false
+          if let #[.Character s] := contents then
+            s == bibitem.citekey
           else
             false
         let newContents : Array Content :=

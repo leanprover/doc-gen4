@@ -206,7 +206,7 @@ def moduleToHtml (module : Process.Module) (backrefs : Array BackrefItem) :
   let mut newBackrefs := backrefs
   let mut idx : Nat := 0
   while h : LT.lt idx relevantMembers.size do
-    let (c, b') ← moduleMemberToHtml module.name (relevantMembers.get ⟨idx, h⟩) newBackrefs
+    let (c, b') ← moduleMemberToHtml module.name relevantMembers[idx] newBackrefs
     memberDocs := memberDocs.push c
     newBackrefs := b'
     idx := idx + 1

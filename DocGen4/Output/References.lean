@@ -11,10 +11,6 @@ The main function is `DocGen4.preprocessBibFile` which preprocess
 the contents of bib file using user provided `process` function,
 and save the bib file and processed json file to output directory.
 
-Currently we have an implementation of `process` function using `pybtex`,
-which is `DocGen4.Pybtex.process`. In the future this may be replaced by
-a pure Lean implementation.
-
 -/
 
 open Lean DocGen4 Output
