@@ -39,7 +39,7 @@ structure BackrefItem where
   funName : String
   /-- The index of the backref in that module, starting from zero. -/
   index : Nat
-  deriving FromJson, ToJson
+  deriving FromJson, ToJson, Inhabited
 
 /--
 The context used in the `BaseHtmlM` monad for HTML templating.

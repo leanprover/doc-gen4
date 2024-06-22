@@ -41,7 +41,7 @@ open scoped DocGen4.Jsx
 def refItem (ref : BibItem) (backrefs : Array BackrefItem) : BaseHtmlM Html := do
   let backrefs := backrefs.filter (fun x => x.citekey == ref.citekey)
   let toHtml (i : Nat) : BaseHtmlM (Array Html) := do
-    let .some backref := backrefs.get? i | unreachable!
+    let backref := backrefs[i]!
     let href := s!"{moduleNameToFile "" backref.modName}#_backref_{backref.index}"
     let title := s!"File: {backref.modName}" ++
       if backref.funName.isEmpty then "" else s!"\nLocation: {backref.funName}"
