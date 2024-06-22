@@ -27,9 +27,14 @@ def collectBackrefs : IO (Array BackrefItem) := do
   for entry in ← System.FilePath.readDir declarationsBasePath do
     if entry.fileName.startsWith "backrefs-" && entry.fileName.endsWith ".json" then
       let fileContent ← FS.readFile entry.path
-      let .ok jsonContent := Json.parse fileContent | unreachable!
-      let .ok (arr : Array BackrefItem) := fromJson? jsonContent | unreachable!
-      backrefs := backrefs ++ arr
+      match Json.parse fileContent with
+      | .error err =>
+        throw <| IO.userError s!"failed to parse file '{entry.path}' as json: {err}"
+      | .ok jsonContent =>
+        match fromJson? jsonContent with
+        | .error err =>
+          throw <| IO.userError s!"failed to parse file '{entry.path}': {err}"
+        | .ok (arr : Array BackrefItem) => backrefs := backrefs ++ arr
   return backrefs
 
 def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
@@ -112,14 +117,20 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
 
 def getSimpleBaseContext (hierarchy : Hierarchy) : IO SiteBaseContext := do
   let contents ← FS.readFile (declarationsBasePath / "references.json") <|> (pure "[]")
-  let .ok jsonContent := Json.parse contents | unreachable!
-  let .ok (refs : Array BibItem) := fromJson? jsonContent | unreachable!
-  return {
-    depthToRoot := 0
-    currentName := none
-    hierarchy := hierarchy
-    refs := refs
-  }
+  match Json.parse contents with
+  | .error err =>
+    throw <| IO.userError s!"Failed to parse 'references.json': {err}"
+  | .ok jsonContent =>
+    match fromJson? jsonContent with
+    | .error err =>
+      throw <| IO.userError s!"Failed to parse 'references.json': {err}"
+    | .ok (refs : Array BibItem) =>
+      return {
+        depthToRoot := 0
+        currentName := none
+        hierarchy := hierarchy
+        refs := refs
+      }
 
 def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   htmlOutputSetup baseConfig
@@ -129,10 +140,16 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   for entry in ← System.FilePath.readDir declarationsBasePath do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
       let fileContent ← FS.readFile entry.path
-      let .ok jsonContent := Json.parse fileContent | unreachable!
-      let .ok (module : JsonModule) := fromJson? jsonContent | unreachable!
-      index := index.addModule module |>.run baseConfig
-      headerIndex := headerIndex.addModule module
+      match Json.parse fileContent with
+      | .error err =>
+        throw <| IO.userError s!"failed to parse file '{entry.path}' as json: {err}"
+      | .ok jsonContent =>
+        match fromJson? jsonContent with
+        | .error err =>
+          throw <| IO.userError s!"failed to parse file '{entry.path}': {err}"
+        | .ok (module : JsonModule) =>
+          index := index.addModule module |>.run baseConfig
+          headerIndex := headerIndex.addModule module
 
   let finalJson := toJson index
   let finalHeaderJson := toJson headerIndex
