@@ -15,8 +15,9 @@ def classInstancesToHtml (className : Name) : HtmlM Html := do
         <ul id={s!"instances-list-{className}"} class="instances-list"></ul>
     </details>
 
-def classToHtml (i : Process.ClassInfo) : HtmlM (Array Html) := do
-  structureToHtml i
+def classToHtml (i : Process.ClassInfo) (backrefs : Array BackrefItem) :
+    HtmlM (Array Html × Array BackrefItem) := do
+  structureToHtml i backrefs
 
 end Output
 end DocGen4

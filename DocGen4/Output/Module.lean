@@ -86,18 +86,19 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
 /--
 The main entry point for rendering a single declaration inside a given module.
 -/
-def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
+def docInfoToHtml (module : Name) (doc : DocInfo) (backrefs : Array BackrefItem) :
+    HtmlM (Html × Array BackrefItem) := do
   -- basic info like headers, types, structure fields, etc.
-  let docInfoHtml ← match doc with
-  | DocInfo.inductiveInfo i => inductiveToHtml i
-  | DocInfo.structureInfo i => structureToHtml i
-  | DocInfo.classInfo i => classToHtml i
-  | DocInfo.classInductiveInfo i => classInductiveToHtml i
-  | _ => pure #[]
+  let (docInfoHtml, backrefs) ← match doc with
+  | DocInfo.inductiveInfo i => inductiveToHtml i backrefs
+  | DocInfo.structureInfo i => structureToHtml i backrefs
+  | DocInfo.classInfo i => classToHtml i backrefs
+  | DocInfo.classInductiveInfo i => classInductiveToHtml i backrefs
+  | _ => pure (#[], backrefs)
   -- rendered doc stirng
-  let docStringHtml ← match doc.getDocString with
-  | some s => docStringToHtml s
-  | none => pure #[]
+  let (docStringHtml, backrefs) ← match doc.getDocString with
+  | some s => docStringToHtml s doc.getName.toString backrefs
+  | none => pure (#[], backrefs)
   -- extra information like equations and instances
   let extraInfoHtml ← match doc with
   | DocInfo.classInfo i => pure #[← classInstancesToHtml i.name]
@@ -115,7 +116,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
     else
       #[]
   pure
-    <div class="decl" id={doc.getName.toString}>
+    (<div class="decl" id={doc.getName.toString}>
       <div class={doc.getKind}>
         <div class="gh_link">
           <a href={← getSourceUrl module doc.getDeclarationRange}>source</a>
@@ -126,26 +127,29 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
         [docInfoHtml]
         [extraInfoHtml]
       </div>
-    </div>
+    </div>, backrefs)
 
 /--
 Rendering a module doc string, that is the ones with an ! after the opener
 as HTML.
 -/
-def modDocToHtml (mdoc : ModuleDoc) : HtmlM Html := do
+def modDocToHtml (mdoc : ModuleDoc) (backrefs : Array BackrefItem) :
+    HtmlM (Html × Array BackrefItem) := do
+  let (h, newBackrefs) ← docStringToHtml mdoc.doc "" backrefs
   pure
-    <div class="mod_doc">
-      [← docStringToHtml mdoc.doc]
-    </div>
+    (<div class="mod_doc">
+      [h]
+    </div>, newBackrefs)
 
 /--
 Render a module member, that is either a module doc string or a declaration
 as HTML.
 -/
-def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := do
+def moduleMemberToHtml (module : Name) (member : ModuleMember) (backrefs : Array BackrefItem) :
+    HtmlM (Html × Array BackrefItem) := do
   match member with
-  | ModuleMember.docInfo d => docInfoToHtml module d
-  | ModuleMember.modDoc d => modDocToHtml d
+  | ModuleMember.docInfo d => docInfoToHtml module d backrefs
+  | ModuleMember.modDoc d => modDocToHtml d backrefs
 
 def declarationToNavLink (module : Name) : Html :=
   <div class="nav_link">
@@ -195,14 +199,23 @@ def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
 /--
 The main entry point to rendering the HTML for an entire module.
 -/
-def moduleToHtml (module : Process.Module) : HtmlM Html := withTheReader SiteBaseContext (setCurrentName module.name) do
+def moduleToHtml (module : Process.Module) (backrefs : Array BackrefItem) :
+    HtmlM (Html × Array BackrefItem) := withTheReader SiteBaseContext (setCurrentName module.name) do
   let relevantMembers := module.members.filter Process.ModuleMember.shouldRender
-  let memberDocs ← relevantMembers.mapM (moduleMemberToHtml module.name)
+  let mut memberDocs : Array Html := #[]
+  let mut newBackrefs := backrefs
+  let mut idx : Nat := 0
+  while h : LT.lt idx relevantMembers.size do
+    let (c, b') ← moduleMemberToHtml module.name (relevantMembers.get ⟨idx, h⟩) newBackrefs
+    memberDocs := memberDocs.push c
+    newBackrefs := b'
+    idx := idx + 1
   let memberNames := filterDocInfo relevantMembers |>.map DocInfo.getName
-  templateLiftExtends (baseHtmlGenerator module.name.toString) <| pure #[
+  let moduleToHtml' : HtmlM Html := templateLiftExtends (baseHtmlGenerator module.name.toString) <| pure #[
     ← internalNav memberNames module.name,
     Html.element "main" false #[] memberDocs
   ]
+  return (← moduleToHtml', newBackrefs)
 
 end Output
 end DocGen4
