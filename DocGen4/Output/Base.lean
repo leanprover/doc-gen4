@@ -65,7 +65,7 @@ structure SiteBaseContext where
   refs : Array BibItem
 
 /--
-The context used in the `HtmlM` monad for HTML templating.
+The read-only context used in the `HtmlM` monad for HTML templating.
 -/
 structure SiteContext where
   /--
@@ -82,9 +82,9 @@ structure SiteContext where
   refsMap : HashMap String BibItem
 
 /--
-The context used in the `ModuleToHtmlM` monad for HTML templating.
+The writable state used in the `HtmlM` monad for HTML templating.
 -/
-structure ModuleToHtmlContext where
+structure SiteState where
   /--
   The list of back references, as an array.
   -/
@@ -95,24 +95,19 @@ def setCurrentName (name : Name) (ctx : SiteBaseContext) := {ctx with currentNam
 abbrev BaseHtmlT := ReaderT SiteBaseContext
 abbrev BaseHtmlM := BaseHtmlT Id
 
-abbrev HtmlT (m) := ReaderT SiteContext (BaseHtmlT m)
+abbrev HtmlT (m) := StateT SiteState <| ReaderT SiteContext <| BaseHtmlT m
 abbrev HtmlM := HtmlT Id
 
-abbrev ModuleToHtmlT (m) := StateT ModuleToHtmlContext (HtmlT m)
-abbrev ModuleToHtmlM := ModuleToHtmlT Id
+def HtmlT.run (x : HtmlT m α) (state : SiteState) (ctx : SiteContext)
+    (baseCtx : SiteBaseContext) : m (α × SiteState) :=
+  StateT.run x state |>.run ctx |>.run baseCtx
 
-def HtmlT.run (x : HtmlT m α) (ctx : SiteContext) (baseCtx : SiteBaseContext) : m α :=
-  ReaderT.run x ctx |>.run baseCtx
-
-def HtmlM.run (x : HtmlM α) (ctx : SiteContext) (baseCtx : SiteBaseContext) : α :=
-  ReaderT.run x ctx |>.run baseCtx |>.run
-
-def ModuleToHtmlM.run (x : ModuleToHtmlM α) (mthCtx : ModuleToHtmlContext)
-    (ctx : SiteContext) (baseCtx : SiteBaseContext) : α × ModuleToHtmlContext :=
-  HtmlM.run (StateT.run x mthCtx) ctx baseCtx
+def HtmlM.run (x : HtmlM α) (state : SiteState) (ctx : SiteContext)
+    (baseCtx : SiteBaseContext) : α × SiteState :=
+  StateT.run x state |>.run ctx |>.run baseCtx |>.run
 
 instance [Monad m] : MonadLift HtmlM (HtmlT m) where
-  monadLift x := do return x.run (← readThe SiteContext) (← readThe SiteBaseContext)
+  monadLift x := do return (x.run (← getThe SiteState) (← readThe SiteContext) (← readThe SiteBaseContext)).1
 
 instance [Monad m] : MonadLift BaseHtmlM (BaseHtmlT m) where
   monadLift x := do return x.run (← readThe SiteBaseContext)

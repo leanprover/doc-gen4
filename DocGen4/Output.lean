@@ -99,7 +99,7 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
   FS.createDirAll basePath
   FS.createDirAll declarationsBasePath
 
-  discard <| htmlOutputDeclarationDatas result |>.run config baseConfig
+  discard <| htmlOutputDeclarationDatas result |>.run {} config baseConfig
 
   for (modName, module) in result.moduleInfo.toArray do
     let fileDir := moduleNameToDirectory basePath modName

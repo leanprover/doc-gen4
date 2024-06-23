@@ -121,9 +121,9 @@ def extendLink (s : String)  : HtmlM String := do
 
 /-- Apply function `modifyElement` to an array of `Lean.Xml.Content`s. -/
 def modifyContents (contents : Array Content) (funName : String)
-    (modifyElement : Element → String → ModuleToHtmlM Element) :
-    ModuleToHtmlM (Array Content) := do
-  let modifyContent (c : Content) : ModuleToHtmlM Content := do
+    (modifyElement : Element → String → HtmlM Element) :
+    HtmlM (Array Content) := do
+  let modifyContent (c : Content) : HtmlM Content := do
     match c with
     | Content.Element e =>
       pure (.Element (← modifyElement e funName))
@@ -133,14 +133,14 @@ def modifyContents (contents : Array Content) (funName : String)
 
 /-- Apply function `modifyElement` to an array of `Lean.Xml.Element`s. -/
 def modifyElements (elements : Array Element) (funName : String)
-    (modifyElement : Element → String → ModuleToHtmlM Element) :
-    ModuleToHtmlM (Array Element) := do
+    (modifyElement : Element → String → HtmlM Element) :
+    HtmlM (Array Element) := do
   elements.mapM (modifyElement · funName)
 
 /-- Add attributes for heading. -/
 def addHeadingAttributes (el : Element) (funName : String)
-    (modifyElement : Element → String → ModuleToHtmlM Element) :
-    ModuleToHtmlM Element := do
+    (modifyElement : Element → String → HtmlM Element) :
+    HtmlM Element := do
   match el with
   | Element.Element name attrs contents => do
     let id := xmlGetHeadingId el
@@ -156,29 +156,35 @@ def addHeadingAttributes (el : Element) (funName : String)
       |>.push (Content.Character " ")
       |>.push (Content.Element anchor) ⟩
 
+/-- Find a bibitem if `href` starts with `thePrefix`. -/
+def findBibitem? (href : String) (thePrefix : String := "") : HtmlM (Option BibItem) := do
+  if href.startsWith thePrefix then
+    pure <| (← read).refsMap.find? (href.drop thePrefix.length)
+  else
+    pure .none
+
+/-- Add a backref of the given `citeKey` and `funName` to current document, and returns it. -/
+def addBackref (citekey funName : String) : HtmlM BackrefItem := do
+  let newBackref : BackrefItem := {
+    citekey := citekey
+    modName := (← readThe SiteBaseContext).currentName.get!
+    funName := funName
+    index := (← get).backrefs.size
+  }
+  modify fun cfg => { cfg with backrefs := cfg.backrefs.push newBackref }
+  pure newBackref
+
 /-- Extend anchor links. -/
-def extendAnchor (el : Element) (funName : String) :
-    ModuleToHtmlM Element := do
+def extendAnchor (el : Element) (funName : String) : HtmlM Element := do
   match el with
   | Element.Element name attrs contents =>
     match attrs.find? "href" with
     | some href =>
-      let refsMap := (← read).refsMap
-      let bibitem : Option BibItem :=
-        if href.startsWith "references.html#ref_" then
-          refsMap.find? (href.drop "references.html#ref_".length)
-        else
-          .none
+      let bibitem ← findBibitem? href "references.html#ref_"
       let attrs := attrs.insert "href" (← extendLink href)
       match bibitem with
       | .some bibitem =>
-        let newBackref : BackrefItem := {
-          citekey := bibitem.citekey
-          modName := (← readThe SiteBaseContext).currentName.get!
-          funName := funName
-          index := (← get).backrefs.size
-        }
-        modify fun cfg => { cfg with backrefs := cfg.backrefs.push newBackref }
+        let newBackref ← addBackref bibitem.citekey funName
         let changeName : Bool :=
           if let #[.Character s] := contents then
             s == bibitem.citekey
@@ -232,8 +238,7 @@ def autoLink (el : Element) : HtmlM Element := do
       cats.any (Unicode.isInGeneralCategory c)
 
 /-- Core function of modifying the cmark rendered docstring html. -/
-partial def modifyElement (element : Element) (funName : String) :
-    ModuleToHtmlM Element :=
+partial def modifyElement (element : Element) (funName : String) : HtmlM Element :=
   match element with
   | el@(Element.Element name attrs contents) => do
     -- add id and class to <h_></h_>
@@ -268,8 +273,7 @@ partial def findAllReferences (refsMap : HashMap String BibItem) (s : String) (i
     ret
 
 /-- Convert docstring to Html. -/
-def docStringToHtml (docString : String) (funName : String) :
-    ModuleToHtmlM (Array Html) := do
+def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html) := do
   let refsMarkdown := "\n\n" ++ (String.join <|
     (findAllReferences (← read).refsMap docString).toList.map fun s =>
       s!"[{s}]: references.html#ref_{s}\n")

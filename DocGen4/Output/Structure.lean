@@ -11,7 +11,7 @@ open Lean
 /--
 Render a single field consisting of its documentation, its name and its type as HTML.
 -/
-def fieldToHtml (f : Process.NameInfo) : ModuleToHtmlM Html := do
+def fieldToHtml (f : Process.NameInfo) : HtmlM Html := do
   let shortName := f.name.componentsRev.head!.toString
   let name := f.name.toString
   if let some doc := f.doc then
@@ -30,7 +30,7 @@ def fieldToHtml (f : Process.NameInfo) : ModuleToHtmlM Html := do
 /--
 Render all information about a structure as HTML.
 -/
-def structureToHtml (i : Process.StructureInfo) : ModuleToHtmlM (Array Html) := do
+def structureToHtml (i : Process.StructureInfo) : HtmlM (Array Html) := do
   let structureHtml ← do
     if Name.isSuffixOf `mk i.ctor.name then
       pure

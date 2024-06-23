@@ -86,7 +86,7 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
 /--
 The main entry point for rendering a single declaration inside a given module.
 -/
-def docInfoToHtml (module : Name) (doc : DocInfo) : ModuleToHtmlM Html := do
+def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   -- basic info like headers, types, structure fields, etc.
   let docInfoHtml ← match doc with
   | DocInfo.inductiveInfo i => inductiveToHtml i
@@ -132,7 +132,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : ModuleToHtmlM Html := do
 Rendering a module doc string, that is the ones with an ! after the opener
 as HTML.
 -/
-def modDocToHtml (mdoc : ModuleDoc) : ModuleToHtmlM Html := do
+def modDocToHtml (mdoc : ModuleDoc) : HtmlM Html := do
   pure
     <div class="mod_doc">
       [← docStringToHtml mdoc.doc ""]
@@ -142,7 +142,7 @@ def modDocToHtml (mdoc : ModuleDoc) : ModuleToHtmlM Html := do
 Render a module member, that is either a module doc string or a declaration
 as HTML.
 -/
-def moduleMemberToHtml (module : Name) (member : ModuleMember) : ModuleToHtmlM Html := do
+def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := do
   match member with
   | ModuleMember.docInfo d => docInfoToHtml module d
   | ModuleMember.modDoc d => modDocToHtml d
@@ -195,12 +195,11 @@ def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
 /--
 The main entry point to rendering the HTML for an entire module.
 -/
-def moduleToHtml (module : Process.Module) :
-    ModuleToHtmlM Html := withTheReader SiteBaseContext (setCurrentName module.name) do
+def moduleToHtml (module : Process.Module) : HtmlM Html := withTheReader SiteBaseContext (setCurrentName module.name) do
   let relevantMembers := module.members.filter Process.ModuleMember.shouldRender
   let memberDocs ← relevantMembers.mapM (moduleMemberToHtml module.name)
   let memberNames := filterDocInfo relevantMembers |>.map DocInfo.getName
-  letI : MonadLift BaseHtmlM ModuleToHtmlM := {
+  letI : MonadLift BaseHtmlM HtmlM := {
     monadLift := fun x => do return x.run (← readThe SiteBaseContext)
   }
   templateLiftExtends (baseHtmlGenerator module.name.toString) <| pure #[

@@ -15,7 +15,7 @@ def instancesForToHtml (typeName : Name) : BaseHtmlM Html := do
         <ul class="instances-for-enum"></ul>
     </details>
 
-def ctorToHtml (c : Process.NameInfo) : ModuleToHtmlM Html := do
+def ctorToHtml (c : Process.NameInfo) : HtmlM Html := do
   let shortName := c.name.componentsRev.head!.toString
   let name := c.name.toString
   if let some doc := c.doc then
@@ -31,7 +31,7 @@ def ctorToHtml (c : Process.NameInfo) : ModuleToHtmlM Html := do
         {shortName} : [← infoFormatToHtml c.type]
       </li>
 
-def inductiveToHtml (i : Process.InductiveInfo) : ModuleToHtmlM (Array Html) := do
+def inductiveToHtml (i : Process.InductiveInfo) : HtmlM (Array Html) := do
   let constructorsHtml := <ul class="constructors">[← i.ctors.toArray.mapM ctorToHtml]</ul>
   return #[constructorsHtml]
 

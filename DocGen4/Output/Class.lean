@@ -15,7 +15,7 @@ def classInstancesToHtml (className : Name) : HtmlM Html := do
         <ul id={s!"instances-list-{className}"} class="instances-list"></ul>
     </details>
 
-def classToHtml (i : Process.ClassInfo) : ModuleToHtmlM (Array Html) := do
+def classToHtml (i : Process.ClassInfo) : HtmlM (Array Html) := do
   structureToHtml i
 
 end Output
