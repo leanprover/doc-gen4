@@ -163,17 +163,6 @@ def findBibitem? (href : String) (thePrefix : String := "") : HtmlM (Option BibI
   else
     pure .none
 
-/-- Add a backref of the given `citeKey` and `funName` to current document, and returns it. -/
-def addBackref (citekey funName : String) : HtmlM BackrefItem := do
-  let newBackref : BackrefItem := {
-    citekey := citekey
-    modName := (← readThe SiteBaseContext).currentName.get!
-    funName := funName
-    index := (← get).backrefs.size
-  }
-  modify fun cfg => { cfg with backrefs := cfg.backrefs.push newBackref }
-  pure newBackref
-
 /-- Extend anchor links. -/
 def extendAnchor (el : Element) (funName : String) : HtmlM Element := do
   match el with
@@ -271,10 +260,6 @@ partial def findAllReferences (refsMap : HashMap String BibItem) (s : String) (i
       ret
   else
     ret
-
-/-- Add an error message to errors. -/
-def addError (err : String) : HtmlM Unit := do
-  modify fun cfg => { cfg with errors := cfg.errors ++ err ++ "\n" }
 
 /-- Convert docstring to Html. -/
 def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html) := do

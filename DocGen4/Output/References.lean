@@ -40,17 +40,16 @@ open scoped DocGen4.Jsx
 
 def refItem (ref : BibItem) (backrefs : Array BackrefItem) : BaseHtmlM Html := do
   let backrefs := backrefs.filter (fun x => x.citekey == ref.citekey)
-  let toHtml (i : Nat) : BaseHtmlM (Array Html) := do
-    let backref := backrefs[i]!
+  let toHtml (i : Fin backrefs.size) (backref : BackrefItem) : BaseHtmlM (Array Html) := do
     let href := s!"{moduleNameToFile "" backref.modName}#_backref_{backref.index}"
     let title := s!"File: {backref.modName}" ++
       if backref.funName.isEmpty then "" else s!"\nLocation: {backref.funName}"
-    pure #[.raw " ", <a href={href} title={title}>{.text s!"[{i + 1}]"}</a>]
+    pure #[.raw " ", <a href={href} title={title}>{.text s!"[{i.1 + 1}]"}</a>]
   let backrefHtml : Html ← (do
     if backrefs.isEmpty then
       pure (.raw "")
     else
-      pure <small>[(← (Array.range backrefs.size).mapM toHtml).foldl (· ++ ·) #[]]</small>)
+      pure <small>[(← backrefs.mapIdxM toHtml).foldl (· ++ ·) #[]]</small>)
   pure <|
     <li id={s!"ref_{ref.citekey}"}>
       <a href={s!"#ref_{ref.citekey}"}>{.text ref.tag}</a>

@@ -116,6 +116,21 @@ instance [Monad m] : MonadLift HtmlM (HtmlT m) where
 instance [Monad m] : MonadLift BaseHtmlM (BaseHtmlT m) where
   monadLift x := do return x.run (← readThe SiteBaseContext)
 
+/-- Add a backref of the given `citekey` and `funName` to current document, and returns it. -/
+def addBackref (citekey funName : String) : HtmlM BackrefItem := do
+  let newBackref : BackrefItem := {
+    citekey := citekey
+    modName := (← readThe SiteBaseContext).currentName.get!
+    funName := funName
+    index := (← get).backrefs.size
+  }
+  modify fun cfg => { cfg with backrefs := cfg.backrefs.push newBackref }
+  pure newBackref
+
+/-- Add an error message to errors of current document. -/
+def addError (err : String) : HtmlM Unit := do
+  modify fun cfg => { cfg with errors := cfg.errors ++ err ++ "\n" }
+
 /--
 Obtains the root URL as a relative one to the current depth.
 -/
