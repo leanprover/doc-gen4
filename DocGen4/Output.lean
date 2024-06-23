@@ -53,7 +53,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let navbarHtml := ReaderT.run navbar config |>.toString
   let searchHtml := ReaderT.run search config |>.toString
   let referencesHtml := ReaderT.run (references (← collectBackrefs)) config |>.toString
-  let mut docGenStatic := #[
+  let docGenStatic := #[
     ("style.css", styleCss),
     ("favicon.svg", faviconSvg),
     ("declaration-data.js", declarationDataCenterJs),
@@ -110,10 +110,10 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
       depthToRoot := modName.components.dropLast.length
       currentName := some modName
     }
-    let (moduleHtml, backrefs) := moduleToHtml module #[] |>.run config baseConfig
+    let (moduleHtml, cfg) := moduleToHtml module |>.run {} config baseConfig
     FS.createDirAll fileDir
     FS.writeFile filePath moduleHtml.toString
-    FS.writeFile (declarationsBasePath / s!"backrefs-{module.name}.json") (toString (toJson backrefs))
+    FS.writeFile (declarationsBasePath / s!"backrefs-{module.name}.json") (toString (toJson cfg.backrefs))
 
 def getSimpleBaseContext (hierarchy : Hierarchy) : IO SiteBaseContext := do
   let contents ← FS.readFile (declarationsBasePath / "references.json") <|> (pure "[]")

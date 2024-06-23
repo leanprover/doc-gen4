@@ -15,36 +15,25 @@ def instancesForToHtml (typeName : Name) : BaseHtmlM Html := do
         <ul class="instances-for-enum"></ul>
     </details>
 
-def ctorToHtml (c : Process.NameInfo) (backrefs : Array BackrefItem) :
-    HtmlM (Html × Array BackrefItem) := do
+def ctorToHtml (c : Process.NameInfo) : ModuleToHtmlM Html := do
   let shortName := c.name.componentsRev.head!.toString
   let name := c.name.toString
   if let some doc := c.doc then
-    let (renderedDoc, newBackrefs) ← docStringToHtml doc name backrefs
+    let renderedDoc ← docStringToHtml doc name
     pure
-      (<li class="constructor" id={name}>
+      <li class="constructor" id={name}>
         {shortName} : [← infoFormatToHtml c.type]
         <div class="inductive_ctor_doc">[renderedDoc]</div>
-      </li>, newBackrefs)
+      </li>
   else
     pure
-      (<li class="constructor" id={name}>
+      <li class="constructor" id={name}>
         {shortName} : [← infoFormatToHtml c.type]
-      </li>, backrefs)
+      </li>
 
-def inductiveToHtml (i : Process.InductiveInfo) (backrefs : Array BackrefItem) :
-    HtmlM (Array Html × Array BackrefItem) := do
-  let arr := i.ctors.toArray
-  let mut newArr : Array Html := #[]
-  let mut newBackrefs := backrefs
-  let mut idx : Nat := 0
-  while h : LT.lt idx arr.size do
-    let (c, b') ← ctorToHtml (arr.get ⟨idx, h⟩) newBackrefs
-    newArr := newArr.push c
-    newBackrefs := b'
-    idx := idx + 1
-  let constructorsHtml := <ul class="constructors">[newArr]</ul>
-  return ⟨ #[constructorsHtml], newBackrefs ⟩
+def inductiveToHtml (i : Process.InductiveInfo) : ModuleToHtmlM (Array Html) := do
+  let constructorsHtml := <ul class="constructors">[← i.ctors.toArray.mapM ctorToHtml]</ul>
+  return #[constructorsHtml]
 
 end Output
 end DocGen4

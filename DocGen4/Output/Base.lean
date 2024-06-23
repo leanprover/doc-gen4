@@ -81,6 +81,15 @@ structure SiteContext where
   -/
   refsMap : HashMap String BibItem
 
+/--
+The context used in the `ModuleToHtmlM` monad for HTML templating.
+-/
+structure ModuleToHtmlContext where
+  /--
+  The list of back references, as an array.
+  -/
+  backrefs : Array BackrefItem := #[]
+
 def setCurrentName (name : Name) (ctx : SiteBaseContext) := {ctx with currentName := some name}
 
 abbrev BaseHtmlT := ReaderT SiteBaseContext
@@ -89,11 +98,18 @@ abbrev BaseHtmlM := BaseHtmlT Id
 abbrev HtmlT (m) := ReaderT SiteContext (BaseHtmlT m)
 abbrev HtmlM := HtmlT Id
 
+abbrev ModuleToHtmlT (m) := StateT ModuleToHtmlContext (HtmlT m)
+abbrev ModuleToHtmlM := ModuleToHtmlT Id
+
 def HtmlT.run (x : HtmlT m α) (ctx : SiteContext) (baseCtx : SiteBaseContext) : m α :=
   ReaderT.run x ctx |>.run baseCtx
 
 def HtmlM.run (x : HtmlM α) (ctx : SiteContext) (baseCtx : SiteBaseContext) : α :=
   ReaderT.run x ctx |>.run baseCtx |>.run
+
+def ModuleToHtmlM.run (x : ModuleToHtmlM α) (mthCtx : ModuleToHtmlContext)
+    (ctx : SiteContext) (baseCtx : SiteBaseContext) : α × ModuleToHtmlContext :=
+  HtmlM.run (StateT.run x mthCtx) ctx baseCtx
 
 instance [Monad m] : MonadLift HtmlM (HtmlT m) where
   monadLift x := do return x.run (← readThe SiteContext) (← readThe SiteBaseContext)
