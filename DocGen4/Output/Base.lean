@@ -89,6 +89,10 @@ structure SiteState where
   The list of back references, as an array.
   -/
   backrefs : Array BackrefItem := #[]
+  /--
+  The errors occurred during the process.
+  -/
+  errors : String := ""
 
 def setCurrentName (name : Name) (ctx : SiteBaseContext) := {ctx with currentName := some name}
 

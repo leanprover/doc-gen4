@@ -272,6 +272,10 @@ partial def findAllReferences (refsMap : HashMap String BibItem) (s : String) (i
   else
     ret
 
+/-- Add an error message to errors. -/
+def addError (err : String) : HtmlM Unit := do
+  modify fun cfg => { cfg with errors := cfg.errors ++ err ++ "\n" }
+
 /-- Convert docstring to Html. -/
 def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html) := do
   let refsMarkdown := "\n\n" ++ (String.join <|
@@ -286,8 +290,10 @@ def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html)
       -- once <https://github.com/leanprover/lean4/issues/4411> is fixed
       return (newRes.map fun x => Html.raw (eToStringEscaped x))
     | _ =>
+      addError <| "Error: failed to postprocess HTML:\n" ++ rendered
       return #[.raw "<span style='color:red;'>Error: failed to postprocess: </span>", .raw rendered]
   | .none =>
+    addError <| "Error: failed to parse markdown:\n" ++ docString
     return #[.raw "<span style='color:red;'>Error: failed to parse markdown: </span>", .text docString]
 
 end Output

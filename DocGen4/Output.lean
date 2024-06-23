@@ -111,6 +111,8 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
       currentName := some modName
     }
     let (moduleHtml, cfg) := moduleToHtml module |>.run {} config baseConfig
+    if not cfg.errors.isEmpty then
+      throw <| IO.userError s!"There are errors when generating '{filePath}': {cfg.errors}"
     FS.createDirAll fileDir
     FS.writeFile filePath moduleHtml.toString
     FS.writeFile (declarationsBasePath / s!"backrefs-{module.name}.json") (toString (toJson cfg.backrefs))
