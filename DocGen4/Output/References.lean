@@ -9,7 +9,13 @@ independent of actual implementation.
 
 The main function is `DocGen4.preprocessBibFile` which preprocess
 the contents of bib file using user provided `process` function,
-and save the bib file and processed json file to output directory.
+and save the bib file and processed json file to output directory,
+as "references.bib" and "references.json", respectively.
+
+Note that "references.bib" is only for user to download it, the actual file
+used later is "references.json". It contains an array of objects with 4 fields:
+'citekey', 'tag', 'html' and 'plaintext'. For the meaning of these fields,
+see `DocGen4.Output.BibItem`.
 
 -/
 
@@ -23,7 +29,7 @@ def preprocessBibFile (contents : String) (process : String → IO (Array BibIte
   -- create directories
   IO.FS.createDirAll basePath
   IO.FS.createDirAll declarationsBasePath
-  -- erase all files
+  -- save the contents to "references.bib" and erase "references.json"
   IO.FS.writeFile (basePath / "references.bib") contents
   IO.FS.writeFile (declarationsBasePath / "references.json") "[]"
   -- if contents is empty, just do nothing
@@ -31,8 +37,27 @@ def preprocessBibFile (contents : String) (process : String → IO (Array BibIte
     return
   -- run the user provided process function
   let items ← process contents
-  -- save the result
+  -- save the result to "references.json"
   IO.FS.writeFile (declarationsBasePath / "references.json") (toString (toJson items))
+
+/-- Save the bib json to the output path. -/
+def preprocessBibJson (contents : String) : IO Unit := do
+  -- create directories
+  IO.FS.createDirAll basePath
+  IO.FS.createDirAll declarationsBasePath
+  -- erase "references.bib" (since we can't recover it from json)
+  -- and save the contents to "references.json"
+  IO.FS.writeFile (basePath / "references.bib") ""
+  IO.FS.writeFile (declarationsBasePath / "references.json") contents
+
+/-- Erase the contents of bib file in the output path. -/
+def disableBibFile : IO Unit := do
+  -- create directories
+  IO.FS.createDirAll basePath
+  IO.FS.createDirAll declarationsBasePath
+  -- erase files
+  IO.FS.writeFile (basePath / "references.bib") ""
+  IO.FS.writeFile (declarationsBasePath / "references.json") "[]"
 
 namespace Output
 

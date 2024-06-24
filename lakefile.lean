@@ -123,15 +123,24 @@ def getSrcUri (mod : Module) : IO String := do
 target bibPrepass : FilePath := do
   let exeJob ← «doc-gen4».fetch
   let basePath := (←getWorkspace).root.buildDir / "doc"
-  let inputFile := (←getWorkspace).root.srcDir / "docs" / "references.bib"
+  let inputJsonFile := (←getWorkspace).root.srcDir / "docs" / "references.json"
+  let inputBibFile := (←getWorkspace).root.srcDir / "docs" / "references.bib"
   let outputFile := basePath / "declarations" / "references.json"
+  let tryJson : JobM (Array String × BuildTrace) := do
+    let inputTrace ← mixTrace (BuildTrace.ofHash (.ofString "json")) <$> computeTrace inputJsonFile
+    pure (#["--json", inputJsonFile.toString], inputTrace)
+  let tryBib : JobM (Array String × BuildTrace) := do
+    let inputTrace ← mixTrace (BuildTrace.ofHash (.ofString "bib")) <$> computeTrace inputBibFile
+    pure (#["--pybtex", inputBibFile.toString], inputTrace)
+  let tryBibFailed : JobM (Array String × BuildTrace) := do
+    pure (#["--none"], .nil)
   exeJob.bindSync fun exeFile exeTrace => do
-    let inputTrace ← computeTrace inputFile <|> pure .nil
+    let (args, inputTrace) ← tryJson <|> tryBib <|> tryBibFailed
     let depTrace := exeTrace.mix inputTrace
     let trace ← buildFileUnlessUpToDate outputFile depTrace do
       proc {
         cmd := exeFile.toString
-        args := #["bibPrepass", inputFile.toString]
+        args := #["bibPrepass"] ++ args
         env := ← getAugmentedEnv
       }
     return (outputFile, trace)

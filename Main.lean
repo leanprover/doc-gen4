@@ -36,19 +36,22 @@ def runDocGenCmd (_p : Parsed) : IO UInt32 := do
   return 0
 
 def runBibPrepassCmd (p : Parsed) : IO UInt32 := do
-  let source := match p.positionalArg? "source" with
-    | .some s => (s.as? String).getD "-"
-    | .none => "-"
-  let readContents : IO String := do
-    if source == "-" then
-      IO.println "INFO: reference page disabled"
-      pure ""
-    else
-      let readFileFailed : IO String := do
-        IO.println s!"WARNING: failed to load file \"{source}\"; reference page disabled"
-        pure ""
-      IO.FS.readFile source <|> readFileFailed
-  preprocessBibFile (← readContents) Pybtex.process
+  if p.hasFlag "none" then
+    IO.println "INFO: reference page disabled"
+    disableBibFile
+  else
+    match p.variableArgsAs! String with
+    | #[source] =>
+      let contents ← IO.FS.readFile source
+      if p.hasFlag "json" then
+        IO.println "INFO: 'references.json' will be copied to the output path; there will be no 'references.bib'"
+        preprocessBibJson contents
+      else if p.hasFlag "pybtex" then
+        IO.println "INFO: use 'pybtex' to process bib file; make sure you have 'pybtex-format' and 'pybtex-convert' in your PATH"
+        preprocessBibFile contents Pybtex.process
+      else
+        throw <| IO.userError "sorry, the built-in bib parser is still not implemented"
+    | _ => throw <| IO.userError "there should be exactly one source file"
   return 0
 
 def singleCmd := `[Cli|
@@ -74,10 +77,15 @@ def genCoreCmd := `[Cli|
 
 def bibPrepassCmd := `[Cli|
   bibPrepass VIA runBibPrepassCmd;
-  "Run the bibliography prepass: copy the bibliography file to output directory"
+  "Run the bibliography prepass: copy the bibliography file to output directory. By default it assumes the input is '.bib' and uses built-in bib parser."
+
+  FLAGS:
+    n, none; "Disable bibliography in this project."
+    j, json; "The input file is '.json' which contains an array of objects with 4 fields: 'citekey', 'tag', 'html' and 'plaintext'."
+    pybtex; "Use external Python program 'pybtex-format' and 'pybtex-convert' to process '.bib' file instead of the built-in one."
 
   ARGS:
-    source : String; "The bibliography file. If it is '-' or inexistent file, the reference page will be disabled."
+    ...source : String; "The bibliography file. We only support one file for input. Should be '.bib' or '.json' according to flags."
 ]
 
 def docGenCmd : Cmd := `[Cli|
