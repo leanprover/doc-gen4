@@ -45,7 +45,7 @@ def texCommand : Parsec String := pchar '\\' *> attempt do
 def texCommand' (exclude : Array String) : Parsec String := attempt do
   let s ← texCommand
   match exclude.find? (· == s.trim) with
-  | .some _ => fail s!"{s.trim} is not allowed"
+  | .some _ => fail s!"'{s.trim}' is not allowed"
   | .none => return s
 
 /-- Match a sequence starting with `{` and ending with `}`. -/
@@ -83,7 +83,7 @@ partial def mathContentAux2 : Parsec String := do
 def mathContentAux (beginning ending dollar : String) : Parsec String :=
   pstring beginning *> ((dollar ++ · ++ dollar) <$> mathContentAux2) <* pstring ending
 
-/-- Match a math content. -/
+/-- Match a math content. Returns `Option.none` if it does not start with `\(`, `\[` or `$`. -/
 def mathContent : Parsec (Option String) := fun it =>
   let substr := it.extract (it.forward 2)
   if substr = "\\[" then
@@ -97,8 +97,10 @@ def mathContent : Parsec (Option String) := fun it =>
   else
     .success it .none
 
-/-- Match a TeX command for diacritics, return the corresponding UTF-8 string. -/
-def texDiacriticsCommand : Parsec String := attempt do
+/-- Match a TeX command for diacritics, return the corresponding UTF-8 string.
+Sometimes it needs to read the character after the command,
+in this case the `p` is used to read braced content. -/
+def texDiacriticsCommand (p : Parsec String) : Parsec String := do
   let cmd ← String.trim <$> texCommand
   match cmd with
   | "\\oe" => pure "œ"
@@ -116,22 +118,45 @@ def texDiacriticsCommand : Parsec String := attempt do
   | "\\ss" => pure "\u00DF"
   | "\\SS" => pure "\u1E9E"
   | "\\cprime" => pure "\u02B9"
-  | "\\`" => pure "\u0300"
-  | "\\'" => pure "\u0301"
-  | "\\^" => pure "\u0302"
-  | "\\\"" => pure "\u0308"
-  | "\\~" => pure "\u0303"
-  | "\\=" => pure "\u0304"
-  | "\\." => pure "\u0307"
-  | "\\u" => pure "\u0306"
-  | "\\v" => pure "\u030C"
-  | "\\H" => pure "\u030B"
-  | "\\t" => pure "\u0361"
-  | "\\c" => pure "\u0327"
-  | "\\d" => pure "\u0323"
-  | "\\b" => pure "\u0331"
-  | "\\k" => pure "\u0328"
-  | _ => fail s!"unsupported command: {cmd}"
+  | _ =>
+    let ch : String := match cmd with
+    | "\\`" => "\u0300"
+    | "\\'" => "\u0301"
+    | "\\^" => "\u0302"
+    | "\\\"" => "\u0308"
+    | "\\~" => "\u0303"
+    | "\\=" => "\u0304"
+    | "\\." => "\u0307"
+    | "\\u" => "\u0306"
+    | "\\v" => "\u030C"
+    | "\\H" => "\u030B"
+    | "\\t" => "\u0361"
+    | "\\c" => "\u0327"
+    | "\\d" => "\u0323"
+    | "\\b" => "\u0331"
+    | "\\k" => "\u0328"
+    | _ => ""
+    if ch.isEmpty then
+      fail s!"unsupported command: '{cmd}'"
+    else
+      let doOne : Parsec String := fun it =>
+        if it.hasNext then
+          match it.curr with
+          | '{' => bracedContent p it
+          | _ => normalChars it
+        else
+          .error it "character expected"
+      let s ← doOne
+      if s.startsWith "{" then
+        if s.length < 3 then
+          fail s!"expected string of length at least 3, but got '{s}'"
+        else
+          return s.take 2 ++ ch ++ s.drop 2
+      else
+        if s.isEmpty then
+          fail "expected a non-empty string"
+        else
+          return s.take 1 ++ ch ++ s.drop 1
 
 /-- Convert all TeX commands for diacritics into UTF-8 characters,
 and error on any other TeX commands which are not in math environment. -/
@@ -145,7 +170,7 @@ partial def texDiacritics : Parsec String := do
         | .none =>
           match it.curr with
           | '{' => (.some <$> bracedContent texDiacritics) it
-          | '\\' => (.some <$> texDiacriticsCommand) it
+          | '\\' => (.some <$> texDiacriticsCommand texDiacritics) it
           | '}' => .success it .none
           | _ => (.some <$> normalChars) it
       | .error it err => .error it err
