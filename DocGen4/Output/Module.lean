@@ -96,7 +96,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   | _ => pure #[]
   -- rendered doc stirng
   let docStringHtml ← match doc.getDocString with
-  | some s => docStringToHtml s
+  | some s => docStringToHtml s doc.getName.toString
   | none => pure #[]
   -- extra information like equations and instances
   let extraInfoHtml ← match doc with
@@ -135,7 +135,7 @@ as HTML.
 def modDocToHtml (mdoc : ModuleDoc) : HtmlM Html := do
   pure
     <div class="mod_doc">
-      [← docStringToHtml mdoc.doc]
+      [← docStringToHtml mdoc.doc ""]
     </div>
 
 /--
@@ -199,6 +199,9 @@ def moduleToHtml (module : Process.Module) : HtmlM Html := withTheReader SiteBas
   let relevantMembers := module.members.filter Process.ModuleMember.shouldRender
   let memberDocs ← relevantMembers.mapM (moduleMemberToHtml module.name)
   let memberNames := filterDocInfo relevantMembers |>.map DocInfo.getName
+  letI : MonadLift BaseHtmlM HtmlM := {
+    monadLift := fun x => do return x.run (← readThe SiteBaseContext)
+  }
   templateLiftExtends (baseHtmlGenerator module.name.toString) <| pure #[
     ← internalNav memberNames module.name,
     Html.element "main" false #[] memberDocs

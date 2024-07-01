@@ -15,7 +15,7 @@ def fieldToHtml (f : Process.NameInfo) : HtmlM Html := do
   let shortName := f.name.componentsRev.head!.toString
   let name := f.name.toString
   if let some doc := f.doc then
-    let renderedDoc ← docStringToHtml doc
+    let renderedDoc ← docStringToHtml doc name
     pure
       <li id={name} class="structure_field">
         <div class="structure_field_info">{s!"{shortName} "} : [← infoFormatToHtml f.type]</div>

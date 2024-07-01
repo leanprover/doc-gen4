@@ -55,6 +55,21 @@ def moduleList : BaseHtmlM Html := do
 The main entry point to rendering the navbar on the left hand side.
 -/
 def navbar : BaseHtmlM Html := do
+  /-
+  TODO: Add these in later
+  <div class="nav_link"><a href={s!"{← getRoot}tactics.html"}>tactics</a></div>
+  <div class="nav_link"><a href={s!"{← getRoot}commands.html"}>commands</a></div>
+  <div class="nav_link"><a href={s!"{← getRoot}hole_commands.html"}>hole commands</a></div>
+  <div class="nav_link"><a href={s!"{← getRoot}attributes.html"}>attributes</a></div>
+  <div class="nav_link"><a href={s!"{← getRoot}notes.html"}>notes</a></div>
+  -/
+  let mut staticPages : Array Html := #[
+    <div class="nav_link"><a href={s!"{← getRoot}"}>index</a></div>,
+    <div class="nav_link"><a href={s!"{← getRoot}foundational_types.html"}>foundational types</a></div>
+  ]
+  let config ← read
+  if not config.refs.isEmpty then
+    staticPages := staticPages.push <div class="nav_link"><a href={s!"{← getRoot}references.html"}>references</a></div>
   pure
     <html lang="en">
       <head>
@@ -69,17 +84,7 @@ def navbar : BaseHtmlM Html := do
         <div class="navframe">
         <nav class="nav">
           <h3>General documentation</h3>
-          <div class="nav_link"><a href={s!"{← getRoot}"}>index</a></div>
-          <div class="nav_link"><a href={s!"{← getRoot}foundational_types.html"}>foundational types</a></div>
-          /-
-          TODO: Add these in later
-          <div class="nav_link"><a href={s!"{← getRoot}tactics.html"}>tactics</a></div>
-          <div class="nav_link"><a href={s!"{← getRoot}commands.html"}>commands</a></div>
-          <div class="nav_link"><a href={s!"{← getRoot}hole_commands.html"}>hole commands</a></div>
-          <div class="nav_link"><a href={s!"{← getRoot}attributes.html"}>attributes</a></div>
-          <div class="nav_link"><a href={s!"{← getRoot}notes.html"}>notes</a></div>
-          <div class="nav_link"><a href={s!"{← getRoot}references.html"}>references</a></div>
-          -/
+          [staticPages]
           <h3>Library</h3>
           {← moduleList}
           <div id="settings" hidden="hidden">
