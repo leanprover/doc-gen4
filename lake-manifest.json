@@ -14,6 +14,7 @@
   {"url": "https://github.com/dupuisf/BibtexQuery",
    "type": "git",
    "subDir": null,
+   "scope": "",
    "rev": "d4e2c1692c3bf1898a71a278f3441b09d8414225",
    "name": "BibtexQuery",
    "manifestFile": "lake-manifest.json",
