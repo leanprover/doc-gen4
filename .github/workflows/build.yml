@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: install elan
         run: |
@@ -21,12 +21,10 @@ jobs:
           ~/.elan/bin/lean --version
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
-      - name: Checkout and compile batteries
+      - name: Checkout batteries
         run: |
           cd ../
           git clone https://github.com/leanprover-community/batteries
-          cd batteries
-          lake build
 
       - name: generate docs
         run: |
