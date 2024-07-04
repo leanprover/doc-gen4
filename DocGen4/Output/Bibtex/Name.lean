@@ -113,10 +113,19 @@ def stripDiacritics (c : Char) : Char :=
     let s := getCanonicalDecomposition c
     s.get? (s.find GeneralCategory.isLetter) |>.getD c
 
+/-- Check if a string is an upper case Roman numerals.
+It does not check the validity of the number, for example, it accepts `IXIX`. -/
+def isUppercaseRomanNumerals (s : String) : Bool :=
+  not s.isEmpty && s.all fun c =>
+    match c with
+    | 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M' => true
+    | _ => false
+
 /-- Input a last name string without TeX commands, braces
 and math equations, already split by spaces and comma,
 return `(oneLetterAbbr, threeLetterAbbr)` of the last name. -/
 def getLastNameAbbr (arr : Array String) : String × String :=
+  let arr := if arr.size ≤ 1 then arr else arr.filter (not <| isUppercaseRomanNumerals ·)
   match arr with
   | #[] => ("", "")
   | #[s] =>
