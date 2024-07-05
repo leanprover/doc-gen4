@@ -144,8 +144,8 @@ module_facet docs (mod) : FilePath := do
 -- TODO: technically speaking this target does not show all file dependencies
 target coreDocs : FilePath := do
   let exeJob ← «doc-gen4».fetch
-  let basePath := (←getWorkspace).root.buildDir / "doc"
-  let dataFile := basePath / "declarations" / "declaration-data-Lean.bmp"
+  let dataPath := (← getWorkspace).root.buildDir / "doc-data"
+  let dataFile := dataPath / "declaration-data-Lean.bmp"
   exeJob.bindSync fun exeFile exeTrace => do
     let trace ← buildFileUnlessUpToDate dataFile exeTrace do
       proc {
@@ -161,7 +161,7 @@ library_facet docs (lib) : FilePath := do
   let coreJob ← coreDocs.fetch
   let exeJob ← «doc-gen4».fetch
   -- Shared with DocGen4.Output
-  let basePath := (←getWorkspace).root.buildDir / "doc"
+  let basePath := (← getWorkspace).root.buildDir / "doc"
   let dataFile := basePath / "declarations" / "declaration-data.bmp"
   let staticFiles := #[
     basePath / "style.css",

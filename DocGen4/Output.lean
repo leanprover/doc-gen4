@@ -117,8 +117,10 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   let finalJson := toJson index
   let finalHeaderJson := toJson headerIndex
   -- The root JSON for find
-  FS.writeFile (declarationsBasePath / "declaration-data.bmp") finalJson.compress
-  FS.writeFile (declarationsBasePath / "header-data.bmp") finalHeaderJson.compress
+  let declarationDir := basePath / "declarations"
+  FS.createDirAll declarationDir
+  FS.writeFile (declarationDir / "declaration-data.bmp") finalJson.compress
+  FS.writeFile (declarationDir / "header-data.bmp") finalHeaderJson.compress
 
 /--
 The main entrypoint for outputting the documentation HTML based on an
