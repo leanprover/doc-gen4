@@ -197,3 +197,23 @@ library_facet docs (lib) : FilePath := do
         let indexTrace := mixTraceArray traces
 
         return (dataFile, trace.mix indexTrace)
+
+library_facet docsHeader (lib) : FilePath := do
+  let mods ← lib.modules.fetch
+  let moduleJobs ← BuildJob.mixArray <| ← mods.mapM (fetch <| ·.facet `docs)
+  let coreJob ← coreDocs.fetch
+  let exeJob ← «doc-gen4».fetch
+  -- Shared with DocGen4.Output
+  let basePath := (← getWorkspace).root.buildDir / "doc"
+  let dataFile := basePath / "declarations" / "header-data.bmp"
+  coreJob.bindAsync fun _ coreInputTrace => do
+    exeJob.bindAsync fun exeFile exeTrace => do
+      moduleJobs.bindSync fun _ inputTrace => do
+        let depTrace := mixTraceArray #[inputTrace, exeTrace, coreInputTrace]
+        let trace ← buildFileUnlessUpToDate dataFile depTrace do
+          logInfo "Documentation indexing"
+          proc {
+            cmd := exeFile.toString
+            args := #["headerData"]
+          }
+        return (dataFile, trace)
