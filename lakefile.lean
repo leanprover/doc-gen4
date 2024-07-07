@@ -175,8 +175,8 @@ module_facet docs (mod) : FilePath := do
 target coreDocs : FilePath := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
-  let basePath := (←getWorkspace).root.buildDir / "doc"
-  let dataFile := basePath / "declarations" / "declaration-data-Lean.bmp"
+  let dataPath := (← getWorkspace).root.buildDir / "doc-data"
+  let dataFile := dataPath / "declaration-data-Lean.bmp"
   bibPrepassJob.bindAsync fun _ bibPrepassTrace => do
     exeJob.bindSync fun exeFile exeTrace => do
       let depTrace := mixTraceArray #[exeTrace, bibPrepassTrace]
@@ -194,7 +194,7 @@ library_facet docs (lib) : FilePath := do
   let coreJob ← coreDocs.fetch
   let exeJob ← «doc-gen4».fetch
   -- Shared with DocGen4.Output
-  let basePath := (←getWorkspace).root.buildDir / "doc"
+  let basePath := (← getWorkspace).root.buildDir / "doc"
   let dataFile := basePath / "declarations" / "declaration-data.bmp"
   let staticFiles := #[
     basePath / "style.css",
@@ -230,3 +230,23 @@ library_facet docs (lib) : FilePath := do
         let indexTrace := mixTraceArray traces
 
         return (dataFile, trace.mix indexTrace)
+
+library_facet docsHeader (lib) : FilePath := do
+  let mods ← lib.modules.fetch
+  let moduleJobs ← BuildJob.mixArray <| ← mods.mapM (fetch <| ·.facet `docs)
+  let coreJob ← coreDocs.fetch
+  let exeJob ← «doc-gen4».fetch
+  -- Shared with DocGen4.Output
+  let basePath := (← getWorkspace).root.buildDir / "doc"
+  let dataFile := basePath / "declarations" / "header-data.bmp"
+  coreJob.bindAsync fun _ coreInputTrace => do
+    exeJob.bindAsync fun exeFile exeTrace => do
+      moduleJobs.bindSync fun _ inputTrace => do
+        let depTrace := mixTraceArray #[inputTrace, exeTrace, coreInputTrace]
+        let trace ← buildFileUnlessUpToDate dataFile depTrace do
+          logInfo "Documentation indexing"
+          proc {
+            cmd := exeFile.toString
+            args := #["headerData"]
+          }
+        return (dataFile, trace)

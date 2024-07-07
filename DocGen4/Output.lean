@@ -138,7 +138,6 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   htmlOutputSetup baseConfig
 
   let mut index : JsonIndex := {}
-  let mut headerIndex : JsonHeaderIndex := {}
   for entry in ← System.FilePath.readDir declarationsBasePath do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
       let fileContent ← FS.readFile entry.path
@@ -151,13 +150,26 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
           throw <| IO.userError s!"failed to parse file '{entry.path}': {err}"
         | .ok (module : JsonModule) =>
           index := index.addModule module |>.run baseConfig
-          headerIndex := headerIndex.addModule module
 
   let finalJson := toJson index
-  let finalHeaderJson := toJson headerIndex
   -- The root JSON for find
-  FS.writeFile (declarationsBasePath / "declaration-data.bmp") finalJson.compress
-  FS.writeFile (declarationsBasePath / "header-data.bmp") finalHeaderJson.compress
+  let declarationDir := basePath / "declarations"
+  FS.createDirAll declarationDir
+  FS.writeFile (declarationDir / "declaration-data.bmp") finalJson.compress
+
+def headerDataOutput : IO Unit := do
+  let mut headerIndex : JsonHeaderIndex := {}
+  for entry in ← System.FilePath.readDir declarationsBasePath do
+    if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
+      let fileContent ← FS.readFile entry.path
+      let .ok jsonContent := Json.parse fileContent | unreachable!
+      let .ok (module : JsonModule) := fromJson? jsonContent | unreachable!
+      headerIndex := headerIndex.addModule module
+
+  let finalHeaderJson := toJson headerIndex
+  let declarationDir := basePath / "declarations"
+  FS.createDirAll declarationDir
+  FS.writeFile (declarationDir / "header-data.bmp") finalHeaderJson.compress
 
 /--
 The main entrypoint for outputting the documentation HTML based on an

@@ -11,9 +11,11 @@ namespace DocGen4.Output
 open scoped DocGen4.Jsx
 open Lean System Widget Elab Process
 
-def basePath := FilePath.mk "." / ".lake" / "build" / "doc"
+
+def lakeBuildDir := FilePath.mk "." / ".lake" / "build"
+def basePath := lakeBuildDir / "doc"
 def srcBasePath := basePath / "src"
-def declarationsBasePath := basePath / "declarations"
+def declarationsBasePath := lakeBuildDir / "doc-data"
 
 /-- The structure representing a processed bibitem. -/
 structure BibItem where
