@@ -125,10 +125,10 @@ def getSrcUri (mod : Module) : IO String := do
 
 target bibPrepass : FilePath := do
   let exeJob ← «doc-gen4».fetch
-  let basePath := (←getWorkspace).root.buildDir / "doc"
-  let inputJsonFile := (←getWorkspace).root.srcDir / "docs" / "references.json"
-  let inputBibFile := (←getWorkspace).root.srcDir / "docs" / "references.bib"
-  let outputFile := basePath / "declarations" / "references.json"
+  let dataPath := (← getWorkspace).root.buildDir / "doc-data"
+  let inputJsonFile := (← getWorkspace).root.srcDir / "docs" / "references.json"
+  let inputBibFile := (← getWorkspace).root.srcDir / "docs" / "references.bib"
+  let outputFile := dataPath / "references.json"
   let tryJson : JobM (Array String × BuildTrace) := do
     let inputTrace ← mixTrace (BuildTrace.ofHash (.ofString "json")) <$> computeTrace inputJsonFile
     pure (#["--json", inputJsonFile.toString], inputTrace)
