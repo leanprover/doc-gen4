@@ -108,9 +108,15 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   for entry in ← System.FilePath.readDir declarationsBasePath do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
       let fileContent ← FS.readFile entry.path
-      let .ok jsonContent := Json.parse fileContent | unreachable!
-      let .ok (module : JsonModule) := fromJson? jsonContent | unreachable!
-      index := index.addModule module |>.run baseConfig
+      match Json.parse fileContent with
+      | .error err =>
+        throw <| IO.userError s!"failed to parse file '{entry.path}' as json: {err}"
+      | .ok jsonContent =>
+        match fromJson? jsonContent with
+        | .error err =>
+          throw <| IO.userError s!"failed to parse file '{entry.path}': {err}"
+        | .ok (module : JsonModule) =>
+          index := index.addModule module |>.run baseConfig
 
   let finalJson := toJson index
   -- The root JSON for find
