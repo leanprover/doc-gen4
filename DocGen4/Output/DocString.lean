@@ -208,24 +208,6 @@ partial def modifyElement (element : Element) : HtmlM Element :=
         | _ => pure c
       return ⟨ name, attrs, newContents ⟩
 
--- TODO: remove the following 3 functions
--- once <https://github.com/leanprover/lean4/issues/4411> is fixed
-
-private def _root_.Lean.Xml.Attributes.toStringEscaped (as : Attributes) : String :=
-  as.fold (fun s n v => s ++ s!" {n}=\"{Html.escape v}\"") ""
-
-mutual
-
-private partial def _root_.Lean.Xml.eToStringEscaped : Element → String
-| Element.Element n a c => s!"<{n}{a.toStringEscaped}>{c.map cToStringEscaped |>.foldl (· ++ ·) ""}</{n}>"
-
-private partial def _root_.Lean.Xml.cToStringEscaped : Content → String
-| Content.Element e => eToStringEscaped e
-| Content.Comment c => s!"<!--{c}-->"
-| Content.Character c => Html.escape c
-
-end
-
 /-- Convert docstring to Html. -/
 def docStringToHtml (s : String) : HtmlM (Array Html) := do
   let rendered := match MD4Lean.renderHtml s with
