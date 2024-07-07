@@ -99,7 +99,7 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
 /--
   Extend links with following rules:
 
-  1. if the link starts with `##`, a name search is used and will panic if not found
+  1. if the link starts with `##`, a name search is used, and will use `find` if not found
   2. if the link starts with `#`, it's treated as id link, no modification
   3. if the link starts with `http`, it's an absolute one, no modification
   4. otherwise it's a relative link, extend it with base url
@@ -110,7 +110,7 @@ def extendLink (s : String)  : HtmlM String := do
     if let some link ← nameToLink? (s.drop 2) then
       return link
     else
-      panic! s!"Cannot find {s.drop 2}, only full name and abbrev in current module is supported"
+      return s!"{← getRoot}find/?pattern={s.drop 2}#doc"
   -- for id
   else if s.startsWith "#" then
     return s
