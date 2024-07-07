@@ -15,7 +15,7 @@
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "d4e2c1692c3bf1898a71a278f3441b09d8414225",
+   "rev": "d1229add3b208d1ac3051cd090a209ba19817d04",
    "name": "BibtexQuery",
    "manifestFile": "lake-manifest.json",
    "inputRev": "master",
