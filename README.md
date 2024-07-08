@@ -36,8 +36,15 @@ need to serve them from a proper http server for it to work. An easy way to do t
 In order to compile itself `doc-gen4` requires:
 - a Lean 4 or `elan` installation
 - a C compiler if on Linux or MacOS (on Windows it will use Lean's built-in clang compiler)
-- for `references.bib` parsing, an installation of `pybtex` (https://pybtex.org/) is needed,
-  more precisely, it requires `pybtex-format` and `pybtex-convert` in `PATH`
+
+In order to run `doc-gen4` it optionally requires:
+- for `references.bib` parsing, it defaults to a pure Lean implementation, but optionally
+  it can use the external Python program `pybtex` (https://pybtex.org/) to process bib file.
+  To do this, set environment variable `USE_PYBTEX=1` when running `lake -Kenv=dev build Test:docs`,
+  make sure you have an installation of `pybtex`,
+  more precisely, `pybtex-format` and `pybtex-convert` in `PATH`.
+  The version `0.24.0` is working (install via `pip install pybtex==0.24.0`); other versions
+  (e.g. from Linux package manager) may also work, but untested.
 
 Apart from this the only requirement for `lake -Kenv=dev build Test:docs` to work is that your
 target library builds, that is `lake build Test` exits without an error. If this requirement
