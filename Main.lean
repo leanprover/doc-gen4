@@ -54,7 +54,7 @@ def runBibPrepassCmd (p : Parsed) : IO UInt32 := do
         IO.println "INFO: use 'pybtex' to process bib file; make sure you have 'pybtex-format' and 'pybtex-convert' in your PATH"
         preprocessBibFile contents Pybtex.process
       else
-        throw <| IO.userError "sorry, the built-in bib parser is still not implemented"
+        preprocessBibFile contents Bibtex.process
     | _ => throw <| IO.userError "there should be exactly one source file"
   return 0
 

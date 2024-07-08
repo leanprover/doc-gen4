@@ -134,7 +134,11 @@ target bibPrepass : FilePath := do
     pure (#["--json", inputJsonFile.toString], inputTrace)
   let tryBib : JobM (Array String × BuildTrace) := do
     let inputTrace ← mixTrace (BuildTrace.ofHash (.ofString "bib")) <$> computeTrace inputBibFile
-    pure (#["--pybtex", inputBibFile.toString], inputTrace)
+    match ← IO.getEnv "USE_PYBTEX" with
+    | .some "1" =>
+      pure (#["--pybtex", inputBibFile.toString], inputTrace)
+    | _ =>
+      pure (#[inputBibFile.toString], inputTrace)
   let tryBibFailed : JobM (Array String × BuildTrace) := do
     pure (#["--none"], .nil)
   exeJob.bindSync fun exeFile exeTrace => do
