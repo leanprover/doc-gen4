@@ -17,6 +17,9 @@ namespace DocGen4
 
 namespace Pybtex
 
+private def inputTmpFile := declarationsBasePath / "input.tmp"
+private def outputTmpFile := declarationsBasePath / "output.tmp"
+
 private def proc (args : IO.Process.SpawnArgs) : IO Unit := do
   let child ← IO.Process.spawn args
   let exitCode ← child.wait
@@ -47,8 +50,8 @@ def getCitekeys (contents : String) : Except String (Array String) :=
   | .error err => .error err
 
 private def deleteTempFile : IO Unit := do
-  IO.FS.removeFile (basePath / "input.tmp") <|> pure ()
-  IO.FS.removeFile (basePath / "output.tmp") <|> pure ()
+  IO.FS.removeFile inputTmpFile <|> pure ()
+  IO.FS.removeFile outputTmpFile <|> pure ()
 
 private def getCitekeysFromTempFile : IO (Array String) := do
   -- run `pybtex-convert`
@@ -56,12 +59,12 @@ private def getCitekeysFromTempFile : IO (Array String) := do
     cmd := "pybtex-convert"
     args := #[
       "-f", "bibtex", "-t", "bibtexml", "--preserve-case",
-      (basePath / "input.tmp").toString,
-      (basePath / "output.tmp").toString
+      inputTmpFile.toString,
+      outputTmpFile.toString
     ]
   }
   -- parse the returned XML file
-  match getCitekeys (← IO.FS.readFile (basePath / "output.tmp")) with
+  match getCitekeys (← IO.FS.readFile outputTmpFile) with
   | .ok ret =>
     pure ret
   | .error err =>
@@ -112,12 +115,12 @@ private def getHtmlFromTempFile : IO (Array (String × String × String)) := do
     cmd := "pybtex-format"
     args := #[
       "-f", "bibtex", "-b", "html", "--label-style=alpha",
-      (basePath / "input.tmp").toString,
-      (basePath / "output.tmp").toString
+      inputTmpFile.toString,
+      outputTmpFile.toString
     ]
   }
   -- parse the returned HTML file
-  let contents ← IO.FS.readFile (basePath / "output.tmp")
+  let contents ← IO.FS.readFile outputTmpFile
   match extractItems (contents.replace "&nbsp;" "\u00A0") with
   | .ok ret =>
     pure ret
@@ -128,24 +131,30 @@ end getHtmlFromTempFile
 
 /-- Process the contents of bib file by calling external program `pybtex`. -/
 def process (contents : String) : IO (Array BibItem) := do
-  -- create directory
-  IO.FS.createDirAll basePath
-  -- save temp file
-  IO.FS.writeFile (basePath / "input.tmp") contents
-  -- get cite keys
-  let citekeys ← getCitekeysFromTempFile
-  -- get items
-  let items ← getHtmlFromTempFile
-  -- delete temp file
-  deleteTempFile
-  -- combine the result
-  let ret : Array BibItem := (citekeys.zip items).map fun x => {
-    citekey := x.1
-    tag := "[" ++ x.2.1 ++ "]"
-    html := x.2.2.1
-    plaintext := x.2.2.2
-  }
-  return ret
+  try
+    -- create directory
+    IO.FS.createDirAll basePath
+    -- save temp file
+    IO.FS.writeFile inputTmpFile contents
+    -- get cite keys
+    let citekeys ← getCitekeysFromTempFile
+    -- get items
+    let items ← getHtmlFromTempFile
+    -- delete temp file
+    deleteTempFile
+    -- combine the result
+    let ret : Array BibItem := (citekeys.zip items).map fun x => {
+      citekey := x.1
+      tag := "[" ++ x.2.1 ++ "]"
+      html := x.2.2.1
+      plaintext := x.2.2.2
+    }
+    pure ret
+  catch e =>
+    -- delete temp file
+    deleteTempFile
+    -- report error
+    throw e
 
 end Pybtex
 
