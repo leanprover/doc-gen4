@@ -19,7 +19,7 @@ def ctorToHtml (c : Process.NameInfo) : HtmlM Html := do
   let shortName := c.name.componentsRev.head!.toString
   let name := c.name.toString
   if let some doc := c.doc then
-    let renderedDoc ← docStringToHtml doc
+    let renderedDoc ← docStringToHtml doc name
     pure
       <li class="constructor" id={name}>
         {shortName} : [← infoFormatToHtml c.type]

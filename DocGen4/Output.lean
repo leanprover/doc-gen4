@@ -10,6 +10,8 @@ import DocGen4.Output.Index
 import DocGen4.Output.Module
 import DocGen4.Output.NotFound
 import DocGen4.Output.Find
+import DocGen4.Output.References
+import DocGen4.Output.Bibtex
 import DocGen4.Output.SourceLinker
 import DocGen4.Output.Search
 import DocGen4.Output.ToJson
@@ -19,6 +21,21 @@ import Lean.Data.HashMap
 namespace DocGen4
 
 open Lean IO System Output Process
+
+def collectBackrefs : IO (Array BackrefItem) := do
+  let mut backrefs : Array BackrefItem := #[]
+  for entry in ← System.FilePath.readDir declarationsBasePath do
+    if entry.fileName.startsWith "backrefs-" && entry.fileName.endsWith ".json" then
+      let fileContent ← FS.readFile entry.path
+      match Json.parse fileContent with
+      | .error err =>
+        throw <| IO.userError s!"failed to parse file '{entry.path}' as json: {err}"
+      | .ok jsonContent =>
+        match fromJson? jsonContent with
+        | .error err =>
+          throw <| IO.userError s!"failed to parse file '{entry.path}': {err}"
+        | .ok (arr : Array BackrefItem) => backrefs := backrefs ++ arr
+  return backrefs
 
 def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let findBasePath := basePath / "find"
@@ -35,6 +52,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let foundationalTypesHtml := ReaderT.run foundationalTypes config |>.toString
   let navbarHtml := ReaderT.run navbar config |>.toString
   let searchHtml := ReaderT.run search config |>.toString
+  let referencesHtml := ReaderT.run (references (← collectBackrefs)) config |>.toString
   let docGenStatic := #[
     ("style.css", styleCss),
     ("favicon.svg", faviconSvg),
@@ -52,7 +70,8 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
     ("index.html", indexHtml),
     ("foundational_types.html", foundationalTypesHtml),
     ("404.html", notFoundHtml),
-    ("navbar.html", navbarHtml)
+    ("navbar.html", navbarHtml),
+    ("references.html", referencesHtml)
   ]
   for (fileName, content) in docGenStatic do
     FS.writeFile (basePath / fileName) content
@@ -72,14 +91,15 @@ def htmlOutputDeclarationDatas (result : AnalyzerResult) : HtmlT IO Unit := do
 
 def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String) : IO Unit := do
   let config : SiteContext := {
-    result := result,
+    result := result
     sourceLinker := SourceLinker.sourceLinker sourceUrl?
+    refsMap := .ofList (baseConfig.refs.map fun x => (x.citekey, x)).toList
   }
 
   FS.createDirAll basePath
   FS.createDirAll declarationsBasePath
 
-  discard <| htmlOutputDeclarationDatas result |>.run config baseConfig
+  discard <| htmlOutputDeclarationDatas result |>.run {} config baseConfig
 
   for (modName, module) in result.moduleInfo.toArray do
     let fileDir := moduleNameToDirectory basePath modName
@@ -90,16 +110,29 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
       depthToRoot := modName.components.dropLast.length
       currentName := some modName
     }
-    let moduleHtml := moduleToHtml module |>.run config baseConfig
+    let (moduleHtml, cfg) := moduleToHtml module |>.run {} config baseConfig
+    if not cfg.errors.isEmpty then
+      throw <| IO.userError s!"There are errors when generating '{filePath}': {cfg.errors}"
     FS.createDirAll fileDir
     FS.writeFile filePath moduleHtml.toString
+    FS.writeFile (declarationsBasePath / s!"backrefs-{module.name}.json") (toString (toJson cfg.backrefs))
 
 def getSimpleBaseContext (hierarchy : Hierarchy) : IO SiteBaseContext := do
-  return {
-    depthToRoot := 0,
-    currentName := none,
-    hierarchy
-  }
+  let contents ← FS.readFile (declarationsBasePath / "references.json") <|> (pure "[]")
+  match Json.parse contents with
+  | .error err =>
+    throw <| IO.userError s!"Failed to parse 'references.json': {err}"
+  | .ok jsonContent =>
+    match fromJson? jsonContent with
+    | .error err =>
+      throw <| IO.userError s!"Failed to parse 'references.json': {err}"
+    | .ok (refs : Array BibItem) =>
+      return {
+        depthToRoot := 0
+        currentName := none
+        hierarchy := hierarchy
+        refs := refs
+      }
 
 def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   htmlOutputSetup baseConfig
