@@ -119,8 +119,28 @@ def extendLink (s : String)  : HtmlM String := do
     return s
   else return ((← getRoot) ++ s)
 
+/-- Apply function `modifyElement` to an array of `Lean.Xml.Content`s. -/
+def modifyContents (contents : Array Content) (funName : String)
+    (modifyElement : Element → String → HtmlM Element) :
+    HtmlM (Array Content) := do
+  let modifyContent (c : Content) : HtmlM Content := do
+    match c with
+    | Content.Element e =>
+      pure (.Element (← modifyElement e funName))
+    | _ =>
+      pure c
+  contents.mapM modifyContent
+
+/-- Apply function `modifyElement` to an array of `Lean.Xml.Element`s. -/
+def modifyElements (elements : Array Element) (funName : String)
+    (modifyElement : Element → String → HtmlM Element) :
+    HtmlM (Array Element) := do
+  elements.mapM (modifyElement · funName)
+
 /-- Add attributes for heading. -/
-def addHeadingAttributes (el : Element) (modifyElement : Element → HtmlM Element) : HtmlM Element := do
+def addHeadingAttributes (el : Element) (funName : String)
+    (modifyElement : Element → String → HtmlM Element) :
+    HtmlM Element := do
   match el with
   | Element.Element name attrs contents => do
     let id := xmlGetHeadingId el
@@ -131,22 +151,42 @@ def addHeadingAttributes (el : Element) (modifyElement : Element → HtmlM Eleme
     let newAttrs := attrs
       |>.insert "id" id
       |>.insert "class" "markdown-heading"
-    let newContents := (←
-      contents.mapM (fun c => match c with
-      | Content.Element e => return Content.Element (← modifyElement e)
-      | _ => pure c))
+    let newContents ← modifyContents contents funName modifyElement
+    return ⟨ name, newAttrs, newContents
       |>.push (Content.Character " ")
-      |>.push (Content.Element anchor)
-    return ⟨ name, newAttrs, newContents⟩
+      |>.push (Content.Element anchor) ⟩
+
+/-- Find a bibitem if `href` starts with `thePrefix`. -/
+def findBibitem? (href : String) (thePrefix : String := "") : HtmlM (Option BibItem) := do
+  if href.startsWith thePrefix then
+    pure <| (← read).refsMap.find? (href.drop thePrefix.length)
+  else
+    pure .none
 
 /-- Extend anchor links. -/
-def extendAnchor (el : Element) : HtmlM Element := do
+def extendAnchor (el : Element) (funName : String) : HtmlM Element := do
   match el with
   | Element.Element name attrs contents =>
-    let newAttrs ← match attrs.find? "href" with
-    | some href => pure (attrs.insert "href" (← extendLink href))
-    | none => pure attrs
-    return ⟨ name, newAttrs, contents⟩
+    match attrs.find? "href" with
+    | some href =>
+      let bibitem ← findBibitem? href "references.html#ref_"
+      let attrs := attrs.insert "href" (← extendLink href)
+      match bibitem with
+      | .some bibitem =>
+        let newBackref ← addBackref bibitem.citekey funName
+        let changeName : Bool :=
+          if let #[.Character s] := contents then
+            s == bibitem.citekey
+          else
+            false
+        let newContents : Array Content :=
+          if changeName then #[.Character bibitem.tag] else contents
+        let attrs := attrs.insert "title" bibitem.plaintext
+          |>.insert "id" s!"_backref_{newBackref.index}"
+        return ⟨ name, attrs, newContents ⟩
+      | .none =>
+        return ⟨ name, attrs, contents ⟩
+    | none => return ⟨ name, attrs, contents ⟩
 
 /-- Automatically add intra documentation link for inline code span. -/
 def autoLink (el : Element) : HtmlM Element := do
@@ -187,15 +227,15 @@ def autoLink (el : Element) : HtmlM Element := do
       cats.any (Unicode.isInGeneralCategory c)
 
 /-- Core function of modifying the cmark rendered docstring html. -/
-partial def modifyElement (element : Element) : HtmlM Element :=
+partial def modifyElement (element : Element) (funName : String) : HtmlM Element :=
   match element with
   | el@(Element.Element name attrs contents) => do
     -- add id and class to <h_></h_>
     if name = "h1" ∨ name = "h2" ∨ name = "h3" ∨ name = "h4" ∨ name = "h5" ∨ name = "h6" then
-      addHeadingAttributes el modifyElement
+      addHeadingAttributes el funName modifyElement
     -- extend relative href for <a></a>
     else if name = "a" then
-      extendAnchor el
+      extendAnchor el funName
     -- auto link for inline <code></code>
     else if name = "code" ∧
       -- don't linkify code blocks explicitly tagged with a language other than lean
@@ -203,22 +243,43 @@ partial def modifyElement (element : Element) : HtmlM Element :=
       autoLink el
     -- recursively modify
     else
-      let newContents ← contents.mapM fun c => match c with
-        | Content.Element e => return Content.Element (← modifyElement e)
-        | _ => pure c
-      return ⟨ name, attrs, newContents ⟩
+      return ⟨ name, attrs, ← modifyContents contents funName modifyElement ⟩
+
+/-- Find all references in a markdown text. -/
+partial def findAllReferences (refsMap : HashMap String BibItem) (s : String) (i : String.Pos := 0)
+    (ret : HashSet String := .empty) : HashSet String :=
+  let lps := s.posOfAux '[' s.endPos i
+  if lps < s.endPos then
+    let lpe := s.posOfAux ']' s.endPos lps
+    if lpe < s.endPos then
+      let citekey := Substring.toString ⟨s, ⟨lps.1 + 1⟩, lpe⟩
+      match refsMap.find? citekey with
+      | .some _ => findAllReferences refsMap s lpe (ret.insert citekey)
+      | .none => findAllReferences refsMap s lpe ret
+    else
+      ret
+  else
+    ret
 
 /-- Convert docstring to Html. -/
-def docStringToHtml (s : String) : HtmlM (Array Html) := do
-  let rendered := match MD4Lean.renderHtml s with
-    | .some res => res
-    | _ => "" -- TODO: should print some error message
-  match manyDocument rendered.mkIterator with
-  | Parsec.ParseResult.success _ res =>
-    -- TODO: use `toString` instead of `eToStringEscaped`
-    -- once <https://github.com/leanprover/lean4/issues/4411> is fixed
-    res.mapM fun x => do return Html.raw <| eToStringEscaped (← modifyElement x)
-  | _ => return #[Html.raw rendered]
+def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html) := do
+  let refsMarkdown := "\n\n" ++ (String.join <|
+    (findAllReferences (← read).refsMap docString).toList.map fun s =>
+      s!"[{s}]: references.html#ref_{s}\n")
+  match MD4Lean.renderHtml (docString ++ refsMarkdown) with
+  | .some rendered =>
+    match manyDocument rendered.mkIterator with
+    | Parsec.ParseResult.success _ res =>
+      let newRes ← modifyElements res funName modifyElement
+      -- TODO: use `toString` instead of `eToStringEscaped`
+      -- once <https://github.com/leanprover/lean4/issues/4411> is fixed
+      return (newRes.map fun x => Html.raw (eToStringEscaped x))
+    | _ =>
+      addError <| "Error: failed to postprocess HTML:\n" ++ rendered
+      return #[.raw "<span style='color:red;'>Error: failed to postprocess: </span>", .raw rendered]
+  | .none =>
+    addError <| "Error: failed to parse markdown:\n" ++ docString
+    return #[.raw "<span style='color:red;'>Error: failed to parse markdown: </span>", .text docString]
 
 end Output
 end DocGen4

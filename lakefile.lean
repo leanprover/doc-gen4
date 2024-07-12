@@ -123,8 +123,34 @@ def getSrcUri (mod : Module) : IO String := do
   | .some "file" => getFileUri mod
   | .some _ => throw <| IO.userError "$DOCGEN_SRC should be github, file, or vscode."
 
+target bibPrepass : FilePath := do
+  let exeJob ← «doc-gen4».fetch
+  let dataPath := (← getWorkspace).root.buildDir / "doc-data"
+  let inputJsonFile := (← getWorkspace).root.srcDir / "docs" / "references.json"
+  let inputBibFile := (← getWorkspace).root.srcDir / "docs" / "references.bib"
+  let outputFile := dataPath / "references.json"
+  let tryJson : JobM (Array String × BuildTrace) := do
+    let inputTrace ← mixTrace (BuildTrace.ofHash (.ofString "json")) <$> computeTrace inputJsonFile
+    pure (#["--json", inputJsonFile.toString], inputTrace)
+  let tryBib : JobM (Array String × BuildTrace) := do
+    let inputTrace ← mixTrace (BuildTrace.ofHash (.ofString "bib")) <$> computeTrace inputBibFile
+    pure (#[inputBibFile.toString], inputTrace)
+  let tryBibFailed : JobM (Array String × BuildTrace) := do
+    pure (#["--none"], .nil)
+  exeJob.bindSync fun exeFile exeTrace => do
+    let (args, inputTrace) ← tryJson <|> tryBib <|> tryBibFailed
+    let depTrace := exeTrace.mix inputTrace
+    let trace ← buildFileUnlessUpToDate outputFile depTrace do
+      proc {
+        cmd := exeFile.toString
+        args := #["bibPrepass"] ++ args
+        env := ← getAugmentedEnv
+      }
+    return (outputFile, trace)
+
 module_facet docs (mod) : FilePath := do
   let exeJob ← «doc-gen4».fetch
+  let bibPrepassJob ← bibPrepass.fetch
   let modJob ← mod.leanArts.fetch
   -- Build all documentation imported modules
   let imports ← mod.imports.fetch
@@ -133,30 +159,34 @@ module_facet docs (mod) : FilePath := do
   let buildDir := (←getWorkspace).root.buildDir
   let docFile := mod.filePath (buildDir / "doc") "html"
   depDocJobs.bindAsync fun _ depDocTrace => do
-  exeJob.bindAsync fun exeFile exeTrace => do
-  modJob.bindSync fun _ modTrace => do
-    let depTrace := mixTraceArray #[exeTrace, modTrace, depDocTrace]
-    let trace ← buildFileUnlessUpToDate docFile depTrace do
-      proc {
-        cmd := exeFile.toString
-        args := #["single", mod.name.toString, srcUri]
-        env := ← getAugmentedEnv
-      }
-    return (docFile, trace)
+    bibPrepassJob.bindAsync fun _ bibPrepassTrace => do
+      exeJob.bindAsync fun exeFile exeTrace => do
+        modJob.bindSync fun _ modTrace => do
+          let depTrace := mixTraceArray #[exeTrace, modTrace, bibPrepassTrace, depDocTrace]
+          let trace ← buildFileUnlessUpToDate docFile depTrace do
+            proc {
+              cmd := exeFile.toString
+              args := #["single", mod.name.toString, srcUri]
+              env := ← getAugmentedEnv
+            }
+          return (docFile, trace)
 
 -- TODO: technically speaking this target does not show all file dependencies
 target coreDocs : FilePath := do
   let exeJob ← «doc-gen4».fetch
+  let bibPrepassJob ← bibPrepass.fetch
   let dataPath := (← getWorkspace).root.buildDir / "doc-data"
   let dataFile := dataPath / "declaration-data-Lean.bmp"
-  exeJob.bindSync fun exeFile exeTrace => do
-    let trace ← buildFileUnlessUpToDate dataFile exeTrace do
-      proc {
-        cmd := exeFile.toString
-        args := #["genCore"]
-        env := ← getAugmentedEnv
-      }
-    return (dataFile, trace)
+  bibPrepassJob.bindAsync fun _ bibPrepassTrace => do
+    exeJob.bindSync fun exeFile exeTrace => do
+      let depTrace := mixTraceArray #[exeTrace, bibPrepassTrace]
+      let trace ← buildFileUnlessUpToDate dataFile depTrace do
+        proc {
+          cmd := exeFile.toString
+          args := #["genCore"]
+          env := ← getAugmentedEnv
+        }
+      return (dataFile, trace)
 
 library_facet docs (lib) : FilePath := do
   let mods ← lib.modules.fetch
