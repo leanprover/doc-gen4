@@ -199,9 +199,6 @@ def moduleToHtml (module : Process.Module) : HtmlM Html := withTheReader SiteBas
   let relevantMembers := module.members.filter Process.ModuleMember.shouldRender
   let memberDocs ← relevantMembers.mapM (moduleMemberToHtml module.name)
   let memberNames := filterDocInfo relevantMembers |>.map DocInfo.getName
-  letI : MonadLift BaseHtmlM HtmlM := {
-    monadLift := fun x => do return x.run (← readThe SiteBaseContext)
-  }
   templateLiftExtends (baseHtmlGenerator module.name.toString) <| pure #[
     ← internalNav memberNames module.name,
     Html.element "main" false #[] memberDocs

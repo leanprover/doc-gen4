@@ -156,7 +156,7 @@ This is untyped so HtmlM and BaseHtmlM can be mixed.
 def templateExtends {α β} {m} [Bind m] (base : α → m β) (new : m α) : m β :=
   new >>= base
 
-def templateLiftExtends {α β} {m n} [Bind m] [MonadLift n m] (base : α → n β) (new : m α) : m β :=
+def templateLiftExtends {α β} {m n} [Bind m] [MonadLiftT n m] (base : α → n β) (new : m α) : m β :=
   new >>= (monadLift ∘ base)
 /--
 Returns the doc-gen4 link to a module name.
