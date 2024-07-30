@@ -27,7 +27,7 @@ def baseHtmlGenerator (title : String) (site : Array Html) : BaseHtmlM Html := d
 
         <title>{title}</title>
         <script defer="true" src={s!"{← getRoot}mathjax-config.js"}></script>
-        <script defer="true" src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+        <script defer="true" src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
         <script defer="true" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
         <script>{.raw s!"const SITE_ROOT={String.quote (← getRoot)};"}</script>
