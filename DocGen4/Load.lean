@@ -41,6 +41,6 @@ def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy)
   Prod.fst <$> Meta.MetaM.toIO (Process.process task) config { env := env } {} {}
 
 def loadCore : IO (Process.AnalyzerResult × Hierarchy) := do
-  load <| .loadAll #[`Init, `Lean, `Lake]
+  load <| .loadAll #[`Init, `Lean, `Lake, `Std]
 
 end DocGen4
