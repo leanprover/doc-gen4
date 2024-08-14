@@ -1,4 +1,4 @@
-name: std4 test build
+name: batteries test build
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: std4 test build
+    name: batteries test build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo

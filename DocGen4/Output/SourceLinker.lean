@@ -29,7 +29,7 @@ declarations into (optionally positional) Github URLs.
 def sourceLinker (gitUrl? : Option String) (module : Name) : Option DeclarationRange → String :=
   let root := module.getRoot
   let leanHash := Lean.githash
-  if root == `Lean ∨ root == `Init then
+  if root == `Lean ∨ root == `Init ∨ root == `Std then
     let parts := module.components.map Name.toString
     let path := "/".intercalate parts
     mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/{path}.lean"

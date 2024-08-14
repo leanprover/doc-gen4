@@ -24,8 +24,8 @@ If you have multiple libraries you want to generate full documentation for:
 lake -R -Kenv=dev build Test:docs Foo:docs
 ```
 
-Note that `doc-gen4` currently always generates documentation for `Lean`, `Init`
-and `Lake` in addition to the provided targets.
+Note that `doc-gen4` currently always generates documentation for `Lean`, `Init`, `Lake` and `Std`
+in addition to the provided targets.
 
 The root of the built docs will be `.lake/build/doc/index.html`. However, due to the "Same Origin Policy", the
 generated website will be partially broken if you just open the generated html files in your browser.  You
