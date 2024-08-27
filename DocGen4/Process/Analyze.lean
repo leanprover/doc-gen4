@@ -115,7 +115,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
 
   let mut res ← getAllModuleDocs relevantModules.toArray
 
-  for (name, cinfo) in env.constants.toList do
+  for (name, cinfo) in env.constants do
     let some modidx := env.getModuleIdxFor? name | unreachable!
     let moduleName := env.allImportedModuleNames.get! modidx
     if !relevantModules.contains moduleName then
