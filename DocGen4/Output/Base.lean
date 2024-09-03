@@ -81,7 +81,7 @@ structure SiteContext where
   /--
   The references as a map.
   -/
-  refsMap : HashMap String BibItem
+  refsMap : Std.HashMap String BibItem
 
 /--
 The writable state used in the `HtmlM` monad for HTML templating.
@@ -211,7 +211,7 @@ Returns the doc-gen4 link to a declaration name.
 -/
 def declNameToLink (name : Name) : HtmlM String := do
   let res ← getResult
-  let module := res.moduleNames[res.name2ModIdx.find! name |>.toNat]!
+  let module := res.moduleNames[res.name2ModIdx[name]!.toNat]!
   return (← moduleNameToLink module) ++ "#" ++ name.toString
 
 /--

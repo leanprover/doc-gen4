@@ -4,10 +4,6 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
 import Lean
-import Lean.Data.HashMap
-
-def Lean.HashSet.fromArray [BEq α] [Hashable α] (xs : Array α) : Lean.HashSet α :=
-  xs.foldr (flip .insert) .empty
 
 namespace DocGen4
 
@@ -81,8 +77,8 @@ partial def insert! (h : Hierarchy) (n : Name) : Hierarchy := Id.run do
 partial def fromArray (names : Array Name) : Hierarchy :=
   names.foldl insert! (empty anonymous false)
 
-def baseDirBlackList : HashSet String :=
-  HashSet.fromArray #[
+def baseDirBlackList : Std.HashSet String :=
+  Std.HashSet.ofList [
     "404.html",
     "color-scheme.js",
     "declaration-data.js",

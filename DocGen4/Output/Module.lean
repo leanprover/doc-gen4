@@ -159,7 +159,7 @@ Returns the list of all imports this module does.
 -/
 def getImports (module : Name) : HtmlM (Array Name) := do
   let res ← getResult
-  return res.moduleInfo.find! module |>.imports
+  return res.moduleInfo[module]!.imports
 
 /--
 Sort the list of all modules this one is importing, linkify it
