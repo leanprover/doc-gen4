@@ -1,9 +1,12 @@
 import MD4Lean
 import DocGen4.Output.Template
-import Lean.Data.Parsec
+import Std.Internal.Parsec
 import UnicodeBasic
 
-open Lean Xml Parser Parsec DocGen4.Process
+open Lean Xml Parser DocGen4.Process
+
+open Std.Internal.Parsec
+open Std.Internal.Parsec.String
 
 namespace DocGen4
 namespace Output
@@ -30,7 +33,7 @@ def splitAround (s : String) (p : Char → Bool) : List String := splitAroundAux
 instance : Inhabited Element := ⟨"", Lean.RBMap.empty, #[]⟩
 
 /-- Parse an array of Xml/Html document from String. -/
-def manyDocument : Parsec (Array Element) := many (prolog *> element <* many Misc) <* eof
+def manyDocument : Parser (Array Element) := many (prolog *> element <* many Misc) <* eof
 
 /--
   Generate id for heading elements, with the following rules:
@@ -83,7 +86,7 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
     else
       match (← getCurrentName) with
       | some currentName =>
-        match res.moduleInfo.find! currentName |>.members |> filterDocInfo |>.find? (sameEnd ·.getName name) with
+        match res.moduleInfo[currentName]! |>.members |> filterDocInfo |>.find? (sameEnd ·.getName name) with
         | some info =>
           declNameToLink info.getName
         | _ => return none
@@ -159,7 +162,7 @@ def addHeadingAttributes (el : Element) (funName : String)
 /-- Find a bibitem if `href` starts with `thePrefix`. -/
 def findBibitem? (href : String) (thePrefix : String := "") : HtmlM (Option BibItem) := do
   if href.startsWith thePrefix then
-    pure <| (← read).refsMap.find? (href.drop thePrefix.length)
+    pure <| (← read).refsMap[href.drop thePrefix.length]?
   else
     pure .none
 
@@ -246,14 +249,14 @@ partial def modifyElement (element : Element) (funName : String) : HtmlM Element
       return ⟨ name, attrs, ← modifyContents contents funName modifyElement ⟩
 
 /-- Find all references in a markdown text. -/
-partial def findAllReferences (refsMap : HashMap String BibItem) (s : String) (i : String.Pos := 0)
-    (ret : HashSet String := .empty) : HashSet String :=
+partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String) (i : String.Pos := 0)
+    (ret : Std.HashSet String := .empty) : Std.HashSet String :=
   let lps := s.posOfAux '[' s.endPos i
   if lps < s.endPos then
     let lpe := s.posOfAux ']' s.endPos lps
     if lpe < s.endPos then
       let citekey := Substring.toString ⟨s, ⟨lps.1 + 1⟩, lpe⟩
-      match refsMap.find? citekey with
+      match refsMap[citekey]? with
       | .some _ => findAllReferences refsMap s lpe (ret.insert citekey)
       | .none => findAllReferences refsMap s lpe ret
     else
@@ -269,7 +272,7 @@ def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html)
   match MD4Lean.renderHtml (docString ++ refsMarkdown) with
   | .some rendered =>
     match manyDocument rendered.mkIterator with
-    | Parsec.ParseResult.success _ res =>
+    | .success _ res =>
       let newRes ← modifyElements res funName modifyElement
       -- TODO: use `toString` instead of `eToStringEscaped`
       -- once <https://github.com/leanprover/lean4/issues/4411> is fixed

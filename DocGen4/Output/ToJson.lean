@@ -50,9 +50,9 @@ structure JsonIndexedModule where
 
 structure JsonIndex where
   declarations : List (String × JsonIndexedDeclarationInfo) := []
-  instances : HashMap String (RBTree String Ord.compare) := .empty
-  modules : HashMap String JsonIndexedModule := {}
-  instancesFor : HashMap String (RBTree String Ord.compare) := .empty
+  instances : Std.HashMap String (RBTree String Ord.compare) := .empty
+  modules : Std.HashMap String JsonIndexedModule := {}
+  instancesFor : Std.HashMap String (RBTree String Ord.compare) := .empty
 
 instance : ToJson JsonHeaderIndex where
   toJson idx := Json.mkObj <| idx.declarations.map (fun (k, v) => (k, toJson v))
@@ -87,23 +87,23 @@ def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM Js
 
   -- TODO: In theory one could sort instances and imports by name and batch the writes
   for inst in module.instances do
-    let mut insts := index.instances.findD inst.className {}
+    let mut insts := index.instances.getD inst.className {}
     insts := insts.insert inst.name
     index := { index with instances := index.instances.insert inst.className insts }
     for typeName in inst.typeNames do
-      let mut instsFor := index.instancesFor.findD typeName {}
+      let mut instsFor := index.instancesFor.getD typeName {}
       instsFor := instsFor.insert inst.name
       index := { index with instancesFor := index.instancesFor.insert typeName instsFor }
 
   -- TODO: dedup
-  if index.modules.find? module.name |>.isNone then
+  if index.modules[module.name]?.isNone then
     let moduleLink ← moduleNameToLink (String.toName module.name)
     let indexedModule := { url := moduleLink, importedBy := #[] }
     index := { index with modules := index.modules.insert module.name indexedModule }
 
   for imp in module.imports do
     let indexedImp ←
-      match index.modules.find? imp with
+      match index.modules[imp]? with
       | some i => pure i
       | none =>
         let impLink ← moduleNameToLink (String.toName imp)

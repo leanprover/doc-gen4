@@ -16,7 +16,6 @@ import DocGen4.Output.SourceLinker
 import DocGen4.Output.Search
 import DocGen4.Output.ToJson
 import DocGen4.Output.FoundationalTypes
-import Lean.Data.HashMap
 
 namespace DocGen4
 

@@ -4,9 +4,9 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
 
-import Lean
-import Lean.Data.HashMap
-import Lean.Data.HashSet
+import Lean.Meta.Basic
+import Std.Data.HashMap
+import Std.Data.HashSet
 
 import DocGen4.Process.Base
 import DocGen4.Process.Hierarchy
@@ -46,7 +46,7 @@ structure AnalyzerResult where
   /--
   The map from module names to indices of the `moduleNames` array.
   -/
-  name2ModIdx : HashMap Name ModuleIdx
+  name2ModIdx : Std.HashMap Name ModuleIdx
   /--
   The list of all modules, accessible nicely via `name2ModIdx`.
   -/
@@ -54,7 +54,7 @@ structure AnalyzerResult where
   /--
   A map from module names to information about these modules.
   -/
-  moduleInfo : HashMap Name Module
+  moduleInfo : Std.HashMap Name Module
   deriving Inhabited
 
 namespace ModuleMember
@@ -91,9 +91,9 @@ def AnalyzeTask.getLoad : AnalyzeTask → Array Name
 | loadAll load => load
 | loadAllLimitAnalysis load => load
 
-def getAllModuleDocs (relevantModules : Array Name) : MetaM (HashMap Name Module) := do
+def getAllModuleDocs (relevantModules : Array Name) : MetaM (Std.HashMap Name Module) := do
   let env ← getEnv
-  let mut res := mkHashMap relevantModules.size
+  let mut res := Std.HashMap.empty relevantModules.size
   for module in relevantModules do
     let modDocs := getModuleDoc? env module |>.getD #[] |>.map .modDoc
     let some modIdx := env.getModuleIdx? module | unreachable!
@@ -109,8 +109,8 @@ of this `MetaM` run and mentioned by the `AnalyzeTask`.
 def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
   let env ← getEnv
   let relevantModules := match task with
-    | .loadAll _ => HashSet.fromArray env.header.moduleNames
-    | .loadAllLimitAnalysis analysis => HashSet.fromArray analysis
+    | .loadAll _ => Std.HashSet.insertMany {} env.header.moduleNames
+    | .loadAllLimitAnalysis analysis => Std.HashSet.insertMany {} analysis
   let allModules := env.header.moduleNames
 
   let mut res ← getAllModuleDocs relevantModules.toArray
@@ -132,7 +132,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
         let analysis ← Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant (name, cinfo)) config { env := env } {} {}
         if let some dinfo := analysis then
           let moduleName := env.allImportedModuleNames.get! modidx
-          let module := res.find! moduleName
+          let module := res[moduleName]!
           return res.insert moduleName {module with members := module.members.push (ModuleMember.docInfo dinfo)}
         else
           return res
