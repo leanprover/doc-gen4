@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: build doc-gen4
+      - name: install elan and build doc-gen4
         uses: leanprover/lean-action@v1
 
       - name: Checkout batteries
