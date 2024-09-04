@@ -14,12 +14,8 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: install elan
-        run: |
-          set -o pipefail
-          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- --default-toolchain none -y
-          ~/.elan/bin/lean --version
-          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+      - name: install elan and build doc-gen4
+        uses: leanprover/lean-action@v1
 
       - name: Checkout batteries
         run: |
