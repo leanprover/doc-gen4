@@ -124,6 +124,7 @@ def isBlackListed (declName : Name) : MetaM Bool := do
     pure (declName.isInternal)
     <||> (pure <| isAuxRecursor env declName)
     <||> (pure <| isNoConfusion env declName)
+    <||> (pure <| declName.isInternalDetail)
     <||> isRec declName
     <||> isMatcher declName
   -- TODO: Evaluate whether filtering out declarations without range is sensible
