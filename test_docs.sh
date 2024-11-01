@@ -6,7 +6,7 @@ set -x
 
 # generate the docs
 cd "$1"
-cat >> lakefile.lean << 'EOL'
+cat >> lakefile.toml << 'EOL'
 [[require]]
 name = "«doc-gen4»"
 path = "../doc-gen4"
