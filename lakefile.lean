@@ -21,7 +21,7 @@ require «UnicodeBasic» from git
   "https://github.com/fgdorais/lean4-unicode-basic" @ "main"
 
 require Cli from git
-  "https://github.com/mhuisi/lean4-cli" @ "nightly"
+  "https://github.com/mhuisi/lean4-cli" @ "main"
 
 /--
 Obtain the Github URL of a project by parsing the origin remote.
