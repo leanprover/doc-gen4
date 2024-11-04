@@ -74,7 +74,7 @@ def refItem (ref : BibItem) (backrefs : Array BackrefItem) : BaseHtmlM Html := d
     if backrefs.isEmpty then
       pure (.raw "")
     else
-      pure <small>[(← backrefs.mapIdxM toHtml).foldl (· ++ ·) #[]]</small>)
+      pure <small>[(← backrefs.mapFinIdxM toHtml).foldl (· ++ ·) #[]]</small>)
   pure <|
     <li id={s!"ref_{ref.citekey}"}>
       <a href={s!"#ref_{ref.citekey}"}>{.text ref.tag}</a>

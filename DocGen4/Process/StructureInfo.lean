@@ -34,7 +34,7 @@ def getFieldTypes (v : InductiveVal) : MetaM (Array NameInfo) := do
 def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
   let env ← getEnv
-  let parents := getParentStructures env v.name
+  let parents ← getAllParentStructures v.name
   let ctorVal := getStructureCtor env v.name
   let ctor ← NameInfo.ofTypedName ctorVal.name ctorVal.type
   match getStructureInfo? env v.name with
