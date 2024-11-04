@@ -199,7 +199,7 @@ def autoLink (el : Element) : HtmlM Element := do
     for c in contents do
       match c with
       | Content.Character s =>
-        newContents := newContents ++ (← splitAround s unicodeToSplit |>.mapM linkify).join
+        newContents := newContents ++ (← splitAround s unicodeToSplit |>.mapM linkify).flatten
       | _ => newContents := newContents.push c
     return ⟨ name, attrs, newContents ⟩
   where
