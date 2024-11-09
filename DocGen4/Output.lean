@@ -21,9 +21,9 @@ namespace DocGen4
 
 open Lean IO System Output Process
 
-def collectBackrefs : IO (Array BackrefItem) := do
+def collectBackrefs (buildDir : System.FilePath) : IO (Array BackrefItem) := do
   let mut backrefs : Array BackrefItem := #[]
-  for entry in ← System.FilePath.readDir declarationsBasePath do
+  for entry in ← System.FilePath.readDir (declarationsBasePath buildDir) do
     if entry.fileName.startsWith "backrefs-" && entry.fileName.endsWith ".json" then
       let fileContent ← FS.readFile entry.path
       match Json.parse fileContent with
@@ -37,13 +37,13 @@ def collectBackrefs : IO (Array BackrefItem) := do
   return backrefs
 
 def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
-  let findBasePath := basePath / "find"
+  let findBasePath (buildDir : System.FilePath) := basePath buildDir / "find"
 
   -- Base structure
-  FS.createDirAll basePath
-  FS.createDirAll findBasePath
-  FS.createDirAll srcBasePath
-  FS.createDirAll declarationsBasePath
+  FS.createDirAll <| basePath config.buildDir
+  FS.createDirAll <| findBasePath config.buildDir
+  FS.createDirAll <| srcBasePath config.buildDir
+  FS.createDirAll <| declarationsBasePath config.buildDir
 
   -- All the doc-gen static stuff
   let indexHtml := ReaderT.run index config |>.toString
@@ -51,7 +51,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let foundationalTypesHtml := ReaderT.run foundationalTypes config |>.toString
   let navbarHtml := ReaderT.run navbar config |>.toString
   let searchHtml := ReaderT.run search config |>.toString
-  let referencesHtml := ReaderT.run (references (← collectBackrefs)) config |>.toString
+  let referencesHtml := ReaderT.run (references (← collectBackrefs config.buildDir)) config |>.toString
   let docGenStatic := #[
     ("style.css", styleCss),
     ("favicon.svg", faviconSvg),
@@ -73,7 +73,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
     ("references.html", referencesHtml)
   ]
   for (fileName, content) in docGenStatic do
-    FS.writeFile (basePath / fileName) content
+    FS.writeFile (basePath config.buildDir / fileName) content
 
   let findHtml := ReaderT.run find { config with depthToRoot := 1 } |>.toString
   let findStatic := #[
@@ -81,12 +81,12 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
     ("find.js", findJs)
   ]
   for (fileName, content) in findStatic do
-    FS.writeFile (findBasePath / fileName) content
+    FS.writeFile (findBasePath config.buildDir / fileName) content
 
-def htmlOutputDeclarationDatas (result : AnalyzerResult) : HtmlT IO Unit := do
+def htmlOutputDeclarationDatas (buildDir : System.FilePath) (result : AnalyzerResult) : HtmlT IO Unit := do
   for (_, mod) in result.moduleInfo.toArray do
     let jsonDecls ← Module.toJson mod
-    FS.writeFile (declarationsBasePath / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
+    FS.writeFile (declarationsBasePath buildDir / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
 
 def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String) : IO Unit := do
   let config : SiteContext := {
@@ -95,14 +95,14 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     refsMap := .ofList (baseConfig.refs.map fun x => (x.citekey, x)).toList
   }
 
-  FS.createDirAll basePath
-  FS.createDirAll declarationsBasePath
+  FS.createDirAll <| basePath baseConfig.buildDir
+  FS.createDirAll <| declarationsBasePath baseConfig.buildDir
 
-  discard <| htmlOutputDeclarationDatas result |>.run {} config baseConfig
+  discard <| htmlOutputDeclarationDatas baseConfig.buildDir result |>.run {} config baseConfig
 
   for (modName, module) in result.moduleInfo.toArray do
-    let fileDir := moduleNameToDirectory basePath modName
-    let filePath := moduleNameToFile basePath modName
+    let fileDir := moduleNameToDirectory (basePath baseConfig.buildDir) modName
+    let filePath := moduleNameToFile (basePath baseConfig.buildDir) modName
     -- path: 'basePath/module/components/till/last.html'
     -- The last component is the file name, so we drop it from the depth to root.
     let baseConfig := { baseConfig with
@@ -114,10 +114,10 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
       throw <| IO.userError s!"There are errors when generating '{filePath}': {cfg.errors}"
     FS.createDirAll fileDir
     FS.writeFile filePath moduleHtml.toString
-    FS.writeFile (declarationsBasePath / s!"backrefs-{module.name}.json") (toString (toJson cfg.backrefs))
+    FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json") (toString (toJson cfg.backrefs))
 
-def getSimpleBaseContext (hierarchy : Hierarchy) : IO SiteBaseContext := do
-  let contents ← FS.readFile (declarationsBasePath / "references.json") <|> (pure "[]")
+def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) : IO SiteBaseContext := do
+  let contents ← FS.readFile (declarationsBasePath buildDir / "references.json") <|> (pure "[]")
   match Json.parse contents with
   | .error err =>
     throw <| IO.userError s!"Failed to parse 'references.json': {err}"
@@ -127,6 +127,7 @@ def getSimpleBaseContext (hierarchy : Hierarchy) : IO SiteBaseContext := do
       throw <| IO.userError s!"Failed to parse 'references.json': {err}"
     | .ok (refs : Array BibItem) =>
       return {
+        buildDir := buildDir
         depthToRoot := 0
         currentName := none
         hierarchy := hierarchy
@@ -137,7 +138,7 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
   htmlOutputSetup baseConfig
 
   let mut index : JsonIndex := {}
-  for entry in ← System.FilePath.readDir declarationsBasePath do
+  for entry in ← System.FilePath.readDir (declarationsBasePath baseConfig.buildDir) do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
       let fileContent ← FS.readFile entry.path
       match Json.parse fileContent with
@@ -152,13 +153,13 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
 
   let finalJson := toJson index
   -- The root JSON for find
-  let declarationDir := basePath / "declarations"
+  let declarationDir := basePath  baseConfig.buildDir / "declarations"
   FS.createDirAll declarationDir
   FS.writeFile (declarationDir / "declaration-data.bmp") finalJson.compress
 
-def headerDataOutput : IO Unit := do
+def headerDataOutput (buildDir : System.FilePath) : IO Unit := do
   let mut headerIndex : JsonHeaderIndex := {}
-  for entry in ← System.FilePath.readDir declarationsBasePath do
+  for entry in ← System.FilePath.readDir (declarationsBasePath buildDir) do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
       let fileContent ← FS.readFile entry.path
       let .ok jsonContent := Json.parse fileContent | unreachable!
@@ -166,7 +167,7 @@ def headerDataOutput : IO Unit := do
       headerIndex := headerIndex.addModule module
 
   let finalHeaderJson := toJson headerIndex
-  let declarationDir := basePath / "declarations"
+  let declarationDir := basePath buildDir / "declarations"
   FS.createDirAll declarationDir
   FS.writeFile (declarationDir / "header-data.bmp") finalHeaderJson.compress
 
@@ -174,8 +175,8 @@ def headerDataOutput : IO Unit := do
 The main entrypoint for outputting the documentation HTML based on an
 `AnalyzerResult`.
 -/
-def htmlOutput (result : AnalyzerResult) (hierarchy : Hierarchy) (sourceUrl? : Option String) : IO Unit := do
-  let baseConfig ← getSimpleBaseContext hierarchy
+def htmlOutput (buildDir : System.FilePath) (result : AnalyzerResult) (hierarchy : Hierarchy) (sourceUrl? : Option String) : IO Unit := do
+  let baseConfig ← getSimpleBaseContext buildDir hierarchy
   htmlOutputResults baseConfig result sourceUrl?
   htmlOutputIndex baseConfig
 

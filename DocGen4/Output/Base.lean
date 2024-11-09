@@ -11,11 +11,9 @@ namespace DocGen4.Output
 open scoped DocGen4.Jsx
 open Lean System Widget Elab Process
 
-
-def lakeBuildDir := FilePath.mk "." / ".lake" / "build"
-def basePath := lakeBuildDir / "doc"
-def srcBasePath := basePath / "src"
-def declarationsBasePath := lakeBuildDir / "doc-data"
+def basePath (buildDir : System.FilePath) := buildDir / "doc"
+def srcBasePath (buildDir : System.FilePath) := basePath buildDir / "src"
+def declarationsBasePath (buildDir : System.FilePath) := buildDir / "doc-data"
 
 /-- The structure representing a processed bibitem. -/
 structure BibItem where
@@ -47,6 +45,11 @@ structure BackrefItem where
 The context used in the `BaseHtmlM` monad for HTML templating.
 -/
 structure SiteBaseContext where
+
+  /--
+  The build directory (provided by lake).
+  -/
+  buildDir : System.FilePath
 
   /--
   The module hierarchy as a tree structure.

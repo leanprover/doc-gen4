@@ -125,18 +125,19 @@ def getSrcUri (mod : Module) : IO String := do
 
 target bibPrepass : FilePath := do
   let exeJob ← «doc-gen4».fetch
-  let dataPath := (← getWorkspace).root.buildDir / "doc-data"
+  let buildDir := (←getWorkspace).root.buildDir
+  let dataPath := buildDir / "doc-data"
   let inputJsonFile := (← getWorkspace).root.srcDir / "docs" / "references.json"
   let inputBibFile := (← getWorkspace).root.srcDir / "docs" / "references.bib"
   let outputFile := dataPath / "references.json"
   let tryJson : JobM (Array String × BuildTrace) := do
     let inputTrace ← mixTrace (BuildTrace.ofHash (.ofString "json")) <$> computeTrace inputJsonFile
-    pure (#["--json", inputJsonFile.toString], inputTrace)
+    pure (#["--build", buildDir.toString, "--json", inputJsonFile.toString], inputTrace)
   let tryBib : JobM (Array String × BuildTrace) := do
     let inputTrace ← mixTrace (BuildTrace.ofHash (.ofString "bib")) <$> computeTrace inputBibFile
-    pure (#[inputBibFile.toString], inputTrace)
+    pure (#["--build", buildDir.toString, inputBibFile.toString], inputTrace)
   let tryBibFailed : JobM (Array String × BuildTrace) := do
-    pure (#["--none"], .nil)
+    pure (#["--build", buildDir.toString, "--none"], .nil)
   exeJob.bindSync fun exeFile exeTrace => do
     let (args, inputTrace) ← tryJson <|> tryBib <|> tryBibFailed
     let depTrace := exeTrace.mix inputTrace
@@ -166,7 +167,7 @@ module_facet docs (mod) : FilePath := do
           let trace ← buildFileUnlessUpToDate docFile depTrace do
             proc {
               cmd := exeFile.toString
-              args := #["single", mod.name.toString, srcUri]
+              args := #["single", "--build", buildDir.toString, mod.name.toString, srcUri]
               env := ← getAugmentedEnv
             }
           return (docFile, trace)
@@ -177,13 +178,14 @@ target coreDocs : FilePath := do
   let bibPrepassJob ← bibPrepass.fetch
   let dataPath := (← getWorkspace).root.buildDir / "doc-data"
   let dataFile := dataPath / "declaration-data-Lean.bmp"
+  let buildDir := (←getWorkspace).root.buildDir
   bibPrepassJob.bindAsync fun _ bibPrepassTrace => do
     exeJob.bindSync fun exeFile exeTrace => do
       let depTrace := mixTraceArray #[exeTrace, bibPrepassTrace]
       let trace ← buildFileUnlessUpToDate dataFile depTrace do
         proc {
           cmd := exeFile.toString
-          args := #["genCore"]
+          args := #["genCore", "--build", buildDir.toString]
           env := ← getAugmentedEnv
         }
       return (dataFile, trace)
@@ -194,7 +196,8 @@ library_facet docs (lib) : FilePath := do
   let coreJob ← coreDocs.fetch
   let exeJob ← «doc-gen4».fetch
   -- Shared with DocGen4.Output
-  let basePath := (← getWorkspace).root.buildDir / "doc"
+  let buildDir := (←getWorkspace).root.buildDir
+  let basePath := buildDir / "doc"
   let dataFile := basePath / "declarations" / "declaration-data.bmp"
   let staticFiles := #[
     basePath / "style.css",
@@ -224,7 +227,7 @@ library_facet docs (lib) : FilePath := do
           logInfo "Documentation indexing"
           proc {
             cmd := exeFile.toString
-            args := #["index"]
+            args := #["index", "--build", buildDir.toString]
           }
         let traces ← staticFiles.mapM computeTrace
         let indexTrace := mixTraceArray traces
@@ -237,7 +240,8 @@ library_facet docsHeader (lib) : FilePath := do
   let coreJob ← coreDocs.fetch
   let exeJob ← «doc-gen4».fetch
   -- Shared with DocGen4.Output
-  let basePath := (← getWorkspace).root.buildDir / "doc"
+  let buildDir := (←getWorkspace).root.buildDir
+  let basePath := buildDir / "doc"
   let dataFile := basePath / "declarations" / "header-data.bmp"
   coreJob.bindAsync fun _ coreInputTrace => do
     exeJob.bindAsync fun exeFile exeTrace => do
@@ -247,6 +251,6 @@ library_facet docsHeader (lib) : FilePath := do
           logInfo "Documentation indexing"
           proc {
             cmd := exeFile.toString
-            args := #["headerData"]
+            args := #["headerData", "--build", buildDir.toString]
           }
         return (dataFile, trace)
