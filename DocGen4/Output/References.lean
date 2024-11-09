@@ -25,39 +25,39 @@ namespace DocGen4
 
 /-- Preprocess (using the user provided `process` function)
 and save the bib file to the output path. -/
-def preprocessBibFile (contents : String) (process : String → IO (Array BibItem)) : IO Unit := do
+def preprocessBibFile (buildDir : System.FilePath) (contents : String) (process : String → IO (Array BibItem)) : IO Unit := do
   -- create directories
-  IO.FS.createDirAll basePath
-  IO.FS.createDirAll declarationsBasePath
+  IO.FS.createDirAll <| basePath buildDir
+  IO.FS.createDirAll <| declarationsBasePath buildDir
   -- save the contents to "references.bib" and erase "references.json"
-  IO.FS.writeFile (basePath / "references.bib") contents
-  IO.FS.writeFile (declarationsBasePath / "references.json") "[]"
+  IO.FS.writeFile (basePath buildDir / "references.bib") contents
+  IO.FS.writeFile (declarationsBasePath buildDir / "references.json") "[]"
   -- if contents is empty, just do nothing
   if contents.trim.isEmpty then
     return
   -- run the user provided process function
   let items ← process contents
   -- save the result to "references.json"
-  IO.FS.writeFile (declarationsBasePath / "references.json") (toString (toJson items))
+  IO.FS.writeFile (declarationsBasePath buildDir / "references.json") (toString (toJson items))
 
 /-- Save the bib json to the output path. -/
-def preprocessBibJson (contents : String) : IO Unit := do
+def preprocessBibJson (buildDir : System.FilePath) (contents : String) : IO Unit := do
   -- create directories
-  IO.FS.createDirAll basePath
-  IO.FS.createDirAll declarationsBasePath
+  IO.FS.createDirAll <| basePath buildDir
+  IO.FS.createDirAll <| declarationsBasePath buildDir
   -- erase "references.bib" (since we can't recover it from json)
   -- and save the contents to "references.json"
-  IO.FS.writeFile (basePath / "references.bib") ""
-  IO.FS.writeFile (declarationsBasePath / "references.json") contents
+  IO.FS.writeFile (basePath buildDir / "references.bib") ""
+  IO.FS.writeFile (declarationsBasePath buildDir / "references.json") contents
 
 /-- Erase the contents of bib file in the output path. -/
-def disableBibFile : IO Unit := do
+def disableBibFile (buildDir : System.FilePath) : IO Unit := do
   -- create directories
-  IO.FS.createDirAll basePath
-  IO.FS.createDirAll declarationsBasePath
+  IO.FS.createDirAll <| basePath buildDir
+  IO.FS.createDirAll <| declarationsBasePath buildDir
   -- erase files
-  IO.FS.writeFile (basePath / "references.bib") ""
-  IO.FS.writeFile (declarationsBasePath / "references.json") "[]"
+  IO.FS.writeFile (basePath buildDir / "references.bib") ""
+  IO.FS.writeFile (declarationsBasePath buildDir / "references.json") "[]"
 
 namespace Output
 
