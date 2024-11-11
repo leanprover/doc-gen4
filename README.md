@@ -2,6 +2,8 @@
 Document Generator for Lean 4
 
 ## Usage
+Please do read the entire usage section once before executing commands as it might safe you some time.
+
 `doc-gen4` is easiest to use via its custom Lake facet. The currently recommended setup for
 this is that you create a nested project for documentation building inside of your lake project.
 To do this:
@@ -36,6 +38,16 @@ lake build YourLibraryName:docs
 If you have multiple libraries you want to generate full documentation for:
 ```
 lake build Test:docs YourLibraryName:docs
+```
+
+If your library has additional dependencies this setup is not going to share the builds of the
+dependencies by default. To do this run the following from `docbuild` before building docs:
+```sh
+mkdir -p .lake/packages
+for package_path in ../.lake/packages/*; do
+  package=$(basename $package_path)
+  ln -s ../../../.lake/packages/$package .lake/packages/$package
+done
 ```
 
 Note that `doc-gen4` currently always generates documentation for `Lean`, `Init`, `Lake` and `Std`
