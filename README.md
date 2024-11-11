@@ -2,45 +2,60 @@
 Document Generator for Lean 4
 
 ## Usage
-`doc-gen4` is the easiest to use via its custom Lake facet, in order
-to do this you have to add it to your `lakefile.lean` like this:
-```
-meta if get_config? env = some "dev" then -- dev is so not everyone has to build it
-require «doc-gen4» from git "https://github.com/leanprover/doc-gen4" @ "main"
-```
+`doc-gen4` is easiest to use via its custom Lake facet. The currently recommended setup for
+this is that you create a nested project for documentation building inside of your lake project.
+To do this:
+1. Create a subdirectory within your existing lake project called `docbuild`
+2. Create a `lakefile.toml` within `docbuild` with the following content:
+```toml
+name = "docbuild"
+version = "0.1.0"
+defaultTargets = ["docbuild"]
 
-Then update your dependencies:
-```
-lake -R -Kenv=dev update
-```
+[[require]]
+scope = "leanprover"
+name = "doc-gen4"
+# Use revision v4.x if you are developing against a stable Lean version.
+rev = "main"
 
-Then you can generate documentation for an entire library and all files imported
-by that library using:
+[[require]]
+name = "Your Library Name"
+path = "../"
 ```
-lake -R -Kenv=dev build Test:docs
+3. Create a `.gitignore` file within `docbuild` with the following content:
+```
+.lake/
+```
+4. Run `lake update` within `docbuild` to pin `doc-gen4` and it's dependencies to the chosen versions.
+
+After this setup step you can generate documentation for an entire library and all files imported
+by that library using the following command within `docbuild`:
+```
+lake build YourLibraryName:docs
 ```
 If you have multiple libraries you want to generate full documentation for:
 ```
-lake -R -Kenv=dev build Test:docs Foo:docs
+lake build Test:docs YourLibraryName:docs
 ```
 
 Note that `doc-gen4` currently always generates documentation for `Lean`, `Init`, `Lake` and `Std`
 in addition to the provided targets.
 
-The root of the built docs will be `.lake/build/doc/index.html`. However, due to the "Same Origin Policy", the
-generated website will be partially broken if you just open the generated html files in your browser.  You
-need to serve them from a proper http server for it to work. An easy way to do that is to run
-`python3 -m http.server` from the `.lake/build/doc` directory.
+The root of the built docs will be `docbuild/.lake/build/doc/index.html`.
+However, due to the "Same Origin Policy", the generated website will be partially broken if you just
+open the generated html files in your browser.  You need to serve them from a proper http server for
+it to work. An easy way to do that is to run `python3 -m http.server` from the `docbuild/.lake/build/doc`
+directory.
 
 ## Requirements to run `doc-gen4`
 In order to compile itself `doc-gen4` requires:
 - a Lean 4 or `elan` installation
 - a C compiler if on Linux or MacOS (on Windows it will use Lean's built-in clang compiler)
 
-Apart from this the only requirement for `lake -Kenv=dev build Test:docs` to work is that your
-target library builds, that is `lake build Test` exits without an error. If this requirement
+Apart from this the only requirement for `lake build YourLibraryName:docs` to work is that your
+target library builds, that is `lake build YourLibraryName` exits without an error. If this requirement
 is not fulfilled, the documentation generation will fail and you will end up with
-partial build artefacts in `.lake/build/doc`. Note that `doc-gen4` is perfectly capable of
+partial build artefacts in `docbuild/.lake/build/doc`. Note that `doc-gen4` is perfectly capable of
 generating documentation for Lean code that contains `sorry`, just not for code
 that doesn't compile.
 
@@ -59,7 +74,7 @@ out things that you intend to complete later.
 Source locations default to guessing the Github repo for the library, but different different schemas can be used by setting the `DOCGEN_SRC` environment variable.  For
 example, one can use links that open the local source file in VSCode by running lake with:
 ```
-DOCGEN_SRC="vscode" lake -R -Kenv=dev ...
+DOCGEN_SRC="vscode" lake ...
 ```
 
 The different options are:
@@ -80,14 +95,15 @@ If you wish to provide a similar feature to `docs#Nat.add` from the Lean Zulip f
 this is the way to go.
 
 ## Development of doc-gen4
-You can build docs using a modified `doc-gen4` as follows:  Replace the `from git  "..." @ "main"` in the `lakefile.lean` with just `from "..."` using the path to the modified version of `doc-gen4`.  E.g. if the
-path to the modified version of `doc-gen4` is `../doc-gen4`, it would be:
+You can build docs using a modified `doc-gen4` as follows:  Replace the `doc-gen4` require from
+docbuild with:
 ```
-meta if get_config? env = some "dev" then -- dev is so not everyone has to build it
-require «doc-gen4» from "../doc-gen4"
+[[require]]
+name = "doc-gen4"
+path = "../../path/to/your/doc-gen4"
 ```
 
 Note that if you modify the `.js` or `.css` files in `doc-gen4`, they won't necessarily be copied over when
-you rebuild the documentation.  You can manually copy the changes to the `.lake/build/doc` directory to make
+you rebuild the documentation.  You can manually copy the changes to the `docbuild/.lake/build/doc` directory to make
 sure the changes appear, or just do a full recompilation (`lake clean` and `lake build` inside the `doc-gen4`
 directory.)
