@@ -13,14 +13,14 @@ version = "0.1.0"
 defaultTargets = ["docbuild"]
 
 [[require]]
+name = "Your Library Name"
+path = "../"
+
+[[require]]
 scope = "leanprover"
 name = "doc-gen4"
 # Use revision v4.x if you are developing against a stable Lean version.
 rev = "main"
-
-[[require]]
-name = "Your Library Name"
-path = "../"
 ```
 3. Create a `.gitignore` file within `docbuild` with the following content:
 ```
