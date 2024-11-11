@@ -26,7 +26,7 @@ path = "../"
 ```
 .lake/
 ```
-4. Run `lake update` within `docbuild` to pin `doc-gen4` and it's dependencies to the chosen versions.
+4. Run `lake update` within `docbuild` to pin `doc-gen4` and its dependencies to the chosen versions.
 
 After this setup step you can generate documentation for an entire library and all files imported
 by that library using the following command within `docbuild`:
