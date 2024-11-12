@@ -25,20 +25,10 @@ Render an `Arg` as HTML, adding opacity effects etc. depending on what
 type of binder it has.
 -/
 def argToHtml (arg : Arg) : HtmlM Html := do
-  let (l, r, implicit) := match arg.binderInfo with
-  | BinderInfo.default => ("(", ")", false)
-  | BinderInfo.implicit => ("{", "}", true)
-  | BinderInfo.strictImplicit => ("⦃", "⦄", true)
-  | BinderInfo.instImplicit => ("[", "]", true)
-  let mut nodes :=
-    match arg.name with
-    | some name => #[Html.text s!"{l}{name.toString} : "]
-    | none => #[Html.text s!"{l}"]
-  nodes := nodes.append (← infoFormatToHtml arg.type)
-  nodes := nodes.push r
-  let inner := <span class="fn">[nodes]</span>
+  let node ← infoFormatToHtml arg.binder
+  let inner := <span class="fn">[node]</span>
   let html := Html.element "span" false #[("class", "decl_args")] #[inner]
-  if implicit then
+  if arg.implicit then
     return <span class="impl_arg">{html}</span>
   else
     return html
