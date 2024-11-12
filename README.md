@@ -9,8 +9,9 @@ To do this:
 2. Create a `lakefile.toml` within `docbuild` with the following content:
 ```toml
 name = "docbuild"
+reservoir = false
 version = "0.1.0"
-defaultTargets = ["docbuild"]
+packagesDir = "../.lake/packages"
 
 [[require]]
 name = "Your Library Name"
@@ -22,22 +23,9 @@ name = "doc-gen4"
 # Use revision v4.x if you are developing against a stable Lean version.
 rev = "main"
 ```
-3. Create a `.gitignore` file within `docbuild` with the following content:
-```
-.lake/
-```
-4. If you want to build docs right away and you have extra dependencies you need to run the
-   following script from within `docbuild` to share build products with your parent project.
-   Note that as `docbuild/.lake` is not going to be tracked by git you also need to run this
-   before building docs every time
-```sh
-mkdir -p .lake/packages
-for package_path in ../.lake/packages/*; do
-  package=$(basename $package_path)
-  ln -s ../../../.lake/packages/$package .lake/packages/$package
-done
-```
-5. Run `lake update` within `docbuild` to pin `doc-gen4` and its dependencies to the chosen versions.
+3. Run `lake update` within `docbuild` to pin `doc-gen4` and its dependencies to the chosen versions.
+4. If your parent project has dependencies you want to run `lake update YourLibraryName` within
+  `docbuild` whenever you update the dependencies of your parent project.
 
 After this setup step you can generate documentation for an entire library and all files imported
 by that library using the following command within `docbuild`:
@@ -47,16 +35,6 @@ lake build YourLibraryName:docs
 If you have multiple libraries you want to generate full documentation for:
 ```
 lake build Test:docs YourLibraryName:docs
-```
-
-If your library has additional dependencies this setup is not going to share the builds of the
-dependencies by default. To do this run the following from `docbuild` before building docs:
-```sh
-mkdir -p .lake/packages
-for package_path in ../.lake/packages/*; do
-  package=$(basename $package_path)
-  ln -s ../../../.lake/packages/$package .lake/packages/$package
-done
 ```
 
 Note that `doc-gen4` currently always generates documentation for `Lean`, `Init`, `Lake` and `Std`
