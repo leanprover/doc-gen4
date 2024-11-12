@@ -23,7 +23,7 @@ name = "doc-gen4"
 # Use revision v4.x if you are developing against a stable Lean version.
 rev = "main"
 ```
-3. Run `lake update` within `docbuild` to pin `doc-gen4` and its dependencies to the chosen versions.
+3. Run `lake update doc-gen4` within `docbuild` to pin `doc-gen4` and its dependencies to the chosen versions.
 4. If your parent project has dependencies you want to run `lake update YourLibraryName` within
   `docbuild` whenever you update the dependencies of your parent project.
 
