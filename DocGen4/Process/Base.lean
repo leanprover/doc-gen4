@@ -27,6 +27,8 @@ structure NameInfo where
   doc : Option String
   deriving Inhabited
 
+structure FieldInfo extends NameInfo where
+  isDirect : Bool
 
 /--
 An argument to a declaration, e.g. the `(x : Nat)` in `def foo (x : Nat) := x`.
@@ -127,7 +129,7 @@ structure StructureInfo extends Info where
   /--
   Information about all the fields of the structure.
   -/
-  fieldInfo : Array NameInfo
+  fieldInfo : Array FieldInfo
   /--
   All the structures this one inherited from.
   -/

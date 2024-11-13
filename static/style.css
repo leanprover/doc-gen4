@@ -757,6 +757,15 @@ a:hover {
     transition: opacity 1000ms ease-out;
 }
 
+.inherited_field {
+    transition: opacity 300ms ease-in;
+}
+
+.structure_fields:not(:hover) .inherited_field {
+    opacity: 30%;
+    transition: opacity 1000ms ease-out;
+}
+
 .gh_link {
     float: right;
     margin-left: 10px;

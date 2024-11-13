@@ -11,20 +11,25 @@ open Lean
 /--
 Render a single field consisting of its documentation, its name and its type as HTML.
 -/
-def fieldToHtml (f : Process.NameInfo) : HtmlM Html := do
+def fieldToHtml (f : Process.FieldInfo) : HtmlM Html := do
   let shortName := f.name.componentsRev.head!.toString
   let name := f.name.toString
-  if let some doc := f.doc then
-    let renderedDoc ← docStringToHtml doc name
+  if f.isDirect then
+    let doc : Array HTML ←
+      if let some doc := f.doc then
+        let renderedDoc ← docStringToHtml doc name
+        pure #[<div class="structure_field_doc">[renderedDoc]</div>]
+      else
+        pure #[]
     pure
       <li id={name} class="structure_field">
         <div class="structure_field_info">{s!"{shortName} "} : [← infoFormatToHtml f.type]</div>
-        <div class="structure_field_doc">[renderedDoc]</div>
+        [doc]
       </li>
   else
     pure
-      <li id={name} class="structure_field">
-        <div class="structure_field_info">{s!"{shortName} "} : [← infoFormatToHtml f.type]</div>
+      <li class="structure_field inherited_field">
+        <div class="structure_field_info"><a href={s!"#{name}"}>{s!"{shortName}"}</a>{" "}: [← infoFormatToHtml f.type]</div>
       </li>
 
 /--
