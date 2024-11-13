@@ -15,42 +15,60 @@ def NameInfo.ofTypedName (n : Name) (t : Expr) : MetaM NameInfo := do
   let env ← getEnv
   return { name := n, type := ← prettyPrintTerm t, doc := ← findDocString? env n}
 
-partial def argTypeTelescope {α : Type} (e : Expr) (k : Array ((Option Name) × Expr × BinderInfo) → Expr → MetaM α) : MetaM α :=
-  go e #[]
-where
-  go (e : Expr) (args : Array ((Option Name) × Expr × BinderInfo)) : MetaM α := do
-    let helper := fun name type body bi =>
-      -- Once we hit a name with a macro scope we stop traversing the expression
-      -- and print what is left after the : instead. The only exception
-      -- to this is instances since these almost never have a name
-      -- but should still be printed as arguments instead of after the :.
-      if bi.isInstImplicit && name.hasMacroScopes then
-        let arg := (none, type, bi)
-        Meta.withLocalDecl name bi type fun fvar => do
-          go (Expr.instantiate1 body fvar) (args.push arg)
-      else if name.hasMacroScopes then
-        k args e
-      else
-        let arg := (some name, type, bi)
-        Meta.withLocalDecl name bi type fun fvar => do
-          go (Expr.instantiate1 body fvar) (args.push arg)
-    match e.consumeMData with
-    | Expr.forallE name type body binderInfo => helper name type body binderInfo
-    | _ => k args e
+/--
+Pretty prints a `Lean.Parser.Term.bracketedBinder`.
+-/
+private def prettyPrintBinder (stx : Syntax) (infos : SubExpr.PosMap Elab.Info) : MetaM Widget.CodeWithInfos := do
+  let fmt ← PrettyPrinter.format Parser.Term.bracketedBinder.formatter stx
+  let tt := Widget.TaggedText.prettyTagged fmt
+  let ctx := {
+    env := ← getEnv
+    mctx := ← getMCtx
+    options := ← getOptions
+    currNamespace := ← getCurrNamespace
+    openDecls := ← getOpenDecls
+    fileMap := default,
+    ngen := ← getNGen
+  }
+  return Widget.tagCodeInfos ctx infos tt
+
+private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) : MetaM Widget.CodeWithInfos := do
+  let fmt ← PrettyPrinter.formatTerm stx
+  let tt := Widget.TaggedText.prettyTagged fmt
+  let ctx := {
+    env := ← getEnv
+    mctx := ← getMCtx
+    options := ← getOptions
+    currNamespace := ← getCurrNamespace
+    openDecls := ← getOpenDecls
+    fileMap := default,
+    ngen := ← getNGen
+  }
+  return Widget.tagCodeInfos ctx infos tt
 
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
-  argTypeTelescope v.type fun args type => do
-    let args ← args.mapM (fun (n, e, b) => do return Arg.mk n (← prettyPrintTerm e) b)
-    let nameInfo ← NameInfo.ofTypedName v.name type
-    match ← findDeclarationRanges? v.name with
-    -- TODO: Maybe selection range is more relevant? Figure this out in the future
-    | some range =>
-      return {
-        toNameInfo := nameInfo,
-        args,
-        declarationRange := range.range,
-        attrs := ← getAllAttributes v.name
-      }
-    | none => panic! s!"{v.name} is a declaration without position"
+  let e := Expr.const v.name (v.levelParams.map mkLevelParam)
+  -- Use the main signature delaborator. We need to run sanitization, parenthesization, and formatting ourselves
+  -- to be able to extract the pieces of the signature right before they are formatted
+  -- and then format them individually.
+  let (sigStx, infos) ← PrettyPrinter.delabCore e (delab := PrettyPrinter.Delaborator.delabConstWithSignature)
+  let sigStx := (sanitizeSyntax sigStx).run' { options := (← getOptions) }
+  let sigStx ← PrettyPrinter.parenthesize PrettyPrinter.Delaborator.declSigWithId.parenthesizer sigStx
+  let `(PrettyPrinter.Delaborator.declSigWithId| $_:term $binders* : $type) := sigStx
+    | throwError "signature pretty printer failure for {v.name}"
+  let args ← binders.mapM fun binder => do
+    let fmt ← prettyPrintBinder binder infos
+    return Arg.mk fmt (!binder.isOfKind ``Parser.Term.explicitBinder)
+  let type ← prettyPrintTermStx type infos
+  match ← findDeclarationRanges? v.name with
+  -- TODO: Maybe selection range is more relevant? Figure this out in the future
+  | some range =>
+    return {
+      toNameInfo := { name := v.name, type, doc := ← findDocString? (← getEnv) v.name},
+      args,
+      declarationRange := range.range,
+      attrs := ← getAllAttributes v.name
+    }
+  | none => panic! s!"{v.name} is a declaration without position"
 
 end DocGen4.Process

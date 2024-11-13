@@ -33,18 +33,13 @@ An argument to a declaration, e.g. the `(x : Nat)` in `def foo (x : Nat) := x`.
 -/
 structure Arg where
   /--
-  The name of the argument. For auto generated argument names like `[Monad α]`
-  this is none
+  The pretty printed binder syntax itself.
   -/
-  name : Option Name
+  binder : CodeWithInfos
   /--
-  The pretty printed type of the argument.
+  Whether the binder is implicit.
   -/
-  type : CodeWithInfos
-  /--
-  What kind of binder was used for the argument.
-  -/
-  binderInfo : BinderInfo
+  implicit : Bool
 
 /--
 A base structure for information about a declaration.
