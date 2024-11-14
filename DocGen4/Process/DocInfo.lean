@@ -130,20 +130,14 @@ def isBlackListed (declName : Name) : MetaM Bool := do
   -- TODO: Evaluate whether filtering out declarations without range is sensible
   | none => return true
 
--- TODO: Is this actually the best way?
+/-- Returns `true` if `declName` is a field projection or a parent projection for a structure. -/
 def isProjFn (declName : Name) : MetaM Bool := do
   let env ← getEnv
   match declName with
   | Name.str parent name =>
-    if isStructure env parent then
-      match getStructureInfo? env parent with
-      | some i =>
-        match i.fieldNames.find? (·.toString == name) with
-        | some _ => return true
-        | none => return false
-      | none => panic! s!"{parent} is not a structure"
-    else
-      return false
+    let some si := getStructureInfo? env parent | return false
+    return getProjFnForField? env parent (Name.mkSimple name) == declName
+      || (si.parentInfo.any fun pi => pi.projFn == declName)
   | _ => return false
 
 def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := fun (name, info) => do
