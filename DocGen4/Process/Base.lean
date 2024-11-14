@@ -16,7 +16,7 @@ structure NameInfo where
   /--
   The name that has this info attached.
   -/
-  name  : Name
+  name : Name
   /--
   The pretty printed type of this name.
   -/
@@ -27,7 +27,13 @@ structure NameInfo where
   doc : Option String
   deriving Inhabited
 
+/--
+Stores information about a structure field.
+-/
 structure FieldInfo extends NameInfo where
+  /--
+  Whether or not this field is new to this structure, or instead whether it was inherited from a parent.
+  -/
   isDirect : Bool
 
 /--
@@ -123,6 +129,15 @@ structure InductiveInfo extends Info where
   deriving Inhabited
 
 /--
+Information about a `structure` parent.
+-/
+structure StructureParentInfo where
+  /-- Name of the projection function. -/
+  projFn : Name
+  /-- Pretty printed type. -/
+  type : CodeWithInfos
+
+/--
 Information about a `structure` declaration.
 -/
 structure StructureInfo extends Info where
@@ -133,7 +148,7 @@ structure StructureInfo extends Info where
   /--
   All the structures this one inherited from.
   -/
-  parents : Array Name
+  parents : Array StructureParentInfo
   /--
   The constructor of the structure.
   -/

@@ -41,13 +41,12 @@ def structureInfoHeader (s : Process.StructureInfo) : HtmlM (Array Html) := do
   let mut nodes := #[]
   if s.parents.size > 0 then
     nodes := nodes.push <span class="decl_extends">extends</span>
-    let mut parents := #[]
-    for parent in s.parents do
-      let link ← declNameToHtmlBreakWithinLink parent
-      let inner := <span class="fn">{link}</span>
-      let html:= Html.element "span" false #[("class", "decl_parent")] #[inner]
-      parents := parents.push html
-    nodes := nodes.append (parents.toList.intersperse (Html.text ", ")).toArray
+    let mut parents := #[Html.text " "]
+    for parent in s.parents, i in [0:s.parents.size] do
+      if i > 0 then
+        parents := parents.push (Html.text ", ")
+      parents := parents ++ (← infoFormatToHtml parent.type)
+    nodes := nodes ++ parents
   return nodes
 
 /--
