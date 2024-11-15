@@ -32,19 +32,29 @@ def withFields (info : InductiveVal) (k : Array (Name × Name × Expr) → Array
       fields := fields.push (fieldName, (← inferType proj))
     k parents fields
 
-def getFieldTypes (v : InductiveVal) : MetaM (Array StructureParentInfo × Array FieldInfo) := do
+/--
+Computes the origin of a field. Returns if the field was directly defined in this structure, and its projection function.
+Multiple parents could be the origin of a field, but we say the first parent that provides it is the one that determines the origin.
+-/
+partial def getFieldOrigin (structName field : Name) : MetaM (Bool × Name) := do
   let env ← getEnv
+  for parent in getStructureParentInfo env structName do
+    if (findField? env parent.structName field).isSome then
+      let (_, projFn) ← getFieldOrigin parent.structName field
+      return (false, projFn)
+  let some fi := getFieldInfo? env structName field
+    | throwError "no such field {field} in {structName}"
+  return (true, fi.projFn)
+
+def getFieldTypes (v : InductiveVal) : MetaM (Array StructureParentInfo × Array FieldInfo) := do
   withFields v fun parents fields => do
     let mut parentInfo : Array StructureParentInfo := #[]
     let mut fieldInfo : Array FieldInfo := #[]
     for (_, projFn, type) in parents do
       parentInfo := parentInfo.push { projFn, type := ← prettyPrintTerm type }
     for (name, type) in fields do
-      let some structForField := findField? env v.name name | unreachable!
-      -- We can't simply do `structForField == v.name` since the field might be from a parent that overlapped with another.
-      let isDirect := structForField == v.name && !parents.any fun (parent, _) => (getFieldInfo? env parent name).isSome
-      let some fi := getFieldInfo? env structForField name | unreachable!
-      fieldInfo := fieldInfo.push { ← NameInfo.ofTypedName fi.projFn type with isDirect }
+      let (isDirect, projFn) ← getFieldOrigin v.name name
+      fieldInfo := fieldInfo.push { ← NameInfo.ofTypedName projFn type with isDirect }
     return (parentInfo, fieldInfo)
 
 def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
