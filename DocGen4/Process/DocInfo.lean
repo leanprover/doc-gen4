@@ -145,7 +145,12 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := fun (name,
     return none
   match info with
   | ConstantInfo.axiomInfo i => return some <| axiomInfo (← AxiomInfo.ofAxiomVal i)
-  | ConstantInfo.thmInfo i => return some <| theoremInfo (← TheoremInfo.ofTheoremVal i)
+  | ConstantInfo.thmInfo i =>
+    let info ← TheoremInfo.ofTheoremVal i
+    if ← isProjFn i.name then
+      return some <| theoremInfo { info with render := false }
+    else
+      return some <| theoremInfo info
   | ConstantInfo.opaqueInfo i => return some <| opaqueInfo (← OpaqueInfo.ofOpaqueVal i)
   | ConstantInfo.defnInfo i =>
     if ← isProjFn i.name then
