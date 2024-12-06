@@ -39,7 +39,7 @@ def foundationalTypes : BaseHtmlM Html := templateLiftExtends (baseHtml "Foundat
       </ul>
       <p>Lean also permits ASCII-only spellings of the three variants:</p>
       <ul>
-      <li><code>forall a : A, B a</code> for <code>{"∀ a : α, β a"}</code></li>
+      <li><code>forall a : A, B a</code>, for <code>{"∀ a : α, β a"}</code></li>
       <li><code>{"(a : A) -> B a"}</code>, for <code>(a : α) → β a</code></li>
       <li><code>{"A -> B"}</code>, for <code>α → β</code></li>
       </ul>
