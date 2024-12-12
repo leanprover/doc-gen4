@@ -40,23 +40,48 @@ def getInstPriority (name : Name) : MetaM (Option Nat) := do
   else
     return some priority
 
+private def InstanceInfo.ofDefinitionInfo (info : DefinitionInfo) (type : Expr) :
+    MetaM InstanceInfo  := do
+  let mut info := info
 
-def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
-  let mut info ← DefinitionInfo.ofDefinitionVal v
-
-  if let some priority ← getInstPriority v.name then
+  if let some priority ← getInstPriority info.name then
     info := { info with attrs := info.attrs.push s!"instance {priority}" }
 
-  let some className ← isClass? v.type | panic! s!"isClass? on {v.name} returned none"
-  if let some instAttr ← getDefaultInstance v.name className then
+  let some className ← isClass? type | panic! s!"isClass? on {info.name} returned none"
+  if let some instAttr ← getDefaultInstance info.name className then
     info := { info with attrs := info.attrs.push instAttr }
 
-  let typeNames ← getInstanceTypes v.type
+  let typeNames ← getInstanceTypes type
 
   return {
     toDefinitionInfo := info,
     className,
     typeNames,
   }
+
+def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
+  let info ← DefinitionInfo.ofDefinitionVal v
+  InstanceInfo.ofDefinitionInfo info v.type
+
+def InstanceInfo.ofTheoremVal (v : TheoremVal) : MetaM InstanceInfo := do
+  let info ← Info.ofConstantVal v.toConstantVal
+  /-
+  This is a bit of a shortcut but it avoids having to duplicate the instance infrastructure for
+  `Prop` and non-`Prop` valued instances for now. If we run into issues with this later on we
+  can still easily get the hack out as it is limited to this function.
+  -/
+  let info : DefinitionInfo := {
+    toInfo := info,
+    -- theorems can't be unsafe, only definitions
+    isUnsafe := false,
+    -- theorems can't have reducibility hints so just put default
+    hints := .regular 0,
+    -- theorems don't have equations of interest
+    equations := none,
+    -- theorems can't be noncomputable, only definitions
+    isNonComputable := false
+  }
+
+  InstanceInfo.ofDefinitionInfo info v.type
 
 end DocGen4.Process

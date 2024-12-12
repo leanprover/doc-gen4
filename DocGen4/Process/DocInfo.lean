@@ -149,6 +149,9 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := fun (name,
     let info ← TheoremInfo.ofTheoremVal i
     if ← isProjFn i.name then
       return some <| theoremInfo { info with render := false }
+    else if ← isInstance i.name then
+      let info ← InstanceInfo.ofTheoremVal i
+      return some <| instanceInfo info
     else
       return some <| theoremInfo info
   | ConstantInfo.opaqueInfo i => return some <| opaqueInfo (← OpaqueInfo.ofOpaqueVal i)
@@ -156,13 +159,12 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := fun (name,
     if ← isProjFn i.name then
       let info ← DefinitionInfo.ofDefinitionVal i
       return some <| definitionInfo { info with render := false }
+    else if ← isInstance i.name then
+      let info ← InstanceInfo.ofDefinitionVal i
+      return some <| instanceInfo info
     else
-      if ← isInstance i.name then
-        let info ← InstanceInfo.ofDefinitionVal i
-        return some <| instanceInfo info
-      else
-        let info ← DefinitionInfo.ofDefinitionVal i
-        return some <| definitionInfo  info
+      let info ← DefinitionInfo.ofDefinitionVal i
+      return some <| definitionInfo  info
   | ConstantInfo.inductInfo i =>
     let env ← getEnv
     if isStructure env i.name then
