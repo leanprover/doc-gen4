@@ -23,7 +23,7 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
     | none => ".lake/build"
   let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
   let sourceUri := p.positionalArg! "sourceUri" |>.as! String
-  let (doc, hierarchy) ← load <| .loadAllLimitAnalysis relevantModules
+  let (doc, hierarchy) ← load <| .analyzeConcreteModules relevantModules
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
   htmlOutputResults baseConfig doc (some sourceUri)
   return 0
@@ -41,7 +41,8 @@ def runGenCoreCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
-  let (doc, hierarchy) ← loadCore
+  let module := p.positionalArg! "module" |>.as! String |> String.toName
+  let (doc, hierarchy) ← load <| .analyzePrefixModules module
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
   htmlOutputResults baseConfig doc none
   return 0
@@ -92,10 +93,13 @@ def indexCmd := `[Cli|
 
 def genCoreCmd := `[Cli|
   genCore VIA runGenCoreCmd;
-  "Generate documentation for the core Lean modules: Init, Lean, Lake and Std since they are not Lake projects"
+  "Generate documentation for the specified Lean core module as they are not lake projects."
 
   FLAGS:
     b, build : String; "Build directory."
+
+  ARGS:
+    module : String; "The module to generate the HTML for."
 ]
 
 def bibPrepassCmd := `[Cli|

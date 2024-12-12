@@ -84,12 +84,13 @@ def shouldRender : ModuleMember → Bool
 end ModuleMember
 
 inductive AnalyzeTask where
-| loadAll (load : Array Name) : AnalyzeTask
-| loadAllLimitAnalysis (analyze : Array Name) : AnalyzeTask
+| analyzePrefixModules (topLevel : Name) : AnalyzeTask
+| analyzeConcreteModules (modules : Array Name) : AnalyzeTask
 
-def AnalyzeTask.getLoad : AnalyzeTask → Array Name
-| loadAll load => load
-| loadAllLimitAnalysis load => load
+def AnalyzeTask.getLoad (task : AnalyzeTask) : Array Name :=
+  match task with
+  | .analyzePrefixModules topLevel => #[topLevel]
+  | .analyzeConcreteModules modules => modules
 
 def getAllModuleDocs (relevantModules : Array Name) : MetaM (Std.HashMap Name Module) := do
   let env ← getEnv
@@ -108,9 +109,13 @@ of this `MetaM` run and mentioned by the `AnalyzeTask`.
 -/
 def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
   let env ← getEnv
-  let relevantModules := match task with
-    | .loadAll _ => Std.HashSet.insertMany {} env.header.moduleNames
-    | .loadAllLimitAnalysis analysis => Std.HashSet.insertMany {} analysis
+  let relevantModules :=
+    match task with
+    | .analyzePrefixModules topLevel =>
+      let modules := env.header.moduleNames.filter (topLevel.isPrefixOf ·)
+      Std.HashSet.insertMany (Std.HashSet.empty modules.size) modules
+    | .analyzeConcreteModules modules =>
+      Std.HashSet.insertMany (Std.HashSet.empty modules.size) modules
   let allModules := env.header.moduleNames
 
   let mut res ← getAllModuleDocs relevantModules.toArray

@@ -30,7 +30,8 @@ def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy)
     maxHeartbeats := 100000000,
     options := ⟨[
       (`pp.tagAppFns, true),
-      (`pp.funBinderTypes, true)
+      (`pp.funBinderTypes, true),
+      (`debug.skipKernelTC, true)
     ]⟩,
     -- TODO: Figure out whether this could cause some bugs
     fileName := default,
@@ -38,8 +39,5 @@ def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy)
   }
 
   Prod.fst <$> Meta.MetaM.toIO (Process.process task) config { env := env } {} {}
-
-def loadCore : IO (Process.AnalyzerResult × Hierarchy) := do
-  load <| .loadAll #[`Init, `Lean, `Lake, `Std]
 
 end DocGen4
