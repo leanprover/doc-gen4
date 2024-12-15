@@ -701,7 +701,8 @@ pre code { padding: 0 0; }
 }
 
 .inductive_ctor_doc  {
-    text-indent: 2ex;
+    text-indent: 0;
+    margin-left: 2ex;
     font-family: 'Lato Medium';
     font-size: 17px;
 }
