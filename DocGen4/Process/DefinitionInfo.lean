@@ -12,14 +12,6 @@ namespace DocGen4.Process
 
 open Lean Meta Widget
 
-partial def stripArgs (e : Expr) (k : Expr → MetaM α) : MetaM α :=
-  match e.consumeMData with
-  | Expr.forallE name type body bi =>
-    let name := name.eraseMacroScopes
-    Meta.withLocalDecl name bi type fun fvar => do
-      stripArgs (Expr.instantiate1 body fvar) k
-  | _ => k e
-
 def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
   withOptions (tactic.hygienic.set . false) do
     lambdaTelescope v.value fun xs body => do
@@ -28,9 +20,12 @@ def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
       let type ← mkForallFVars xs type
       return type
 
+def prettyPrintEquation (expr : Expr) : MetaM CodeWithInfos :=
+  Meta.forallTelescope expr.consumeMData (fun _ e => prettyPrintTerm e)
+
 def processEq (eq : Name) : MetaM CodeWithInfos := do
   let type ← (mkConstWithFreshMVarLevels eq >>= inferType)
-  stripArgs type prettyPrintTerm
+  prettyPrintEquation type
 
 def computeEquations? (v : DefinitionVal) : MetaM (Array CodeWithInfos) := do
   let eqs? ← getEqnsFor? v.name
@@ -39,7 +34,7 @@ def computeEquations? (v : DefinitionVal) : MetaM (Array CodeWithInfos) := do
     let eqs ← eqs.mapM processEq
     return eqs
   | none =>
-    let equations := #[← stripArgs (← valueToEq v) prettyPrintTerm]
+    let equations := #[← prettyPrintEquation (← valueToEq v)]
     return equations
 
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
