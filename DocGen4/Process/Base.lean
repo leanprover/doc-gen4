@@ -118,13 +118,18 @@ structure InstanceInfo extends DefinitionInfo where
   deriving Inhabited
 
 /--
+Information about a constructor of an inductive type
+-/
+abbrev ConstructorInfo := Info
+
+/--
 Information about an `inductive` declaration
 -/
 structure InductiveInfo extends Info where
   /--
   List of all constructors of this inductive type.
   -/
-  ctors : List NameInfo
+  ctors : List ConstructorInfo
   isUnsafe : Bool
   deriving Inhabited
 
@@ -165,11 +170,6 @@ Information about a `class inductive` declaration.
 -/
 abbrev ClassInductiveInfo := InductiveInfo
 
-
-/--
-Information about a constructor of an inductive type
--/
-abbrev ConstructorInfo := Info
 
 /--
 A general type for informations about declarations.

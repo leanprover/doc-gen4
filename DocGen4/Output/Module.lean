@@ -21,19 +21,6 @@ open scoped DocGen4.Jsx
 open Lean Process
 
 /--
-Render an `Arg` as HTML, adding opacity effects etc. depending on what
-type of binder it has.
--/
-def argToHtml (arg : Arg) : HtmlM Html := do
-  let node ← infoFormatToHtml arg.binder
-  let inner := <span class="fn">[node]</span>
-  let html := Html.element "span" false #[("class", "decl_args")] #[inner]
-  if arg.implicit then
-    return <span class="impl_arg">{html}</span>
-  else
-    return html
-
-/--
 Render the structures this structure extends from as HTML so it can be
 added to the top level.
 -/

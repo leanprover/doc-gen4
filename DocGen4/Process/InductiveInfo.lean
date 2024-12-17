@@ -12,15 +12,9 @@ namespace DocGen4.Process
 
 open Lean Meta 
 
-def getConstructorType (ctor : Name) : MetaM Expr := do
-  let env ← getEnv
-  match env.find? ctor with
-  | some (ConstantInfo.ctorInfo i) => pure i.type
-  | _ => panic! s!"Constructor {ctor} was requested but does not exist"
-
 def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
-  let ctors ← v.ctors.mapM (fun name => do NameInfo.ofTypedName name (← getConstructorType name))
+  let ctors ← v.ctors.mapM (fun name => do Info.ofConstantVal (← getConstInfoCtor name).toConstantVal)
   return {
     toInfo := info,
     ctors,
