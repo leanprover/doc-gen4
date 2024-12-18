@@ -256,10 +256,12 @@ only `+` should be linked, taking care of this is what this function is
 responsible for.
 -/
 def splitWhitespaces (s : String) : (String × String × String) := Id.run do
-  let front := "".pushn ' ' <| s.offsetOfPos (s.find (!Char.isWhitespace ·))
+  let mut length := s.length
   let mut s := s.trimLeft
-  let back := "".pushn ' ' (s.length - s.offsetOfPos (s.find Char.isWhitespace))
+  let front := "".pushn ' ' (length - s.length)
+  length := s.length
   s := s.trimRight
+  let back := "".pushn ' ' (length - s.length)
   (front, s, back)
 
 /--
