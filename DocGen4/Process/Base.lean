@@ -89,10 +89,6 @@ Information about an `opaque` declaration.
 -/
 structure OpaqueInfo extends Info where
   /--
-  The pretty printed value of the declaration.
-  -/
-  value : CodeWithInfos
-  /--
   A value of partial is interpreted as this opaque being part of a partial def
   since the actual definition for a partial def is hidden behind an inaccessible value.
   -/

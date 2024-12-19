@@ -14,7 +14,6 @@ open Lean Meta
 
 def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
-  let value ← prettyPrintTerm v.value
   let env ← getEnv
   let isPartial := env.find? (Compiler.mkUnsafeRecName v.name) |>.isSome
   let definitionSafety :=
@@ -26,8 +25,14 @@ def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
       DefinitionSafety.safe
   return {
     toInfo := info,
-    value,
     definitionSafety
+  }
+
+def OpaqueInfo.ofQuotVal (v : QuotVal) : MetaM OpaqueInfo := do
+  let info ← Info.ofConstantVal v.toConstantVal
+  return {
+    toInfo := info
+    definitionSafety := .safe
   }
 
 end DocGen4.Process

@@ -180,8 +180,8 @@ def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := fun (name,
   | ConstantInfo.ctorInfo i =>
     let info ← Info.ofConstantVal i.toConstantVal
     return some <| ctorInfo { info with render := false }
-  -- we ignore these for now
-  | ConstantInfo.recInfo _ | ConstantInfo.quotInfo _ => return none
+  | ConstantInfo.quotInfo i => return some <| opaqueInfo (← OpaqueInfo.ofQuotVal i)
+  | ConstantInfo.recInfo _ => return none
 
 def getKindDescription : DocInfo → String
 | axiomInfo i => if i.isUnsafe then "unsafe axiom" else "axiom"
