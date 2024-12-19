@@ -1,3 +1,4 @@
+import DocGen4.Output.Arg
 import DocGen4.Output.Template
 import DocGen4.Output.DocString
 import DocGen4.Process
@@ -14,6 +15,7 @@ Render a single field consisting of its documentation, its name and its type as 
 def fieldToHtml (f : Process.FieldInfo) : HtmlM Html := do
   let shortName := f.name.componentsRev.head!.toString
   let name := f.name.toString
+  let args ← f.args.mapM argToHtml
   if f.isDirect then
     let doc : Array HTML ←
       if let some doc := f.doc then
@@ -23,13 +25,13 @@ def fieldToHtml (f : Process.FieldInfo) : HtmlM Html := do
         pure #[]
     pure
       <li id={name} class="structure_field">
-        <div class="structure_field_info">{s!"{shortName} "} : [← infoFormatToHtml f.type]</div>
+        <div class="structure_field_info">{shortName} [args] {" : "} [← infoFormatToHtml f.type]</div>
         [doc]
       </li>
   else
     pure
       <li class="structure_field inherited_field">
-        <div class="structure_field_info"><a href={← declNameToLink f.name}>{s!"{shortName}"}</a>{" "}: [← infoFormatToHtml f.type]</div>
+        <div class="structure_field_info"><a href={← declNameToLink f.name}>{shortName}</a> [args] {" : "} [← infoFormatToHtml f.type]</div>
       </li>
 
 /--
