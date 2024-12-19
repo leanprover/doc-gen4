@@ -28,15 +28,6 @@ structure NameInfo where
   deriving Inhabited
 
 /--
-Stores information about a structure field.
--/
-structure FieldInfo extends NameInfo where
-  /--
-  Whether or not this field is new to this structure, or instead whether it was inherited from a parent.
-  -/
-  isDirect : Bool
-
-/--
 An argument to a declaration, e.g. the `(x : Nat)` in `def foo (x : Nat) := x`.
 -/
 structure Arg where
@@ -128,6 +119,15 @@ structure InductiveInfo extends Info where
   ctors : List ConstructorInfo
   isUnsafe : Bool
   deriving Inhabited
+
+/--
+Stores information about a structure field.
+-/
+structure FieldInfo extends Info where
+  /--
+  Whether or not this field is new to this structure, or instead whether it was inherited from a parent.
+  -/
+  isDirect : Bool
 
 /--
 Information about a `structure` parent.
