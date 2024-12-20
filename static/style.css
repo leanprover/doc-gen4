@@ -753,7 +753,9 @@ a:hover {
     transition: opacity 300ms ease-in;
 }
 
-.decl_header:not(:hover) .impl_arg, .constructor:not(:hover) .impl_arg {
+.decl_header:not(:hover) .impl_arg,
+        .constructor:not(:hover) .impl_arg,
+        .structure_field_info:not(:hover) .impl_arg {
     opacity: 30%;
     transition: opacity 1000ms ease-out;
 }

@@ -54,7 +54,7 @@ def getFieldTypes (v : InductiveVal) : MetaM (Array StructureParentInfo × Array
       parentInfo := parentInfo.push { projFn, type := ← prettyPrintTerm type }
     for (name, type) in fields do
       let (isDirect, projFn) ← getFieldOrigin v.name name
-      fieldInfo := fieldInfo.push { ← NameInfo.ofTypedName projFn type with isDirect }
+      fieldInfo := fieldInfo.push { ← Info.ofTypedName projFn type with isDirect }
     return (parentInfo, fieldInfo)
 
 def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do

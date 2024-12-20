@@ -46,29 +46,32 @@ private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) :
   }
   return Widget.tagCodeInfos ctx infos tt
 
-def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
-  let e := Expr.const v.name (v.levelParams.map mkLevelParam)
+def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
   -- Use the main signature delaborator. We need to run sanitization, parenthesization, and formatting ourselves
   -- to be able to extract the pieces of the signature right before they are formatted
   -- and then format them individually.
-  let (sigStx, infos) ← PrettyPrinter.delabCore e (delab := PrettyPrinter.Delaborator.delabConstWithSignature)
+  let (sigStx, infos) ← PrettyPrinter.delabCore t (delab := PrettyPrinter.Delaborator.delabConstWithSignature.delabParams {} default #[])
   let sigStx := (sanitizeSyntax sigStx).run' { options := (← getOptions) }
   let sigStx ← PrettyPrinter.parenthesize PrettyPrinter.Delaborator.declSigWithId.parenthesizer sigStx
   let `(PrettyPrinter.Delaborator.declSigWithId| $_:term $binders* : $type) := sigStx
-    | throwError "signature pretty printer failure for {v.name}"
+    | throwError "signature pretty printer failure for {n}"
   let args ← binders.mapM fun binder => do
     let fmt ← prettyPrintBinder binder infos
     return Arg.mk fmt (!binder.isOfKind ``Parser.Term.explicitBinder)
   let type ← prettyPrintTermStx type infos
-  match ← findDeclarationRanges? v.name with
+  match ← findDeclarationRanges? n with
   -- TODO: Maybe selection range is more relevant? Figure this out in the future
   | some range =>
     return {
-      toNameInfo := { name := v.name, type, doc := ← findDocString? (← getEnv) v.name},
+      toNameInfo := { name := n, type, doc := ← findDocString? (← getEnv) n},
       args,
       declarationRange := range.range,
-      attrs := ← getAllAttributes v.name
+      attrs := ← getAllAttributes n
     }
-  | none => panic! s!"{v.name} is a declaration without position"
+  | none => panic! s!"{n} is a declaration without position"
+
+def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
+  let e := Expr.const v.name (v.levelParams.map mkLevelParam)
+  ofTypedName v.name (← inferType e)
 
 end DocGen4.Process
