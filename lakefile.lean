@@ -252,7 +252,7 @@ library_facet docsHeader (lib) : FilePath := do
       moduleJobs.bindSync fun _ inputTrace => do
         let depTrace := mixTraceArray #[inputTrace, exeTrace, coreInputTrace]
         let trace ← buildFileUnlessUpToDate dataFile depTrace do
-          logInfo "Documentation indexing"
+          logInfo "Documentation header indexing"
           proc {
             cmd := exeFile.toString
             args := #["headerData", "--build", buildDir.toString]
