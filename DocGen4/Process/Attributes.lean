@@ -103,11 +103,25 @@ instance : ToString ExternEntry where
 instance : ToString ExternAttrData where
   toString data := (data.arity?.map toString |>.getD "") ++ " " ++ String.intercalate " " (data.entries.map toString)
 
+instance : ToString Linter.DeprecationEntry where
+  toString entry := Id.run do
+    let mut string := ""
+
+    if let some newName := entry.newName? then
+      string := string ++ s!"{newName} "
+    if let some text := entry.text? then
+      string := string ++ s!"\"{text}\" "
+    if let some since := entry.since? then
+      string := string ++ s!"(since := \"{since}\")"
+
+    string := string.trimRight
+    return string
+
 /--
 The list of all parametric attributes (that is, attributes with any kind of information attached)
 doc-gen knows about and can recover.
 -/
-def parametricAttributes : Array ParametricAttrWrapper := #[⟨externAttr⟩, ⟨Compiler.implementedByAttr⟩, ⟨exportAttr⟩, ⟨Compiler.specializeAttr⟩]
+def parametricAttributes : Array ParametricAttrWrapper := #[⟨externAttr⟩, ⟨Compiler.implementedByAttr⟩, ⟨exportAttr⟩, ⟨Compiler.specializeAttr⟩, ⟨Linter.deprecatedAttr⟩]
 
 def getTags (decl : Name) : MetaM (Array String) := do
   let env ← getEnv
@@ -125,15 +139,9 @@ def getValues {attrKind : Type → Type} [ValueAttr attrKind] (decl : Name) (att
   return res
 
 def getEnumValues (decl : Name) : MetaM (Array String) := getValues decl enumAttributes
-def getParametricValues (decl : Name) : MetaM (Array String) := do
-  let mut uniform ← getValues decl parametricAttributes
-  -- This attribute contains an `Option Name` but we would like to pretty print it better
-  if let some depEntry := Linter.deprecatedAttr.getParam? (← getEnv) decl then
-    let str := match depEntry.newName? with
-    | some alt => s!"deprecated {alt.toString}"
-    | none => "deprecated"
-    uniform := uniform.push str
-  return uniform
+
+def getParametricValues (decl : Name) : MetaM (Array String) :=
+  getValues decl parametricAttributes
 
 def getDefaultInstance (decl : Name) (className : Name) : MetaM (Option String) := do
   let insts ← getDefaultInstances className
