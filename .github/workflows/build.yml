@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: batteries test build
+    name: doc-gen test build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
