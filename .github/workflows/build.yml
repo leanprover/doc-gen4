@@ -16,13 +16,9 @@ jobs:
 
       - name: install elan and build doc-gen4
         uses: leanprover/lean-action@v1
+        with:
+          build-args: "--wfail"
 
-      - name: Checkout batteries
-        run: |
-          cd ../
-          git clone https://github.com/leanprover-community/batteries
-
-      - name: generate docs
-        run: |
-          cd ../
-          ./doc-gen4/test_docs.sh "batteries" "doc-gen4"
+      - run: |
+         export LEAN_ABORT_ON_PANIC=1
+         lake build DocGen4:docs
