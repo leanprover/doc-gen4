@@ -125,29 +125,31 @@ def getSrcUri (mod : Module) : IO String := do
 
 target bibPrepass : FilePath := do
   let exeJob ← «doc-gen4».fetch
-  let buildDir := (←getWorkspace).root.buildDir
+  let buildDir := (← getRootPackage).buildDir
   let dataPath := buildDir / "doc-data"
-  let inputJsonFile := (← getWorkspace).root.srcDir / "docs" / "references.json"
-  let inputBibFile := (← getWorkspace).root.srcDir / "docs" / "references.bib"
+  let inputJsonFile := (← getRootPackage).srcDir / "docs" / "references.json"
+  let inputBibFile := (← getRootPackage).srcDir / "docs" / "references.bib"
   let outputFile := dataPath / "references.json"
-  let tryJson : JobM (Array String × BuildTrace) := do
-    let inputTrace ← mixTrace (BuildTrace.ofHash (.ofString "json")) <$> computeTrace inputJsonFile
-    pure (#["--build", buildDir.toString, "--json", inputJsonFile.toString], inputTrace)
-  let tryBib : JobM (Array String × BuildTrace) := do
-    let inputTrace ← mixTrace (BuildTrace.ofHash (.ofString "bib")) <$> computeTrace inputBibFile
-    pure (#["--build", buildDir.toString, inputBibFile.toString], inputTrace)
-  let tryBibFailed : JobM (Array String × BuildTrace) := do
-    pure (#["--build", buildDir.toString, "--none"], .nil)
-  exeJob.bindSync fun exeFile exeTrace => do
-    let (args, inputTrace) ← tryJson <|> tryBib <|> tryBibFailed
-    let depTrace := exeTrace.mix inputTrace
-    let trace ← buildFileUnlessUpToDate outputFile depTrace do
+  let tryJson : JobM (Array String) := do
+    addTrace <| ← computeTrace inputJsonFile
+    addTrace <| BuildTrace.ofHash (.ofString "json")
+    return #["--build", buildDir.toString, "--json", inputJsonFile.toString]
+  let tryBib : JobM (Array String) := do
+    addTrace <| ← computeTrace inputBibFile
+    addTrace <| BuildTrace.ofHash (.ofString "bib")
+    return #["--build", buildDir.toString, inputBibFile.toString]
+  let tryBibFailed : JobM (Array String) := do
+    addTrace .nil
+    return #["--build", buildDir.toString, "--none"]
+  exeJob.mapM fun exeFile => do
+    let args ← tryJson <|> tryBib <|> tryBibFailed
+    buildFileUnlessUpToDate' outputFile do
       proc {
         cmd := exeFile.toString
         args := #["bibPrepass"] ++ args
         env := ← getAugmentedEnv
       }
-    return (outputFile, trace)
+    return outputFile
 
 module_facet docs (mod) : FilePath := do
   let exeJob ← «doc-gen4».fetch
@@ -155,52 +157,50 @@ module_facet docs (mod) : FilePath := do
   let modJob ← mod.leanArts.fetch
   -- Build all documentation imported modules
   let imports ← mod.imports.fetch
-  let depDocJobs ← BuildJob.mixArray <| ← imports.mapM fun mod => fetch <| mod.facet `docs
+  let depDocJobs := Job.mixArray <| ← imports.mapM fun mod => fetch <| mod.facet `docs
   let srcUri ← getSrcUri mod
-  let buildDir := (←getWorkspace).root.buildDir
+  let buildDir := (← getRootPackage).buildDir
   let docFile := mod.filePath (buildDir / "doc") "html"
-  depDocJobs.bindAsync fun _ depDocTrace => do
-    bibPrepassJob.bindAsync fun _ bibPrepassTrace => do
-      exeJob.bindAsync fun exeFile exeTrace => do
-        modJob.bindSync fun _ modTrace => do
-          let depTrace := mixTraceArray #[exeTrace, modTrace, bibPrepassTrace, depDocTrace]
-          let trace ← buildFileUnlessUpToDate docFile depTrace do
+  depDocJobs.bindM fun _ => do
+    bibPrepassJob.bindM fun _ => do
+      exeJob.bindM fun exeFile => do
+        modJob.mapM fun _ => do
+          buildFileUnlessUpToDate' docFile do
             proc {
               cmd := exeFile.toString
               args := #["single", "--build", buildDir.toString, mod.name.toString, srcUri]
               env := ← getAugmentedEnv
             }
-          return (docFile, trace)
+          return docFile
 
 -- TODO: technically speaking this target does not show all file dependencies
-def coreTarget (component : Lean.Name) : FetchM (BuildJob FilePath) := do
+def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
-  let dataPath := (← getWorkspace).root.buildDir / "doc-data"
+  let dataPath := (← getRootPackage).buildDir / "doc-data"
   let dataFile := dataPath / s!"declaration-data-{component}.bmp"
-  let buildDir := (← getWorkspace).root.buildDir
-  bibPrepassJob.bindAsync fun _ bibPrepassTrace => do
-    exeJob.bindSync fun exeFile exeTrace => do
-      let depTrace := mixTraceArray #[exeTrace, bibPrepassTrace]
-      let trace ← buildFileUnlessUpToDate dataFile depTrace do
+  let buildDir := (← getRootPackage).buildDir
+  bibPrepassJob.bindM fun _ => do
+    exeJob.mapM fun exeFile  => do
+      buildFileUnlessUpToDate' dataFile do
         proc {
           cmd := exeFile.toString
           args := #["genCore", component.toString, "--build", buildDir.toString]
           env := ← getAugmentedEnv
         }
-      return (dataFile, trace)
+      return dataFile
 
 target coreDocs : Unit := do
   let coreComponents := #[`Init, `Std, `Lake, `Lean]
-  BuildJob.mixArray <| ← coreComponents.mapM coreTarget
+  return Job.mixArray <| ← coreComponents.mapM coreTarget
 
 library_facet docs (lib) : FilePath := do
   let mods ← lib.modules.fetch
-  let moduleJobs ← BuildJob.mixArray <| ← mods.mapM (fetch <| ·.facet `docs)
-  let coreJobs  ← coreDocs.fetch
+  let moduleJobs := Job.mixArray <| ← mods.mapM (fetch <| ·.facet `docs)
+  let coreJobs ← coreDocs.fetch
   let exeJob ← «doc-gen4».fetch
   -- Shared with DocGen4.Output
-  let buildDir := (← getWorkspace).root.buildDir
+  let buildDir := (← getRootPackage).buildDir
   let basePath := buildDir / "doc"
   let dataFile := basePath / "declarations" / "declaration-data.bmp"
   let staticFiles := #[
@@ -223,38 +223,35 @@ library_facet docs (lib) : FilePath := do
     basePath / "find" / "index.html",
     basePath / "find" / "find.js"
   ]
-  exeJob.bindAsync fun exeFile exeTrace => do
-    coreJobs.bindAsync fun _ coreInputTrace => do
-      moduleJobs.bindSync fun _ inputTrace => do
-        let depTrace := mixTraceArray #[inputTrace, exeTrace, coreInputTrace]
-        let trace ← buildFileUnlessUpToDate dataFile depTrace do
+  exeJob.bindM fun exeFile => do
+    coreJobs.bindM fun _ => do
+      moduleJobs.mapM fun _ => do
+        buildFileUnlessUpToDate' dataFile do
           logInfo "Documentation indexing"
           proc {
             cmd := exeFile.toString
             args := #["index", "--build", buildDir.toString]
           }
         let traces ← staticFiles.mapM computeTrace
-        let indexTrace := mixTraceArray traces
-
-        return (dataFile, trace.mix indexTrace)
+        addTrace <| mixTraceArray traces
+        return dataFile
 
 library_facet docsHeader (lib) : FilePath := do
   let mods ← lib.modules.fetch
-  let moduleJobs ← BuildJob.mixArray <| ← mods.mapM (fetch <| ·.facet `docs)
+  let moduleJobs := Job.mixArray <| ← mods.mapM (fetch <| ·.facet `docs)
   let exeJob ← «doc-gen4».fetch
   let coreJobs ← coreDocs.fetch
   -- Shared with DocGen4.Output
-  let buildDir := (←getWorkspace).root.buildDir
+  let buildDir := (← getRootPackage).buildDir
   let basePath := buildDir / "doc"
   let dataFile := basePath / "declarations" / "header-data.bmp"
-  exeJob.bindAsync fun exeFile exeTrace => do
-   coreJobs.bindAsync fun _ coreInputTrace => do
-      moduleJobs.bindSync fun _ inputTrace => do
-        let depTrace := mixTraceArray #[inputTrace, exeTrace, coreInputTrace]
-        let trace ← buildFileUnlessUpToDate dataFile depTrace do
+  exeJob.bindM fun exeFile => do
+   coreJobs.bindM fun _ => do
+      moduleJobs.mapM fun _ => do
+        buildFileUnlessUpToDate' dataFile do
           logInfo "Documentation header indexing"
           proc {
             cmd := exeFile.toString
             args := #["headerData", "--build", buildDir.toString]
           }
-        return (dataFile, trace)
+        return dataFile
