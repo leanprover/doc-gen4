@@ -20,7 +20,7 @@ path = "../"
 [[require]]
 scope = "leanprover"
 name = "doc-gen4"
-# If you are developing against a stable Lean version `v4.x`, replace `main` below by `v4.x`.
+# If you are developing against a release candidate or a stable version `v4.x`, replace `main` below by `v4.x`.
 # If you do not use `main` keep in mind to update this field as you update your Lean version.
 rev = "main"
 ```
