@@ -20,10 +20,14 @@ path = "../"
 [[require]]
 scope = "leanprover"
 name = "doc-gen4"
-# Use revision v4.x if you are developing against a stable Lean version.
+# If you are developing against a stable Lean version `v4.x`, replace `main` below by `v4.x`.
+# If you do not use `main` keep in mind to update this field as you update your Lean version.
 rev = "main"
 ```
 3. Run `lake update doc-gen4` within `docbuild` to pin `doc-gen4` and its dependencies to the chosen versions.
+   IMPORTANT: If you depend on [mathlib4](https://github.com/leanprover-community/mathlib4) run
+   `MATHLIB_NO_CACHE_ON_UPDATE=1 lake update doc-gen4` instead to mitigate a small issue in
+   mathlib's caching mechanism for now.
 4. If your parent project has dependencies you want to run `lake update YourLibraryName` within
   `docbuild` whenever you update the dependencies of your parent project.
 
