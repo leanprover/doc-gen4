@@ -12,10 +12,7 @@ lean_exe «doc-gen4» {
 }
 
 require MD4Lean from git
-  -- This should be the original version:
-  -- "https://github.com/acmepjz/md4lean" @ "main"
-  -- but as we don't have write access to that repo we are temporarily using this fork:
-  "https://github.com/kim-em/md4lean" @ "bump_to_v4.16.0-rc1"
+  "https://github.com/acmepjz/md4lean" @ "main"
 
 require BibtexQuery from git
   "https://github.com/dupuisf/BibtexQuery" @ "master"
