@@ -356,7 +356,9 @@ where
       | _ => pure ()
     guard lpos.isEmpty
 
-  /-- Hyperlink test with the given link. -/
+  /--
+  Hyperlink text with the given link.
+  -/
   hyperlinkWith (link : String) (t : TaggedText SubexprInfo) :
       HtmlM (Array Html) := do
     let htmlOfText (t : String) : Array Html :=
