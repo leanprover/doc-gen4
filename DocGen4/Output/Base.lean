@@ -9,7 +9,7 @@ import DocGen4.Output.ToHtmlFormat
 namespace DocGen4.Output
 
 open scoped DocGen4.Jsx
-open Lean System Widget Elab Process
+open Lean System Widget Elab Process SubExpr.Pos
 
 def basePath (buildDir : System.FilePath) := buildDir / "doc"
 def srcBasePath (buildDir : System.FilePath) := basePath buildDir / "src"
@@ -274,37 +274,102 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
   | .text t => return #[t]
   | .append tt => tt.foldlM (fun acc t => do return acc ++ (← infoFormatToHtml t)) #[]
   | .tag a t =>
-    match a.info.val.info with
-    | Info.ofTermInfo i =>
-      let cleanExpr :=  i.expr.consumeMData
-      match cleanExpr with
-      | .const name _ =>
-        -- TODO: this is some very primitive blacklisting but real Blacklisting needs MetaM
-        -- find a better solution
-        if (← getResult).name2ModIdx.contains name then
+    if let some a ← OptionT.run (hyperlink? a t) then return a
+    else return #[<span class="fn">[← infoFormatToHtml t]</span>]
+where
+  /--
+  If `decInfoToHtml.hyperlink?` find a constant application tag, then it checks
+  whether all tags of explicit arguments of the tag appear in direct children. If so,
+  it hyperlinks non-tagged text in direct children.
+
+  As a special case, when `fun x => t(x)` appears as a explicit argument,
+  `docInfoToHtml.hyperlink?` allows to appear `t(x)` instead of `fun x => t(x)`,
+  to hyperlink binder notations like `{ s : String // 0 < s.length }`.
+  -/
+  hyperlink? (a : SubexprInfo) (t : TaggedText SubexprInfo) :
+      OptionT HtmlM (Array Html) := do
+    let (link, lpos) ← extractNameAndPos? a
+    guardPos lpos t
+    hyperlinkWith link t
+
+  /--
+  Checks whether the given tag is a constant application tag, and returns the link to
+  the constant and argument positions of explicit arguments.
+
+  When `fun x y => t(x, y)` appears as a explicit argument,
+  `decInfoToHtml.extractNameAndPos?` extracts **all 3 positions corresponding to its
+  child expressions**: `fun x y => t(x, y)`, `fun y => t(x, y)` and `t(x, y)`.
+  Each of them is required to hyperlink applications and binder notations:
+  * `fun x y => t(x, y)`: `List.mapIdx fun n a => b(n, b) l`
+  * `fun y => t(x, y)`: `∑ i in s, fun x => t(i, x)`
+  * `t(x, y)`: `∃ x y, p(x, y)`
+  -/
+  extractNameAndPos? (a : SubexprInfo) :
+      OptionT HtmlM (String × List (SubExpr.Pos × List SubExpr.Pos)) := do
+    let .ofTermInfo ti := a.info.val.info | failure
+    let e := ti.expr.consumeMData
+    e.withApp fun k args => do
+      let some n := k.constName? |
+        if k.isSort then
+          return (s!"{← getRoot}foundational_types.html#codesort-ucode", [])
+        else if k.isForall then
+          return (s!"{← getRoot}foundational_types.html#pi-types-codeπ-a--α-β-acode", [])
+        else failure
+      let some ci := a.info.val.ctx.env.find? n | failure
+      -- We want to use `Meta.forallTelescopeReducing` here but `HtmlM` doesn't allow
+      -- `IO` so we reimplement this here.
+      let env := a.info.val.ctx.env
+      let lctx := ti.lctx
+      let mut et := ci.type
+      let rootPos := a.subexprPos
+      let mut lpos : List (SubExpr.Pos × List SubExpr.Pos) := []
+      for hidx : idx in [:args.size] do
+        let .ok (.forallE _ _ eb ebi) := Kernel.whnf env lctx et | failure
+        if ebi == .default then
+          let rec enumPosOfLambda (currArgPos : SubExpr.Pos) (ea : Expr) :
+              List (SubExpr.Pos) :=
+            match ea with
+              | .lam _ _ eab _ =>
+                let bpos := currArgPos.pushBindingBody
+                bpos :: enumPosOfLambda bpos eab
+              | _ => []
+          let apos := rootPos.pushNaryArg args.size idx
+          lpos := (apos, enumPosOfLambda apos args[idx]) :: lpos
+        et := eb.instantiate1 args[idx]
+      return (← declNameToLink n, lpos)
+
+  /--
+  Check whether all given positions appears on the given text.
+  -/
+  guardPos (lpos : List (SubExpr.Pos × List SubExpr.Pos))
+      (t : TaggedText SubexprInfo) : OptionT HtmlM Unit := do
+    let mut lpos := lpos
+    match t with
+      | .append tt =>
+        for t in tt do
           match t with
-          | .text t =>
-            let (front, t, back) := splitWhitespaces t
-            let elem := <a href={← declNameToLink name}>{t}</a>
-            return #[Html.text front, elem, Html.text back]
-          | _ =>
-            return #[<a href={← declNameToLink name}>[← infoFormatToHtml t]</a>]
-        else
-         return #[<span class="fn">[← infoFormatToHtml t]</span>]
-      | .sort _ =>
-        match t with
-        | .text t =>
-          let sortPrefix :: rest := t.splitOn " " | unreachable!
-          let sortLink := <a href={s!"{← getRoot}foundational_types.html"}>{sortPrefix}</a>
-          let mut restStr := String.intercalate " " rest
-          if restStr.length != 0 then
-            restStr := " " ++ restStr
-          return #[sortLink, Html.text restStr]
-        | _ =>
-          return #[<a href={s!"{← getRoot}foundational_types.html"}>[← infoFormatToHtml t]</a>]
-      | _ =>
-         return #[<span class="fn">[← infoFormatToHtml t]</span>]
-    | _ => return #[<span class="fn">[← infoFormatToHtml t]</span>]
+            | .tag a t =>
+              let ap := a.subexprPos
+              lpos := lpos.eraseP (fun (p, ps) => ap == p || ps.elem ap)
+            | _ => pure ()
+      | .tag a t => failure
+      | _ => pure ()
+    guard lpos.isEmpty
+
+  /-- Hyperlink test with the given link. -/
+  hyperlinkWith (link : String) (t : TaggedText SubexprInfo) :
+      HtmlM (Array Html) := do
+    let htmlOfText (t : String) : Array Html :=
+      let (front, t, back) := splitWhitespaces t
+      let elem := <a href={link}>{t}</a>
+      #[Html.text front, elem, Html.text back]
+    match t with
+      | .text t => return htmlOfText t
+      | .append tt => tt.flatMapM fun t => do
+          match t with
+            | .text t => return htmlOfText t
+            | _ => infoFormatToHtml t
+      | .tag a t => unreachable!
 
 def baseHtmlHeadDeclarations : BaseHtmlM (Array Html) := do
   return #[

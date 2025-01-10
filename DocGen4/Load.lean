@@ -29,7 +29,6 @@ def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy)
     -- TODO: parameterize maxHeartbeats
     maxHeartbeats := 100000000,
     options := ⟨[
-      (`pp.tagAppFns, true),
       (`pp.funBinderTypes, true),
       (`debug.skipKernelTC, true)
     ]⟩,
