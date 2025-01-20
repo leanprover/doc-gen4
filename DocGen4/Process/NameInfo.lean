@@ -50,7 +50,8 @@ def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
   -- Use the main signature delaborator. We need to run sanitization, parenthesization, and formatting ourselves
   -- to be able to extract the pieces of the signature right before they are formatted
   -- and then format them individually.
-  let (sigStx, infos) ← PrettyPrinter.delabCore t (delab := PrettyPrinter.Delaborator.delabConstWithSignature.delabParams {} default #[])
+  let (sigStx, infos) ← withTheReader Core.Context ({ · with currNamespace := n.getPrefix }) <|
+    PrettyPrinter.delabCore t (delab := PrettyPrinter.Delaborator.delabConstWithSignature.delabParams {} default #[])
   let sigStx := (sanitizeSyntax sigStx).run' { options := (← getOptions) }
   let sigStx ← PrettyPrinter.parenthesize PrettyPrinter.Delaborator.declSigWithId.parenthesizer sigStx
   let `(PrettyPrinter.Delaborator.declSigWithId| $_:term $binders* : $type) := sigStx
