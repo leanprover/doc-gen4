@@ -156,7 +156,7 @@ module_facet docs (mod) : FilePath := do
   let bibPrepassJob ← bibPrepass.fetch
   let modJob ← mod.leanArts.fetch
   -- Build all documentation imported modules
-  let imports ← mod.imports.fetch
+  let imports ← (← mod.imports.fetch).await
   let depDocJobs := Job.mixArray <| ← imports.mapM fun mod => fetch <| mod.facet `docs
   let srcUri ← getSrcUri mod
   let buildDir := (← getRootPackage).buildDir
@@ -195,7 +195,7 @@ target coreDocs : Unit := do
   return Job.mixArray <| ← coreComponents.mapM coreTarget
 
 library_facet docs (lib) : FilePath := do
-  let mods ← lib.modules.fetch
+  let mods ← (← lib.modules.fetch).await
   let moduleJobs := Job.mixArray <| ← mods.mapM (fetch <| ·.facet `docs)
   let coreJobs ← coreDocs.fetch
   let exeJob ← «doc-gen4».fetch
@@ -237,7 +237,7 @@ library_facet docs (lib) : FilePath := do
         return dataFile
 
 library_facet docsHeader (lib) : FilePath := do
-  let mods ← lib.modules.fetch
+  let mods ← (← lib.modules.fetch).await
   let moduleJobs := Job.mixArray <| ← mods.mapM (fetch <| ·.facet `docs)
   let exeJob ← «doc-gen4».fetch
   let coreJobs ← coreDocs.fetch
