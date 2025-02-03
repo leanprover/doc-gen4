@@ -14,8 +14,11 @@ lean_exe «doc-gen4» {
 require MD4Lean from git
   "https://github.com/acmepjz/md4lean" @ "main"
 
+-- Once https://github.com/dupuisf/BibtexQuery/pull/20 is merged, we can use this again:
+-- require BibtexQuery from git
+--   "https://github.com/dupuisf/BibtexQuery" @ "master"
 require BibtexQuery from git
-  "https://github.com/dupuisf/BibtexQuery" @ "master"
+  "https://github.com/kim-em/BibtexQuery" @ "bump_to_v4.17.0-rc1"
 
 require «UnicodeBasic» from git
   "https://github.com/fgdorais/lean4-unicode-basic" @ "main"
