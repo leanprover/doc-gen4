@@ -265,14 +265,16 @@ def splitWhitespaces (s : String) : (String × String × String) := Id.run do
   (front, s, back)
 
 /--
-Turns a `CodeWithInfos` object, that is basically a Lean syntax tree with
-information about what the identifiers mean, into an HTML object that links
-to as much information as possible.
+Implementation for `infoFormatToHtml`.
+
+Returns (1) whether the HTML contains an anchor tag and (2) the resulting HTML.
 -/
-partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
+private partial def infoFormatToHtmlAux (i : CodeWithInfos) : HtmlM (Bool × Array Html) := do
   match i with
-  | .text t => return #[t]
-  | .append tt => tt.foldlM (fun acc t => do return acc ++ (← infoFormatToHtml t)) #[]
+  | .text t => return (false, #[t])
+  | .append tt => tt.foldlM (fun (a?, acc) t => do
+    let (a?', acc') ← infoFormatToHtmlAux t
+    return (a? || a?', acc ++ acc')) (false, #[])
   | .tag a t =>
     match a.info.val.info with
     | Info.ofTermInfo i =>
@@ -286,11 +288,11 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
           | .text t =>
             let (front, t, back) := splitWhitespaces t
             let elem := <a href={← declNameToLink name}>{t}</a>
-            return #[Html.text front, elem, Html.text back]
+            return (true, #[Html.text front, elem, Html.text back])
           | _ =>
-            return #[<a href={← declNameToLink name}>[← infoFormatToHtml t]</a>]
+            toHtmlMaybeLink t (← declNameToLink name)
         else
-         return #[<span class="fn">[← infoFormatToHtml t]</span>]
+          toHtmlWrapFn t
       | .sort _ =>
         match t with
         | .text t =>
@@ -299,12 +301,28 @@ partial def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := do
           let mut restStr := String.intercalate " " rest
           if restStr.length != 0 then
             restStr := " " ++ restStr
-          return #[sortLink, Html.text restStr]
+          return (true, #[sortLink, Html.text restStr])
         | _ =>
-          return #[<a href={s!"{← getRoot}foundational_types.html"}>[← infoFormatToHtml t]</a>]
-      | _ =>
-         return #[<span class="fn">[← infoFormatToHtml t]</span>]
-    | _ => return #[<span class="fn">[← infoFormatToHtml t]</span>]
+          toHtmlMaybeLink t s!"{← getRoot}foundational_types.html"
+      | _ => toHtmlWrapFn t
+    | _ => toHtmlWrapFn t
+where
+  toHtmlWrapFn (t : TaggedText SubexprInfo) : HtmlM (Bool × Array Html) := do
+    let (a?, acc) ← infoFormatToHtmlAux t
+    return (a?, #[<span class="fn">[acc]</span>])
+  toHtmlMaybeLink (t : TaggedText SubexprInfo) (link : String) : HtmlM (Bool × Array Html) := do
+    let (a?, acc) ← infoFormatToHtmlAux t
+    if a? then
+      return (true, acc)
+    else
+      return (true, #[<a href={link}>[acc]</a>])
+
+/-
+Turns a `CodeWithInfos` object, that is basically a Lean syntax tree with
+information about what the identifiers mean, into an HTML object that links
+to as much information as possible.
+-/
+def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := Prod.snd <$> infoFormatToHtmlAux i
 
 def baseHtmlHeadDeclarations : BaseHtmlM (Array Html) := do
   return #[
