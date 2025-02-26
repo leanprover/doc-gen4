@@ -165,7 +165,7 @@ def templateLiftExtends {α β} {m n} [Bind m] [MonadLiftT n m] (base : α → n
 Returns the doc-gen4 link to a module name.
 -/
 def moduleNameToLink (n : Name) : BaseHtmlM String := do
-  let parts := n.components.map Name.toString
+  let parts := n.components.map (Name.toString (escape := False))
   return (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 /--
@@ -178,14 +178,14 @@ def moduleToHtmlLink (module : Name) : BaseHtmlM Html := do
 Returns the path to the HTML file that contains information about a module.
 -/
 def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
-  let parts := n.components.map Name.toString
+  let parts := n.components.map (Name.toString (escape := False))
   FilePath.withExtension (basePath / parts.foldl (· / ·) (FilePath.mk ".")) "html"
 
 /--
 Returns the directory of the HTML file that contains information about a module.
 -/
 def moduleNameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
-  let parts := n.components.dropLast.map Name.toString
+  let parts := n.components.dropLast.map (Name.toString (escape := False))
   basePath / parts.foldl (· / ·) (FilePath.mk ".")
 
 section Static
