@@ -98,7 +98,7 @@ def getAllModuleDocs (relevantModules : Array Name) : MetaM (Std.HashMap Name Mo
   for module in relevantModules do
     let modDocs := getModuleDoc? env module |>.getD #[] |>.map .modDoc
     let some modIdx := env.getModuleIdx? module | unreachable!
-    let moduleData := env.header.moduleData.get! modIdx
+    let moduleData := env.header.moduleData[modIdx]!
     let imports := moduleData.imports.map Import.module
     res := res.insert module <| Module.mk module modDocs imports
   return res
@@ -122,7 +122,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
 
   for (name, cinfo) in env.constants do
     let some modidx := env.getModuleIdxFor? name | unreachable!
-    let moduleName := env.allImportedModuleNames.get! modidx
+    let moduleName := env.allImportedModuleNames[modidx]!
     if !relevantModules.contains moduleName then
       continue
 
@@ -136,7 +136,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
         }
         let analysis ← Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant (name, cinfo)) config { env := env } {} {}
         if let some dinfo := analysis then
-          let moduleName := env.allImportedModuleNames.get! modidx
+          let moduleName := env.allImportedModuleNames[modidx]!
           let module := res[moduleName]!
           return res.insert moduleName {module with members := module.members.push (ModuleMember.docInfo dinfo)}
         else

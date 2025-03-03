@@ -17,8 +17,12 @@ require MD4Lean from git
 require BibtexQuery from git
   "https://github.com/dupuisf/BibtexQuery" @ "master"
 
+-- require «UnicodeBasic» from git
+--   "https://github.com/fgdorais/lean4-unicode-basic" @ "main"
+
+-- restore the above, after https://github.com/fgdorais/lean4-unicode-basic/pull/60 is merged
 require «UnicodeBasic» from git
-  "https://github.com/fgdorais/lean4-unicode-basic" @ "main"
+  "https://github.com/jcommelin/lean4-unicode-basic" @ "bump_to_v4.18.0-rc1"
 
 require Cli from git
   "https://github.com/mhuisi/lean4-cli" @ "main"
