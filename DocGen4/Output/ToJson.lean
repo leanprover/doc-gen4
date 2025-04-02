@@ -50,9 +50,9 @@ structure JsonIndexedModule where
 
 structure JsonIndex where
   declarations : List (String × JsonIndexedDeclarationInfo) := []
-  instances : Std.HashMap String (RBTree String Ord.compare) := .empty
-  modules : Std.HashMap String JsonIndexedModule := {}
-  instancesFor : Std.HashMap String (RBTree String Ord.compare) := .empty
+  instances : Std.HashMap String (RBTree String Ord.compare) := ∅
+  modules : Std.HashMap String JsonIndexedModule := ∅
+  instancesFor : Std.HashMap String (RBTree String Ord.compare) := ∅
 
 instance : ToJson JsonHeaderIndex where
   toJson idx := Json.mkObj <| idx.declarations.map (fun (k, v) => (k, toJson v))

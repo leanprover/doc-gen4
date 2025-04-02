@@ -250,7 +250,7 @@ partial def modifyElement (element : Element) (funName : String) : HtmlM Element
 
 /-- Find all references in a markdown text. -/
 partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String) (i : String.Pos := 0)
-    (ret : Std.HashSet String := .empty) : Std.HashSet String :=
+    (ret : Std.HashSet String := ∅) : Std.HashSet String :=
   let lps := s.posOfAux '[' s.endPos i
   if lps < s.endPos then
     let lpe := s.posOfAux ']' s.endPos lps
