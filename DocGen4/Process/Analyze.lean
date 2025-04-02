@@ -94,7 +94,7 @@ def AnalyzeTask.getLoad (task : AnalyzeTask) : Array Name :=
 
 def getAllModuleDocs (relevantModules : Array Name) : MetaM (Std.HashMap Name Module) := do
   let env ← getEnv
-  let mut res := Std.HashMap.empty relevantModules.size
+  let mut res := Std.HashMap.emptyWithCapacity relevantModules.size
   for module in relevantModules do
     let modDocs := getModuleDoc? env module |>.getD #[] |>.map .modDoc
     let some modIdx := env.getModuleIdx? module | unreachable!
@@ -113,9 +113,9 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
     match task with
     | .analyzePrefixModules topLevel =>
       let modules := env.header.moduleNames.filter (topLevel.isPrefixOf ·)
-      Std.HashSet.insertMany (Std.HashSet.empty modules.size) modules
+      Std.HashSet.insertMany (Std.HashSet.emptyWithCapacity modules.size) modules
     | .analyzeConcreteModules modules =>
-      Std.HashSet.insertMany (Std.HashSet.empty modules.size) modules
+      Std.HashSet.insertMany (Std.HashSet.emptyWithCapacity modules.size) modules
   let allModules := env.header.moduleNames
 
   let mut res ← getAllModuleDocs relevantModules.toArray
