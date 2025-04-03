@@ -12,7 +12,7 @@ open Lean System IO
 def envOfImports (imports : Array Name) : IO Environment := do
   -- needed for modules which use syntax registered with `initialize add_parser_alias ..`
   unsafe Lean.enableInitializersExecution
-  importModules (imports.map (Import.mk · false)) Options.empty (leakEnv := true)
+  importModules (imports.map (Import.mk · false)) Options.empty (leakEnv := true) (loadExts := true)
 
 def loadInit (imports : Array Name) : IO Hierarchy := do
  let env ← envOfImports imports
