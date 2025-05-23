@@ -58,7 +58,7 @@ def filteredPath (path : FilePath) : List String := path.components.filter (· !
 Append the module path to a string with the separator used for name components.
 -/
 def appendModPath (libUri : String) (pathSep : Char) (mod : Module)  : String :=
-  mod.name.components.foldl (init := libUri) (·.push pathSep ++ ·.toString) ++ ".lean"
+  mod.name.components.foldl (init := libUri) (·.push pathSep ++ ·.toString (escape := False)) ++ ".lean"
 
 /--
 Append the library and mod path to the given Uri referring to the package source.
