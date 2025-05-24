@@ -74,7 +74,7 @@ out things that you intend to complete later.
 
 ## Source locations
 
-Source locations default to guessing the Github repo for the library, but different different schemas can be used by setting the `DOCGEN_SRC` environment variable.  For
+Source locations default to guessing the Github repo for the library, but different schemas can be used by setting the `DOCGEN_SRC` environment variable.  For
 example, one can use links that open the local source file in VSCode by running lake with:
 ```
 DOCGEN_SRC="vscode" lake ...
@@ -87,6 +87,9 @@ The different options are:
    This is the default if `DOCGEN_SRC` is unset.
  * `DOCGEN_SRC="file"` creates references to local file references.
  * `DOCGEN_SRC="vscode"` creates [VSCode URLs](https://code.visualstudio.com/docs/editor/command-line#_opening-vs-code-with-urls) to local files.
+
+## Disabling equations
+Generation of equations for definitions is enabled by default, but can be disabled by setting the `DISABLE_EQUATIONS` environment variable to `1`.
 
 ## How does `docs#Nat.add` from the Lean Zulip work?
 If someone sends a message that contains `docs#Nat.add` on the Lean Zulip this will
