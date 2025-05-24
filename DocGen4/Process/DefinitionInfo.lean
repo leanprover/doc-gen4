@@ -30,7 +30,7 @@ def processEq (eq : Name) : MetaM CodeWithInfos := do
 def computeEquations? (v : DefinitionVal) : MetaM (Array CodeWithInfos) := do
   -- TODO: consider checking this in a more principled way, and wrapping things by some Reader
   match ← IO.getEnv "DISABLE_EQUATIONS" with
-  | some "0" => return #[]
+  | some "1" => return #[]
   | _ =>
     let eqs? ← getEqnsFor? v.name
     match eqs? with
