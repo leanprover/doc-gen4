@@ -103,6 +103,11 @@ def getAllModuleDocs (relevantModules : Array Name) : MetaM (Std.HashMap Name Mo
     res := res.insert module <| Module.mk module modDocs imports
   return res
 
+def mkOptions : IO DocGenOptions := do
+  match ← IO.getEnv "DISABLE_EQUATIONS" with
+  | some "1" => return ⟨false⟩
+  | _ => return {}
+
 /--
 Run the doc-gen analysis on all modules that are loaded into the `Environment`
 of this `MetaM` run and mentioned by the `AnalyzeTask`.
@@ -120,6 +125,8 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
 
   let mut res ← getAllModuleDocs relevantModules.toArray
 
+  let options ← liftM mkOptions
+
   for (name, cinfo) in env.constants do
     let some modidx := env.getModuleIdxFor? name | unreachable!
     let moduleName := env.allImportedModuleNames[modidx]!
@@ -134,7 +141,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
           fileName := ← getFileName,
           fileMap := ← getFileMap,
         }
-        let analysis ← Prod.fst <$> Meta.MetaM.toIO (DocInfo.ofConstant (name, cinfo)) config { env := env } {} {}
+        let analysis ← Prod.fst <$> ((DocInfo.ofConstant (name, cinfo)).run options).toIO config { env := env } {} {}
         if let some dinfo := analysis then
           let moduleName := env.allImportedModuleNames[modidx]!
           let module := res[moduleName]!

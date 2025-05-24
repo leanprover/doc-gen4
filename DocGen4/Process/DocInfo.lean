@@ -140,7 +140,8 @@ def isProjFn (declName : Name) : MetaM Bool := do
       || (si.parentInfo.any fun pi => pi.projFn == declName)
   | _ => return false
 
-def ofConstant : (Name × ConstantInfo) → MetaM (Option DocInfo) := fun (name, info) => do
+def ofConstant : (Name × ConstantInfo) → AnalyzeM (Option DocInfo) :=
+  fun (name, info) => do
   if ← isBlackListed name then
     return none
   match info with

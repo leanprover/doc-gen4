@@ -59,7 +59,7 @@ private def InstanceInfo.ofDefinitionInfo (info : DefinitionInfo) (type : Expr) 
     typeNames,
   }
 
-def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : MetaM InstanceInfo := do
+def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : AnalyzeM InstanceInfo := do
   let info ← DefinitionInfo.ofDefinitionVal v
   InstanceInfo.ofDefinitionInfo info v.type
 

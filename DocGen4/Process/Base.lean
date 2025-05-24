@@ -9,6 +9,11 @@ import Lean
 namespace DocGen4.Process
 open Lean Widget Meta
 
+structure DocGenOptions where
+  genEquations : Bool := true
+
+abbrev AnalyzeM : Type → Type := ReaderT DocGenOptions MetaM
+
 /--
 Stores information about a typed name.
 -/
