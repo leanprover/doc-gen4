@@ -30,11 +30,11 @@ def sourceLinker (gitUrl? : Option String) (module : Name) : Option DeclarationR
   let root := module.getRoot
   let leanHash := Lean.githash
   if root == `Lean ∨ root == `Init ∨ root == `Std then
-    let parts := module.components.map Name.toString
+    let parts := module.components.map (Name.toString (escape := False))
     let path := "/".intercalate parts
     mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/{path}.lean"
   else if root == `Lake then
-    let parts := module.components.map Name.toString
+    let parts := module.components.map (Name.toString (escape := False))
     let path := "/".intercalate parts
     mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/lake/{path}.lean"
   else
