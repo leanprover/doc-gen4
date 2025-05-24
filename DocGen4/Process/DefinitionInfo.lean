@@ -28,14 +28,18 @@ def processEq (eq : Name) : MetaM CodeWithInfos := do
   prettyPrintEquation type
 
 def computeEquations? (v : DefinitionVal) : MetaM (Array CodeWithInfos) := do
-  let eqs? ← getEqnsFor? v.name
-  match eqs? with
-  | some eqs =>
-    let eqs ← eqs.mapM processEq
-    return eqs
-  | none =>
-    let equations := #[← prettyPrintEquation (← valueToEq v)]
-    return equations
+  -- TODO: consider checking this in a more principled way, and wrapping things by some Reader
+  match ← IO.getEnv "DISABLE_EQUATIONS" with
+  | some "0" => return #[]
+  | _ =>
+    let eqs? ← getEqnsFor? v.name
+    match eqs? with
+    | some eqs =>
+      let eqs ← eqs.mapM processEq
+      return eqs
+    | none =>
+      let equations := #[← prettyPrintEquation (← valueToEq v)]
+      return equations
 
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : MetaM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal

@@ -88,6 +88,9 @@ The different options are:
  * `DOCGEN_SRC="file"` creates references to local file references.
  * `DOCGEN_SRC="vscode"` creates [VSCode URLs](https://code.visualstudio.com/docs/editor/command-line#_opening-vs-code-with-urls) to local files.
 
+## Disabling equations
+Generation of equations for definitions is enabled by default, but can be disabled by setting the `DISABLE_EQUATIONS` environment variable to `0`.
+
 ## How does `docs#Nat.add` from the Lean Zulip work?
 If someone sends a message that contains `docs#Nat.add` on the Lean Zulip this will
 automatically link to `Nat.add` from the `mathlib4` documentation. The way that this
