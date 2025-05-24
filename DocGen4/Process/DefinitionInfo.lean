@@ -28,7 +28,7 @@ def processEq (eq : Name) : MetaM CodeWithInfos := do
   prettyPrintEquation type
 
 def computeEquations? (v : DefinitionVal) : AnalyzeM (Array CodeWithInfos) := do
-  unless (← read).genEquations then return #[]
+  unless (← read).genEquations do return #[]
   let eqs? ← getEqnsFor? v.name
   match eqs? with
   | some eqs =>
