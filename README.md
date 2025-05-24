@@ -74,7 +74,7 @@ out things that you intend to complete later.
 
 ## Source locations
 
-Source locations default to guessing the Github repo for the library, but different different schemas can be used by setting the `DOCGEN_SRC` environment variable.  For
+Source locations default to guessing the Github repo for the library, but different schemas can be used by setting the `DOCGEN_SRC` environment variable.  For
 example, one can use links that open the local source file in VSCode by running lake with:
 ```
 DOCGEN_SRC="vscode" lake ...
