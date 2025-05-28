@@ -246,7 +246,7 @@ library_facet docsHeader (lib) : FilePath := do
   let basePath := buildDir / "doc"
   let dataFile := basePath / "declarations" / "header-data.bmp"
   exeJob.bindM fun exeFile => do
-   coreJobs.bindM fun _ => do
+    coreJobs.bindM fun _ => do
       moduleJobs.mapM fun _ => do
         buildFileUnlessUpToDate' dataFile do
           logInfo "Documentation header indexing"
