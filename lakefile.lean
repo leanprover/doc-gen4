@@ -151,17 +151,34 @@ target bibPrepass : FilePath := do
       }
     return outputFile
 
-module_facet docs (mod) : FilePath := do
+-- loosely inspired by bazel's depset
+abbrev DepSet (α) [Hashable α] [BEq α] := Array α × OrdHashSet α
+
+instance (α) [Hashable α] [BEq α] [Lean.ToJson α] : Lean.ToJson (OrdHashSet α) where
+  toJson x := Lean.toJson x.toArray
+
+def DepSet.mk {α} [Hashable α] [BEq α] (direct : Array α) (trans : Array (DepSet α)) : DepSet α := Id.run do
+  let mut deps := OrdHashSet.mkEmpty 0
+  for (direct, trans) in trans do
+    deps := deps.appendArray direct
+    deps := deps.append trans
+  return (direct, deps)
+
+def DepSet.toArray {α} [Hashable α] [BEq α] (d : DepSet α) : Array α :=
+  d.1 ++ d.2.toArray
+
+
+module_facet docs (mod) : DepSet FilePath := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
   let modJob ← mod.leanArts.fetch
   -- Build all documentation imported modules
   let imports ← (← mod.imports.fetch).await
-  let depDocJobs := Job.mixArray <| ← imports.mapM fun mod => fetch <| mod.facet `docs
+  let depDocJobs := Job.collectArray <| ← imports.mapM fun mod => fetch <| mod.facet `docs
   let srcUri ← getSrcUri mod
   let buildDir := (← getRootPackage).buildDir
   let docFile := mod.filePath (buildDir / "doc") "html"
-  depDocJobs.bindM fun _ => do
+  depDocJobs.bindM fun docDeps => do
     bibPrepassJob.bindM fun _ => do
       exeJob.bindM fun exeFile => do
         modJob.mapM fun _ => do
@@ -171,32 +188,44 @@ module_facet docs (mod) : FilePath := do
               args := #["single", "--build", buildDir.toString, mod.name.toString, srcUri]
               env := ← getAugmentedEnv
             }
-          return docFile
+          return DepSet.mk #[docFile] docDeps
 
--- TODO: technically speaking this target does not show all file dependencies
-def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
+def coreTarget (component : Lean.Name) : FetchM (Job <| DepSet FilePath) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
   let dataPath := (← getRootPackage).buildDir / "doc-data"
+  let manifestFile := (← getRootPackage).buildDir / s!"{component}-manifest.json"
   let dataFile := dataPath / s!"declaration-data-{component}.bmp"
   let buildDir := (← getRootPackage).buildDir
   bibPrepassJob.bindM fun _ => do
-    exeJob.mapM fun exeFile  => do
-      buildFileUnlessUpToDate' dataFile do
+    exeJob.mapM fun exeFile => do
+      -- TODO: should fold in the dataFile into the trace too? This writes out both.
+      buildFileUnlessUpToDate' manifestFile do
         proc {
           cmd := exeFile.toString
-          args := #["genCore", component.toString, "--build", buildDir.toString]
+          args := #["genCore", component.toString,
+            "--build", buildDir.toString,
+            "--manifest", manifestFile.toString]
           env := ← getAugmentedEnv
         }
-      return dataFile
+      match Lean.Json.parse <| ← IO.FS.readFile manifestFile with
+      | .error e => ELog.error s!"Could not parse json from {manifestFile}: {e}"
+      | .ok manifestData =>
+      match Lean.fromJson? manifestData with
+      | .error e => ELog.error s!"Could not parse an array from {manifestFile}: {e}"
+      | .ok (deps : Array System.FilePath) =>
+      return .mk #[dataFile] (deps.map (DepSet.mk #[·] #[]))
 
-target coreDocs : Unit := do
+target coreDocs : DepSet FilePath := do
   let coreComponents := #[`Init, `Std, `Lake, `Lean]
-  return Job.mixArray <| ← coreComponents.mapM coreTarget
+  return ← (Job.collectArray <| ← coreComponents.mapM coreTarget).mapM fun deps =>
+    return .mk #[] deps
 
-library_facet docs (lib) : FilePath := do
+/-- A facet to generate the docs for a library. Returns all the filepaths that are required to
+deploy a doc archive as a starting website. -/
+library_facet docs (lib) : Array FilePath := do
   let mods ← (← lib.modules.fetch).await
-  let moduleJobs := Job.mixArray <| ← mods.mapM (fetch <| ·.facet `docs)
+  let moduleJobs := Job.collectArray <| ← mods.mapM (fetch <| ·.facet `docs)
   let coreJobs ← coreDocs.fetch
   let exeJob ← «doc-gen4».fetch
   -- Shared with DocGen4.Output
@@ -226,8 +255,8 @@ library_facet docs (lib) : FilePath := do
     basePath / "find" / "find.js"
   ]
   exeJob.bindM fun exeFile => do
-    coreJobs.bindM fun _ => do
-      moduleJobs.mapM fun _ => do
+    coreJobs.bindM fun coreDeps => do
+      moduleJobs.mapM fun modDeps => do
         buildFileUnlessUpToDate' dataFile do
           logInfo "Documentation indexing"
           proc {
@@ -236,7 +265,7 @@ library_facet docs (lib) : FilePath := do
           }
         let traces ← staticFiles.mapM computeTrace
         addTrace <| mixTraceArray traces
-        return dataFile
+        return (DepSet.mk (#[dataFile] ++ staticFiles) (modDeps.push coreDeps)).toArray
 
 library_facet docsHeader (lib) : FilePath := do
   let mods ← (← lib.modules.fetch).await
