@@ -179,14 +179,14 @@ Returns the path to the HTML file that contains information about a module.
 -/
 def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
   let parts := n.components.map (Name.toString (escape := False))
-  FilePath.addExtension (basePath / parts.foldl (· / ·) (FilePath.mk ".")) "html"
+  FilePath.addExtension (parts.foldl (· / ⟨·⟩) basePath) "html"
 
 /--
 Returns the directory of the HTML file that contains information about a module.
 -/
 def moduleNameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
   let parts := n.components.dropLast.map (Name.toString (escape := False))
-  basePath / parts.foldl (· / ·) (FilePath.mk ".")
+  parts.foldl (· / ⟨·⟩) basePath
 
 section Static
 /-!
