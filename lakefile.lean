@@ -208,13 +208,14 @@ def coreTarget (component : Lean.Name) : FetchM (Job <| DepSet FilePath) := do
             "--manifest", manifestFile.toString]
           env := ← getAugmentedEnv
         }
+      addTrace (← computeTrace dataFile)
       match Lean.Json.parse <| ← IO.FS.readFile manifestFile with
       | .error e => ELog.error s!"Could not parse json from {manifestFile}: {e}"
       | .ok manifestData =>
       match Lean.fromJson? manifestData with
       | .error e => ELog.error s!"Could not parse an array from {manifestFile}: {e}"
       | .ok (deps : Array System.FilePath) =>
-      return .mk #[dataFile] (deps.map (DepSet.mk #[·] #[]))
+      return .mk #[] (deps.map (DepSet.mk #[·] #[]))
 
 target coreDocs : DepSet FilePath := do
   let coreComponents := #[`Init, `Std, `Lake, `Lean]
