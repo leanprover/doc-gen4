@@ -151,22 +151,29 @@ target bibPrepass : FilePath := do
       }
     return outputFile
 
--- loosely inspired by bazel's depset
+/--
+Direct and transitive dependencies.
+
+Loosely inspired by bazel's [depset](https://bazel.build/rules/lib/builtins/depset). -/
 abbrev DepSet (α) [Hashable α] [BEq α] := Array α × OrdHashSet α
 
-instance (α) [Hashable α] [BEq α] [Lean.ToJson α] : Lean.ToJson (OrdHashSet α) where
-  toJson x := Lean.toJson x.toArray
+namespace DepSet
+variable {α} [Hashable α] [BEq α]
 
-def DepSet.mk {α} [Hashable α] [BEq α] (direct : Array α) (trans : Array (DepSet α)) : DepSet α := Id.run do
+def mk (direct : Array α) (trans : Array (DepSet α)) : DepSet α := Id.run do
   let mut deps := OrdHashSet.mkEmpty 0
   for (direct, trans) in trans do
     deps := deps.appendArray direct
     deps := deps.append trans
   return (direct, deps)
 
-def DepSet.toArray {α} [Hashable α] [BEq α] (d : DepSet α) : Array α :=
-  d.1 ++ d.2.toArray
+/-- Flatten a set of dependencies into a single list. -/
+def toArray (d : DepSet α) : Array α := d.1 ++ d.2.toArray
 
+instance [Lean.ToJson α] : Lean.ToJson (OrdHashSet α) where toJson x := Lean.toJson x.toArray
+instance [ToText α] : Lake.ToText (DepSet α) where toText d := Lake.ToText.toText d.toArray
+
+end DepSet
 
 module_facet docs (mod) : DepSet FilePath := do
   let exeJob ← «doc-gen4».fetch
@@ -190,7 +197,7 @@ module_facet docs (mod) : DepSet FilePath := do
             }
           return DepSet.mk #[docFile] docDeps
 
-def coreTarget (component : Lean.Name) : FetchM (Job <| DepSet FilePath) := do
+def coreTarget (component : Lean.Name) : FetchM (Job <| Array FilePath) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
   let dataPath := (← getRootPackage).buildDir / "doc-data"
@@ -199,7 +206,6 @@ def coreTarget (component : Lean.Name) : FetchM (Job <| DepSet FilePath) := do
   let buildDir := (← getRootPackage).buildDir
   bibPrepassJob.bindM fun _ => do
     exeJob.mapM fun exeFile => do
-      -- TODO: should fold in the dataFile into the trace too? This writes out both.
       buildFileUnlessUpToDate' manifestFile do
         proc {
           cmd := exeFile.toString
@@ -215,12 +221,12 @@ def coreTarget (component : Lean.Name) : FetchM (Job <| DepSet FilePath) := do
       match Lean.fromJson? manifestData with
       | .error e => ELog.error s!"Could not parse an array from {manifestFile}: {e}"
       | .ok (deps : Array System.FilePath) =>
-      return .mk #[] (deps.map (DepSet.mk #[·] #[]))
+      return deps
 
-target coreDocs : DepSet FilePath := do
+target coreDocs : Array FilePath := do
   let coreComponents := #[`Init, `Std, `Lake, `Lean]
   return ← (Job.collectArray <| ← coreComponents.mapM coreTarget).mapM fun deps =>
-    return .mk #[] deps
+    return deps.flatten
 
 /-- A facet to generate the docs for a library. Returns all the filepaths that are required to
 deploy a doc archive as a starting website. -/
@@ -266,7 +272,7 @@ library_facet docs (lib) : Array FilePath := do
           }
         let traces ← staticFiles.mapM computeTrace
         addTrace <| mixTraceArray traces
-        return (DepSet.mk (#[dataFile] ++ staticFiles) (modDeps.push coreDeps)).toArray
+        return (DepSet.mk (#[dataFile] ++ staticFiles) (modDeps.push (.mk coreDeps #[]))).toArray
 
 library_facet docsHeader (lib) : FilePath := do
   let mods ← (← lib.modules.fetch).await
