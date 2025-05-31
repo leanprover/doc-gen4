@@ -220,6 +220,8 @@ library_facet docs (lib) : FilePath := do
     basePath / "404.html",
     basePath / "navbar.html",
     basePath / "search.html",
+    basePath / "foundational_types.html",
+    basePath / "references.html",
     basePath / "find" / "index.html",
     basePath / "find" / "find.js"
   ]
