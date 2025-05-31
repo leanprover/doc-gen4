@@ -221,7 +221,7 @@ def coreTarget (component : Lean.Name) : FetchM (Job <| Array FilePath) := do
       match Lean.fromJson? manifestData with
       | .error e => ELog.error s!"Could not parse an array from {manifestFile}: {e}"
       | .ok (deps : Array System.FilePath) =>
-      return deps
+      return deps.map (buildDir / ·)
 
 target coreDocs : Array FilePath := do
   let coreComponents := #[`Init, `Std, `Lake, `Lean]
