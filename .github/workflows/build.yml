@@ -1,4 +1,4 @@
-name: batteries test build
+name: doc-gen test build
 
 on:
   push:
