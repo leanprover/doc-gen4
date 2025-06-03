@@ -19,11 +19,6 @@ jobs:
         with:
           build-args: "--wfail"
 
-      - name: Build doc-gen
-        run: |
-         export LEAN_ABORT_ON_PANIC=1
-         lake build DocGen4
-
       - name: Build docs
         run: |
          export LEAN_ABORT_ON_PANIC=1
