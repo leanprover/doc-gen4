@@ -27,8 +27,9 @@ jobs:
           lake build DocGen4:docs
         
       - name: Check `--query` output
+        shell: bash  # enables pipefail
         run: |
           export LEAN_ABORT_ON_PANIC=1
           lake query DocGen4:docs | sort > expected.txt
-          find "$(pwd)/.lake/build/docs" -type f | sort > actual.txt
+          find "$(pwd)/.lake/build/doc" -type f | sort > actual.txt
           diff actual.txt expected.txt
