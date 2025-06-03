@@ -88,7 +88,8 @@ def htmlOutputDeclarationDatas (buildDir : System.FilePath) (result : AnalyzerRe
     let jsonDecls ← Module.toJson mod
     FS.writeFile (declarationsBasePath buildDir / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
 
-def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String) : IO Unit := do
+def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String) :
+    IO (Array System.FilePath) := do
   let config : SiteContext := {
     result := result
     sourceLinker := SourceLinker.sourceLinker sourceUrl?
@@ -100,9 +101,10 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
 
   discard <| htmlOutputDeclarationDatas baseConfig.buildDir result |>.run {} config baseConfig
 
+  let mut outputs := #[]
   for (modName, module) in result.moduleInfo.toArray do
-    let fileDir := moduleNameToDirectory (basePath baseConfig.buildDir) modName
-    let filePath := moduleNameToFile (basePath baseConfig.buildDir) modName
+    let relFilePath := basePathComponent / moduleNameToFile modName
+    let filePath := baseConfig.buildDir / relFilePath
     -- path: 'basePath/module/components/till/last.html'
     -- The last component is the file name, so we drop it from the depth to root.
     let baseConfig := { baseConfig with
@@ -112,9 +114,14 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     let (moduleHtml, cfg) := moduleToHtml module |>.run {} config baseConfig
     if not cfg.errors.isEmpty then
       throw <| IO.userError s!"There are errors when generating '{filePath}': {cfg.errors}"
-    FS.createDirAll fileDir
+    if let .some d := filePath.parent then
+      FS.createDirAll d
     FS.writeFile filePath moduleHtml.toString
     FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json") (toString (toJson cfg.backrefs))
+    -- The output paths need to be relative to the build directory, as they are stored in a build
+    -- artifact.
+    outputs := outputs.push relFilePath
+  return outputs
 
 def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) : IO SiteBaseContext := do
   let contents ← FS.readFile (declarationsBasePath buildDir / "references.json") <|> (pure "[]")
@@ -177,7 +184,7 @@ The main entrypoint for outputting the documentation HTML based on an
 -/
 def htmlOutput (buildDir : System.FilePath) (result : AnalyzerResult) (hierarchy : Hierarchy) (sourceUrl? : Option String) : IO Unit := do
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  htmlOutputResults baseConfig result sourceUrl?
+  discard <| htmlOutputResults baseConfig result sourceUrl?
   htmlOutputIndex baseConfig
 
 end DocGen4

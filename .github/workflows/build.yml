@@ -1,4 +1,4 @@
-name: batteries test build
+name: doc-gen test build
 
 on:
   push:
@@ -19,6 +19,17 @@ jobs:
         with:
           build-args: "--wfail"
 
-      - run: |
-         export LEAN_ABORT_ON_PANIC=1
-         lake build DocGen4:docs
+      - name: Build docs
+        run: |
+          export LEAN_ABORT_ON_PANIC=1
+          # to ensure that the `--query` test below has a baseline to compare against.
+          rm -rf .lake/build/docs
+          lake build DocGen4:docs
+        
+      - name: Check `--query` output
+        shell: bash  # enables pipefail
+        run: |
+          export LEAN_ABORT_ON_PANIC=1
+          lake query DocGen4:docs | sort > expected.txt
+          find "$(pwd)/.lake/build/doc" -type f ! -name '*.trace' ! -name '*.hash' | sort > actual.txt
+          diff actual.txt expected.txt

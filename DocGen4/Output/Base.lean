@@ -11,7 +11,8 @@ namespace DocGen4.Output
 open scoped DocGen4.Jsx
 open Lean System Widget Elab Process
 
-def basePath (buildDir : System.FilePath) := buildDir / "doc"
+def basePathComponent := "doc"
+def basePath (buildDir : System.FilePath) := buildDir / basePathComponent
 def srcBasePath (buildDir : System.FilePath) := basePath buildDir / "src"
 def declarationsBasePath (buildDir : System.FilePath) := buildDir / "doc-data"
 
@@ -177,16 +178,11 @@ def moduleToHtmlLink (module : Name) : BaseHtmlM Html := do
 /--
 Returns the path to the HTML file that contains information about a module.
 -/
-def moduleNameToFile (basePath : FilePath) (n : Name) : FilePath :=
-  let parts := n.components.map (Name.toString (escape := False))
-  FilePath.addExtension (parts.foldl (· / ⟨·⟩) basePath) "html"
-
-/--
-Returns the directory of the HTML file that contains information about a module.
--/
-def moduleNameToDirectory (basePath : FilePath) (n : Name) : FilePath :=
-  let parts := n.components.dropLast.map (Name.toString (escape := False))
-  parts.foldl (· / ⟨·⟩) basePath
+def moduleNameToFile (n : Name) : FilePath :=
+  if let base :: parts := n.components.map (Name.toString (escape := False)) then
+    FilePath.addExtension (parts.foldl (· / ⟨·⟩) base) "html"
+  else
+    panic!"anonymous module name is illegal"
 
 section Static
 /-!

@@ -25,7 +25,7 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   let sourceUri := p.positionalArg! "sourceUri" |>.as! String
   let (doc, hierarchy) ← load <| .analyzeConcreteModules relevantModules
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  htmlOutputResults baseConfig doc (some sourceUri)
+  discard <| htmlOutputResults baseConfig doc (some sourceUri)
   return 0
 
 def runIndexCmd (p : Parsed) : IO UInt32 := do
@@ -41,10 +41,13 @@ def runGenCoreCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
+  let manifestOutput? := (p.flag? "manifest").map (·.as! String)
   let module := p.positionalArg! "module" |>.as! String |> String.toName
   let (doc, hierarchy) ← load <| .analyzePrefixModules module
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  htmlOutputResults baseConfig doc none
+  let outputs ← htmlOutputResults baseConfig doc none
+  if let .some manifestOutput := manifestOutput? then
+    IO.FS.writeFile manifestOutput (Lean.toJson outputs).compress
   return 0
 
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
@@ -97,6 +100,7 @@ def genCoreCmd := `[Cli|
 
   FLAGS:
     b, build : String; "Build directory."
+    m, manifest : String; "Manifest output, to list all the files generated."
 
   ARGS:
     module : String; "The module to generate the HTML for."
