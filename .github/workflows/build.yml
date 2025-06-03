@@ -31,5 +31,5 @@ jobs:
         run: |
           export LEAN_ABORT_ON_PANIC=1
           lake query DocGen4:docs | sort > expected.txt
-          find "$(pwd)/.lake/build/doc" -type f | sort > actual.txt
+          find "$(pwd)/.lake/build/doc" -type f ! -name '*.trace' ! -name '*.hash' | sort > actual.txt
           diff actual.txt expected.txt
