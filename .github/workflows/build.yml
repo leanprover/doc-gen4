@@ -19,6 +19,21 @@ jobs:
         with:
           build-args: "--wfail"
 
-      - run: |
+      - name: Build doc-gen
+        run: |
          export LEAN_ABORT_ON_PANIC=1
+         lake build DocGen4
+
+      - name: Build docs
+        run: |
+         export LEAN_ABORT_ON_PANIC=1
+         # to ensure that the `--query` test below has a baseline to compare against.
+         rm -rf .lake/build/docs
          lake build DocGen4:docs
+        
+      - name: Check `--query` output
+        run: |
+         export LEAN_ABORT_ON_PANIC=1
+         lake query DocGen4:docs | sort > expected.txt
+         find "$(pwd)" -type f | sort > actual.txt
+         diff actual.txt expected.txt
