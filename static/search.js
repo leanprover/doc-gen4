@@ -119,8 +119,10 @@ function handleSearch(dataCenter, err, ev, sr, maxResults, autocomplete) {
     for (let i = 0; i < result.length; i += RESULTS_PER_BLOCK) {
       const block = document.createElement("div");
       block.classList.add("search_result_block");
+      const innerBlock = block.appendChild(document.createElement("div"));
+      innerBlock.classList.add("search_result_block_inner");
       for (let j = i; j < Math.min(result.length, i + RESULTS_PER_BLOCK); j++){
-        const row = block.appendChild(document.createElement("div"));
+        const row = innerBlock.appendChild(document.createElement("div"));
         row.classList.add("search_result");
         const linkdiv = row.appendChild(document.createElement("div"))
         linkdiv.classList.add("result_link");

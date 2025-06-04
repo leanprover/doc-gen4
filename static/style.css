@@ -341,6 +341,11 @@ header .header_filename {
 }
 
 .search_result_block {
+    width: 100%;
+    content-visibility: auto;
+}
+
+.search_result_block_inner {
     display: table;
     width: 100%;
 }
