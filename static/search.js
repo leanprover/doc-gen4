@@ -16,6 +16,10 @@ const SEARCH_RESULTS = document.querySelector("#search_results")
 const AC_MAX_RESULTS = 30
 const SEARCH_PAGE_MAX_RESULTS = undefined
 
+// Search results are sorted into blocks for better performance; this determines the number of search results per block.
+// Must be positive, may be infinite.
+const RESULTS_PER_BLOCK = 20
+
 // Create an `div#autocomplete_results` to hold all autocomplete results.
 let ac_results = document.createElement("div");
 ac_results.id = "autocomplete_results";
@@ -112,15 +116,20 @@ function handleSearch(dataCenter, err, ev, sr, maxResults, autocomplete) {
   
     // update autocomplete results
     removeAllChildren(sr);
-    for (const { name, kind, docLink } of result) {
-      const row = sr.appendChild(document.createElement("div"));
-      row.classList.add("search_result")
-      const linkdiv = row.appendChild(document.createElement("div"))
-      linkdiv.classList.add("result_link")
-      const link = linkdiv.appendChild(document.createElement("a"));
-      link.innerText = name;
-      link.title = name;
-      link.href = SITE_ROOT + docLink;
+    for (let i = 0; i < result.length; i += RESULTS_PER_BLOCK) {
+      const block = document.createElement("div");
+      block.classList.add("search_result_block");
+      for (let j = i; j < Math.min(result.length, i + RESULTS_PER_BLOCK); j++){
+        const row = block.appendChild(document.createElement("div"));
+        row.classList.add("search_result");
+        const linkdiv = row.appendChild(document.createElement("div"))
+        linkdiv.classList.add("result_link");
+        const link = linkdiv.appendChild(document.createElement("a"));
+        link.innerText = result[j].name;
+        link.title = result[j].name;
+        link.href = SITE_ROOT + result[j].docLink;
+      }
+      sr.appendChild(block);
     }
   }
   // handle error

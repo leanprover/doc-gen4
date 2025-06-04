@@ -329,7 +329,6 @@ header .header_filename {
 
 
 #search_results {
-    display: table;
     width: 100%;
 }
 #search_results[state="done"]:empty::before {
@@ -339,6 +338,11 @@ header .header_filename {
 
 #search_results .result_link, #search_results .result_doc {
     border-bottom: 1px solid rgba(0, 0, 0, 0.8);
+}
+
+.search_result_block {
+    display: table;
+    width: 100%;
 }
 
 .search_result {
