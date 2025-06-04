@@ -18,7 +18,7 @@ const SEARCH_PAGE_MAX_RESULTS = undefined
 
 // Search results are sorted into blocks for better performance; this determines the number of search results per block.
 // Must be positive, may be infinite.
-const RESULTS_PER_BLOCK = 20
+const RESULTS_PER_BLOCK = 50
 
 // Create an `div#autocomplete_results` to hold all autocomplete results.
 let ac_results = document.createElement("div");
@@ -84,7 +84,7 @@ function removeAllChildren(node) {
 /**
  * Handle user input and perform search.
  */
-function handleSearch(dataCenter, err, ev, sr, maxResults, autocomplete) {
+async function handleSearch(dataCenter, err, ev, sr, maxResults, autocomplete) {
   const text = ev.target.value;
 
   // If no input clear all.
@@ -117,10 +117,15 @@ function handleSearch(dataCenter, err, ev, sr, maxResults, autocomplete) {
     // update autocomplete results
     removeAllChildren(sr);
     for (let i = 0; i < result.length; i += RESULTS_PER_BLOCK) {
+      // results are grouped into blocks, each block consisting of an inner block with `display: table`
+      // and an outer block with `content-visibility: auto` that tells the browser to only render it
+      // when it gets close to the viewport. These two wrappers can't be combined into a single element
+      // because those two CSS properties are incompatible.
       const block = document.createElement("div");
       block.classList.add("search_result_block");
       const innerBlock = block.appendChild(document.createElement("div"));
       innerBlock.classList.add("search_result_block_inner");
+      // put the next batch of results into the block, then insert the block into the DOM
       for (let j = i; j < Math.min(result.length, i + RESULTS_PER_BLOCK); j++){
         const row = innerBlock.appendChild(document.createElement("div"));
         row.classList.add("search_result");
@@ -132,6 +137,9 @@ function handleSearch(dataCenter, err, ev, sr, maxResults, autocomplete) {
         link.href = SITE_ROOT + result[j].docLink;
       }
       sr.appendChild(block);
+      // wait a moment before adding the next block, and only do so if the input hasn't changed since.
+      await new Promise(resolve=>setTimeout(resolve,0));
+      if (ev.target.value != text) return;
     }
   }
   // handle error

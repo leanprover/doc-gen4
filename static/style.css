@@ -343,6 +343,7 @@ header .header_filename {
 .search_result_block {
     width: 100%;
     content-visibility: auto;
+    contain-intrinsic-size: auto 75em;
 }
 
 .search_result_block_inner {
