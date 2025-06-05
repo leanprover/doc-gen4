@@ -81,11 +81,15 @@ function removeAllChildren(node) {
   }
 }
 
+// counts how often `handleSearch` has already been called. Used to terminate the previous call whenever a new one has started.
+var handleSearchCounter = 0;
+
 /**
  * Handle user input and perform search.
  */
 async function handleSearch(dataCenter, err, ev, sr, maxResults, autocomplete) {
   const text = ev.target.value;
+  const callIndex = ++handleSearchCounter;
 
   // If no input clear all.
   if (!text) {
@@ -137,9 +141,9 @@ async function handleSearch(dataCenter, err, ev, sr, maxResults, autocomplete) {
         link.href = SITE_ROOT + result[j].docLink;
       }
       sr.appendChild(block);
-      // wait a moment before adding the next block, and only do so if the input hasn't changed since.
+      // wait a moment before adding the next block, and only do so if this method hasn't been called since.
       await new Promise(resolve=>setTimeout(resolve,0));
-      if (ev.target.value != text) return;
+      if (handleSearchCounter!=callIndex) return;
     }
   }
   // handle error
