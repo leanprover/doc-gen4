@@ -30,15 +30,18 @@ SEARCH_FORM.appendChild(ac_results);
  */
 function handleSearchCursorUpDown(down) {
   const sel = ac_results.querySelector(`.selected`);
+  const results = [...ac_results.getElementsByClassName("search_result")];
+  const selIndex = results.indexOf(sel);
+  let toSelect;
   if (sel) {
     sel.classList.remove("selected");
-    const toSelect = down
-      ? sel.nextSibling 
-      : sel.previousSibling;
-    toSelect && toSelect.classList.add("selected");
+    toSelect = results[down ? selIndex + 1 : selIndex - 1];
   } else {
-    const toSelect = down ? ac_results.firstChild : ac_results.lastChild;
-    toSelect && toSelect.classList.add("selected");
+    toSelect = down ? results[0] : results[results.length-1];
+  }
+  if (toSelect){
+    toSelect.classList.add("selected");
+    toSelect.scrollIntoView({block:"nearest"});
   }
 }
 
