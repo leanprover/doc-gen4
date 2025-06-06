@@ -30,14 +30,14 @@ SEARCH_FORM.appendChild(ac_results);
  */
 function handleSearchCursorUpDown(down) {
   const sel = ac_results.querySelector(`.selected`);
+  const results = [...ac_results.getElementsByClassName("search_result")];
+  const selIndex = results.indexOf(sel);
   if (sel) {
     sel.classList.remove("selected");
-    const toSelect = down
-      ? sel.nextSibling 
-      : sel.previousSibling;
+    const toSelect = results[down ? selIndex + 1 : selIndex - 1];
     toSelect && toSelect.classList.add("selected");
   } else {
-    const toSelect = down ? ac_results.firstChild : ac_results.lastChild;
+    const toSelect = down ? results[0] : results[results.length-1];
     toSelect && toSelect.classList.add("selected");
   }
 }
