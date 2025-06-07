@@ -53,21 +53,6 @@ def getProjectCommit (directory : System.FilePath := "." ) : IO String := do
 
 def filteredPath (path : FilePath) : List String := path.components.filter (· != ".")
 
-
-/--
-Append the module path to a string with the separator used for name components.
--/
-def appendModPath (libUri : String) (pathSep : Char) (mod : Module)  : String :=
-  mod.name.components.foldl (init := libUri) (·.push pathSep ++ ·.toString (escape := False)) ++ ".lean"
-
-/--
-Append the library and mod path to the given Uri referring to the package source.
--/
-def appendLibModPath (pkgUri : String) (pathSep : Char) (mod : Module) : String :=
-  let libPath := filteredPath mod.lib.config.srcDir
-  let newBase := (pathSep.toString.intercalate (pkgUri :: libPath))
-  appendModPath newBase pathSep mod
-
 /--
 Turns a Github git remote URL into an HTTPS Github URL.
 Three link types from git supported:
@@ -88,40 +73,65 @@ def getGithubBaseUrl (url : String) : Option String :=
   else
     .none
 
-def getGithubUrl (mod : Module) : IO String := do
-  let url ← getGitRemoteUrl mod.pkg.dir "origin"
-  let .some baseUrl := getGithubBaseUrl url
-      | throw <| IO.userError <|
-        s!"Could not interpret Git remote uri {url} as a Github source repo.\n"
-          ++ "See README on source URIs for more details."
-  let commit ← getProjectCommit mod.pkg.dir
-  let srcDir := filteredPath mod.pkg.config.srcDir
-  let pkgUri := "/".intercalate <| baseUrl :: "blob" :: commit :: srcDir
-  return appendLibModPath pkgUri '/' mod
+inductive UriSource
+  | github
+  | vscode
+  | file
 
-/--
-Return a File uri for the module.
--/
-def getFileUri (mod : Module) : IO String := do
-  let dir ← IO.FS.realPath (mod.pkg.dir / mod.pkg.config.srcDir)
-  return appendLibModPath s!"file://{dir}" FilePath.pathSeparator mod
+instance : ComputeHash UriSource Id := ⟨fun
+  | .github => .mk 0
+  | .vscode => .mk 1
+  | .file => .mk 2⟩
 
-/--
-Return a VSCode uri for the module.
--/
-def getVSCodeUri (mod : Module) : IO String := do
-  let dir ← IO.FS.realPath (mod.pkg.dir / mod.pkg.config.srcDir)
-  return appendLibModPath s!"vscode://file/{dir}" FilePath.pathSeparator mod
+def UriSource.parse : LogIO UriSource := do
+  match ← IO.getEnv "DOCGEN_SRC" with
+  | .none | .some "github" | .some "" => pure .github
+  | "vscode" => pure .vscode
+  | "file" => pure .file
+  | _ => error "$DOCGEN_SRC should be github, file, or vscode."
 
-/--
-Attempt to determine URI to use for the module source file.
--/
-def getSrcUri (mod : Module) : IO String := do
-  match ←IO.getEnv "DOCGEN_SRC" with
-  | .none | .some "github" | .some "" => getGithubUrl mod
-  | .some "vscode" => getVSCodeUri mod
-  | .some "file" => getFileUri mod
-  | .some _ => throw <| IO.userError "$DOCGEN_SRC should be github, file, or vscode."
+-- try to make lake rebuild if the env var chaanges
+target env.DOCGEN_SRC : UriSource := do
+  let src ← UriSource.parse
+  addTrace (pureHash src)
+  return .pure src
+
+section Uri.UriEscape
+
+/-! Note that all URIs use `/` even when the system path separator is `\`. -/
+
+/-- The URI of the source code of the package, respecting `DOCGEN_SRC`. -/
+package_facet srcUri (pkg) : String := do
+  let src ← env.DOCGEN_SRC.fetch
+  src.mapM fun src => do
+    match src with
+    | .github =>
+      let url ← getGitRemoteUrl pkg.dir "origin"
+      let .some baseUrl := getGithubBaseUrl url
+          | error <|
+            s!"Could not interpret Git remote uri {url} as a Github source repo.\n"
+              ++ "See README on source URIs for more details."
+      let commit ← getProjectCommit pkg.dir
+      logInfo s!"Found git remote for {pkg.name} at {baseUrl} @ {commit}"
+      return "/".intercalate <| baseUrl :: "blob" :: commit :: filteredPath pkg.config.srcDir
+    | .vscode =>
+      let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
+      return s!"vscode://file/{dir}"
+    | .file =>
+      let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
+      return s!"file://{dir}"
+
+/-- The URI of the source code of the library, respecting `DOCGEN_SRC`. -/
+library_facet srcUri (lib) : String := do
+  let pkgUri ← fetch <| lib.pkg.facet `srcUri
+  pkgUri.mapM fun pkgUri => do
+    return "/".intercalate (pkgUri :: filteredPath lib.config.srcDir)
+
+/-- The URI of the source code of the module, respecting `DOCGEN_SRC`. -/
+module_facet srcUri (mod) : String := do
+  let libUri ← fetch <| mod.lib.facet `srcUri
+  libUri.mapM fun libUri => do
+    return mod.name.components.foldl (init := libUri) (·.push '/' ++ ·.toString (escape := False)) ++ ".lean"
 
 target bibPrepass : FilePath := do
   let exeJob ← «doc-gen4».fetch
@@ -184,18 +194,22 @@ module_facet docs (mod) : DepSet FilePath := do
   let depDocJobs := Job.collectArray <| ← imports.mapM fun mod => fetch <| mod.facet `docs
   let buildDir := (← getRootPackage).buildDir
   let docFile := mod.filePath (buildDir / "doc") "html"
+  let envVar ← env.DOCGEN_SRC.fetch
   depDocJobs.bindM fun docDeps => do
     bibPrepassJob.bindM fun _ => do
       exeJob.bindM fun exeFile => do
-        modJob.mapM fun _ => do
-          buildFileUnlessUpToDate' docFile do
-            let srcUri ← getSrcUri mod
-            proc {
-              cmd := exeFile.toString
-              args := #["single", "--build", buildDir.toString, mod.name.toString, srcUri]
-              env := ← getAugmentedEnv
-            }
-          return DepSet.mk #[docFile] docDeps
+        envVar.bindM fun _ => do
+          modJob.mapM fun _ => do
+            buildFileUnlessUpToDate' docFile do
+              -- hack: do this here to avoid having to save the git output anywhere else
+              let uriJob ← fetch <| mod.facet `srcUri
+              let srcUri ← uriJob.await
+              proc {
+                cmd := exeFile.toString
+                args := #["single", "--build", buildDir.toString, mod.name.toString, srcUri]
+                env := ← getAugmentedEnv
+              }
+            return DepSet.mk #[docFile] docDeps
 
 def coreTarget (component : Lean.Name) : FetchM (Job <| Array FilePath) := do
   let exeJob ← «doc-gen4».fetch
