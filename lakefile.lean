@@ -182,7 +182,6 @@ module_facet docs (mod) : DepSet FilePath := do
   -- Build all documentation imported modules
   let imports ← (← mod.imports.fetch).await
   let depDocJobs := Job.collectArray <| ← imports.mapM fun mod => fetch <| mod.facet `docs
-  let srcUri ← getSrcUri mod
   let buildDir := (← getRootPackage).buildDir
   let docFile := mod.filePath (buildDir / "doc") "html"
   depDocJobs.bindM fun docDeps => do
@@ -190,6 +189,7 @@ module_facet docs (mod) : DepSet FilePath := do
       exeJob.bindM fun exeFile => do
         modJob.mapM fun _ => do
           buildFileUnlessUpToDate' docFile do
+            let srcUri ← getSrcUri mod
             proc {
               cmd := exeFile.toString
               args := #["single", "--build", buildDir.toString, mod.name.toString, srcUri]
