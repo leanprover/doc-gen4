@@ -124,13 +124,13 @@ package_facet srcUri (pkg) : String := do
 /-- The URI of the source code of the library, respecting `DOCGEN_SRC`. -/
 library_facet srcUri (lib) : String := do
   let pkgUri ← fetch <| lib.pkg.facet `srcUri
-  pkgUri.mapM fun pkgUri => do
+  pkgUri.mapM (sync := true) fun pkgUri => do
     return "/".intercalate (pkgUri :: filteredPath lib.config.srcDir)
 
 /-- The URI of the source code of the module, respecting `DOCGEN_SRC`. -/
 module_facet srcUri (mod) : String := do
   let libUri ← fetch <| mod.lib.facet `srcUri
-  libUri.mapM fun libUri => do
+  libUri.mapM (sync := true) fun libUri => do
     return mod.name.components.foldl (init := libUri) (·.push '/' ++ ·.toString (escape := False)) ++ ".lean"
 
 target bibPrepass : FilePath := do
