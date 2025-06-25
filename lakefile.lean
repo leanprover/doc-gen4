@@ -24,6 +24,29 @@ require Cli from git
   "https://github.com/mhuisi/lean4-cli" @ "main"
 
 /--
+Obtain the subdirectory of the Lean package relative to the root of the enclosing git repository.
+
+Returns:
+- An empty string if the Lean package is at the git root.
+- Otherwise, a relative path, e.g. "myleanpackage".
+-/
+def getGitSubDirectory (directory : System.FilePath := "." ) : IO String := do
+  let out ← IO.Process.output {
+    cmd := "git",
+    args := #["rev-parse", "--show-prefix"],
+    cwd := directory
+  }
+  if out.exitCode != 0 then
+    let explanation := "Failed to execute git rev-parse --show-prefix"
+    let err := s!"git exited with code {out.exitCode} while looking for the git subdirectory in {directory}"
+    throw <| IO.userError <| explanation ++ "\n" ++ err
+  let subdir := out.stdout.trimRight
+  -- e.g. if the Lean package is under a directory "myleanpackage",
+  -- `git rev-parse --show-prefix` would return "myleanpackage/".
+  -- We drop the trailing path separator.
+  return if subdir = "" then "" else subdir.dropRight 1
+
+/--
 Obtain the Github URL of a project by parsing the origin remote.
 -/
 def getGitRemoteUrl (directory : System.FilePath := "." ) (remote : String := "origin") : IO String := do
@@ -97,7 +120,9 @@ def getGithubUrl (mod : Module) : IO String := do
   let commit ← getProjectCommit mod.pkg.dir
   let srcDir := filteredPath mod.pkg.config.srcDir
   let pkgUri := "/".intercalate <| baseUrl :: "blob" :: commit :: srcDir
-  return appendLibModPath pkgUri '/' mod
+  let subdir ← getGitSubDirectory mod.pkg.dir
+  let uri := if subdir = "" then pkgUri else pkgUri ++ "/" ++ subdir
+  return appendLibModPath uri '/' mod
 
 /--
 Return a File uri for the module.
