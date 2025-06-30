@@ -52,7 +52,7 @@ def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
   -- and then format them individually.
   let (sigStx, infos) ← withTheReader Core.Context ({ · with currNamespace := n.getPrefix }) <|
     PrettyPrinter.delabCore t (delab := PrettyPrinter.Delaborator.delabForallParamsWithSignature fun binders type =>
-      -- Use `declSig` as a data structure so that the result can be put through the sanitizer in one piece.
+      -- Use `declSig` as a data structure so that the binders and type can be put through the sanitizer all together.
       `(declSig| $binders* : $type))
   let sigStx := (sanitizeSyntax sigStx).run' { options := (← getOptions) }
   let sigStx ← PrettyPrinter.parenthesize Parser.Command.declSig.parenthesizer sigStx
