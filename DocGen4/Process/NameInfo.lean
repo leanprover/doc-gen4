@@ -30,7 +30,7 @@ private def prettyPrintBinder (stx : Syntax) (infos : SubExpr.PosMap Elab.Info) 
     fileMap := default,
     ngen := ← getNGen
   }
-  return Widget.tagCodeInfos ctx infos tt
+  Widget.tagCodeInfos ctx infos tt
 
 private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) : MetaM Widget.CodeWithInfos := do
   let fmt ← PrettyPrinter.formatTerm stx
@@ -44,7 +44,7 @@ private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) :
     fileMap := default,
     ngen := ← getNGen
   }
-  return Widget.tagCodeInfos ctx infos tt
+  Widget.tagCodeInfos ctx infos tt
 
 def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
   -- Use the main signature delaborator. We need to run sanitization, parenthesization, and formatting ourselves

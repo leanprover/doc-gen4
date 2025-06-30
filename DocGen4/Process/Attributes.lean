@@ -97,8 +97,7 @@ instance : ToString ExternEntry where
     | .standard `all fn => fn
     | .standard backend fn => s!"{backend} {fn}"
     | .inline backend pattern => s!"{backend} inline {String.quote pattern}"
-    -- TODO: The docs in the module dont specific how to render this
-    | .foreign backend fn  => s!"{backend} foreign {fn}"
+    | .opaque .. => ""
 
 instance : ToString ExternAttrData where
   toString data := (data.arity?.map toString |>.getD "") ++ " " ++ String.intercalate " " (data.entries.map toString)
