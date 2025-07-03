@@ -111,15 +111,16 @@ section Uri.UriEscape
 
 /-- The github URI of the source code of the package. -/
 package_facet srcUri.github (pkg) : String := do
-  let url ← getGitRemoteUrl pkg.dir "origin"
-  let .some baseUrl := getGithubBaseUrl url
-      | error <|
-        s!"Could not interpret Git remote uri {url} as a Github source repo.\n"
-          ++ "See README on source URIs for more details."
-  let commit ← getProjectCommit pkg.dir
-  logInfo s!"Found git remote for {pkg.name} at {baseUrl} @ {commit}"
-  let subdir ← getGitSubDirectory pkg.dir
-  return .pure <| "/".intercalate <| baseUrl :: "blob" :: commit :: filteredPath (subdir / pkg.config.srcDir)
+  Job.async do
+    let url ← getGitRemoteUrl pkg.dir "origin"
+    let .some baseUrl := getGithubBaseUrl url
+        | error <|
+          s!"Could not interpret Git remote uri {url} as a Github source repo.\n"
+            ++ "See README on source URIs for more details."
+    let commit ← getProjectCommit pkg.dir
+    logInfo s!"Found git remote for {pkg.name} at {baseUrl} @ {commit}"
+    let subdir ← getGitSubDirectory pkg.dir
+    return "/".intercalate <| baseUrl :: "blob" :: commit :: filteredPath (subdir / pkg.config.srcDir)
 
 /-- The `vscode://` URI of the source code of the package. -/
 package_facet srcUri.vscode (pkg) : String := do
