@@ -24,6 +24,25 @@ require Cli from git
   "https://github.com/mhuisi/lean4-cli" @ "main"
 
 /--
+Obtain the subdirectory of the Lean package relative to the root of the enclosing git repository.
+-/
+def getGitSubDirectory (directory : System.FilePath := "." ) : IO System.FilePath := do
+  let out ← IO.Process.output {
+    cmd := "git",
+    args := #["rev-parse", "--show-prefix"],
+    cwd := directory
+  }
+  if out.exitCode != 0 then
+    let explanation := "Failed to execute git rev-parse --show-prefix"
+    let err := s!"git exited with code {out.exitCode} while looking for the git subdirectory in {directory}"
+    throw <| IO.userError <| explanation ++ "\n" ++ err
+  let subdir := out.stdout.trimRight
+  -- e.g. if the Lean package is under a directory "myleanpackage",
+  -- `git rev-parse --show-prefix` would return "myleanpackage/".
+  -- We drop the trailing path separator.
+  return if subdir = "" then "." else subdir.dropRight 1
+
+/--
 Obtain the Github URL of a project by parsing the origin remote.
 -/
 def getGitRemoteUrl (directory : System.FilePath := "." ) (remote : String := "origin") : IO String := do
@@ -78,11 +97,6 @@ inductive UriSource
   | vscode
   | file
 
-instance : ComputeHash UriSource Id := ⟨fun
-  | .github => .mk 0
-  | .vscode => .mk 1
-  | .file => .mk 2⟩
-
 def UriSource.parse : LogIO UriSource := do
   match ← IO.getEnv "DOCGEN_SRC" with
   | .none | .some "github" | .some "" => pure .github
@@ -90,48 +104,74 @@ def UriSource.parse : LogIO UriSource := do
   | "file" => pure .file
   | _ => error "$DOCGEN_SRC should be github, file, or vscode."
 
--- try to make lake rebuild if the env var chaanges
-target env.DOCGEN_SRC : UriSource := do
-  let src ← UriSource.parse
-  addTrace (pureHash src)
-  return .pure src
-
 section Uri.UriEscape
 
 /-! Note that all URIs use `/` even when the system path separator is `\`. -/
 
+
+/-- The github URI of the source code of the package. -/
+package_facet srcUri.github (pkg) : String := do
+  let url ← getGitRemoteUrl pkg.dir "origin"
+  let .some baseUrl := getGithubBaseUrl url
+      | error <|
+        s!"Could not interpret Git remote uri {url} as a Github source repo.\n"
+          ++ "See README on source URIs for more details."
+  let commit ← getProjectCommit pkg.dir
+  logInfo s!"Found git remote for {pkg.name} at {baseUrl} @ {commit}"
+  let subdir ← getGitSubDirectory pkg.dir
+  return .pure <| "/".intercalate <| baseUrl :: "blob" :: commit :: filteredPath (subdir / pkg.config.srcDir)
+
+/-- The `vscode://` URI of the source code of the package. -/
+package_facet srcUri.vscode (pkg) : String := do
+  Job.async do
+    let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
+    return s!"vscode://file/{dir}"
+
+/-- The `file://` URI of the source code of the package. -/
+package_facet srcUri.file (pkg) : String := do
+  Job.async do
+    let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
+    return s!"file://{dir}"
+
+
 /-- The URI of the source code of the package, respecting `DOCGEN_SRC`. -/
 package_facet srcUri (pkg) : String := do
-  let src ← env.DOCGEN_SRC.fetch
-  src.mapM fun src => do
-    match src with
-    | .github =>
-      let url ← getGitRemoteUrl pkg.dir "origin"
-      let .some baseUrl := getGithubBaseUrl url
-          | error <|
-            s!"Could not interpret Git remote uri {url} as a Github source repo.\n"
-              ++ "See README on source URIs for more details."
-      let commit ← getProjectCommit pkg.dir
-      logInfo s!"Found git remote for {pkg.name} at {baseUrl} @ {commit}"
-      return "/".intercalate <| baseUrl :: "blob" :: commit :: filteredPath pkg.config.srcDir
-    | .vscode =>
-      let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
-      return s!"vscode://file/{dir}"
-    | .file =>
-      let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
-      return s!"file://{dir}"
+  match ← UriSource.parse with
+  | .github => fetch <| pkg.facet `srcUri.github
+  | .vscode => fetch <| pkg.facet `srcUri.vscode
+  | .file => fetch <| pkg.facet `srcUri.file
 
-/-- The URI of the source code of the library, respecting `DOCGEN_SRC`. -/
-library_facet srcUri (lib) : String := do
-  let pkgUri ← fetch <| lib.pkg.facet `srcUri
+
+private def makeLibSrcUriFacet (lib : LeanLib) (which : Lean.Name) [FamilyDef FacetOut (`package ++ which) String] :
+    FetchM (Job String) := do
+  let pkgUri ← fetch <| lib.pkg.facet which
   pkgUri.mapM (sync := true) fun pkgUri => do
     return "/".intercalate (pkgUri :: filteredPath lib.config.srcDir)
 
-/-- The URI of the source code of the module, respecting `DOCGEN_SRC`. -/
-module_facet srcUri (mod) : String := do
-  let libUri ← fetch <| mod.lib.facet `srcUri
+/-- The github URI of the source code of the library. -/
+library_facet srcUri.github (lib) : String := makeLibSrcUriFacet lib `srcUri.github
+/-- The `vscode://` URI of the source code of the library. -/
+library_facet srcUri.vscode (lib) : String := makeLibSrcUriFacet lib `srcUri.vscode
+/-- The `file://` URI of the source code of the library. -/
+library_facet srcUri.file (lib) : String := makeLibSrcUriFacet lib `srcUri.file
+/-- The URI of the source code of the library, respecting `DOCGEN_SRC`. -/
+library_facet srcUri (lib) : String := makeLibSrcUriFacet lib `srcUri
+
+private def makeModuleSrcUriFacet (mod : Module) (which : Lean.Name)
+    [FamilyDef FacetOut (LeanLib.facetKind ++ which) String] :
+    FetchM (Job String) := do
+  let libUri ← fetch <| mod.lib.facet which
   libUri.mapM (sync := true) fun libUri => do
     return mod.name.components.foldl (init := libUri) (·.push '/' ++ ·.toString (escape := False)) ++ ".lean"
+
+/-- The github URI of the source code of the module. -/
+module_facet srcUri.github (mod) : String := makeModuleSrcUriFacet mod `srcUri.github
+/-- The `vscode://` URI of the source code of the module. -/
+module_facet srcUri.vscode (mod) : String := makeModuleSrcUriFacet mod `srcUri.vscode
+/-- The `file://` URI of the source code of the module. -/
+module_facet srcUri.file (mod) : String := makeModuleSrcUriFacet mod `srcUri.file
+/-- The URI of the source code of the module, respecting `DOCGEN_SRC`. -/
+module_facet srcUri (mod) : String := makeModuleSrcUriFacet mod `srcUri
 
 target bibPrepass : FilePath := do
   let exeJob ← «doc-gen4».fetch
@@ -194,22 +234,20 @@ module_facet docs (mod) : DepSet FilePath := do
   let depDocJobs := Job.collectArray <| ← imports.mapM fun mod => fetch <| mod.facet `docs
   let buildDir := (← getRootPackage).buildDir
   let docFile := mod.filePath (buildDir / "doc") "html"
-  let envVar ← env.DOCGEN_SRC.fetch
   depDocJobs.bindM fun docDeps => do
     bibPrepassJob.bindM fun _ => do
       exeJob.bindM fun exeFile => do
-        envVar.bindM fun _ => do
-          modJob.mapM fun _ => do
-            buildFileUnlessUpToDate' docFile do
-              -- hack: do this here to avoid having to save the git output anywhere else
-              let uriJob ← fetch <| mod.facet `srcUri
-              let srcUri ← uriJob.await
-              proc {
-                cmd := exeFile.toString
-                args := #["single", "--build", buildDir.toString, mod.name.toString, srcUri]
-                env := ← getAugmentedEnv
-              }
-            return DepSet.mk #[docFile] docDeps
+        modJob.mapM fun _ => do
+          buildFileUnlessUpToDate' docFile do
+            -- hack: do this here to avoid having to save the git output anywhere else
+            let uriJob ← fetch <| mod.facet `srcUri
+            let srcUri ← uriJob.await
+            proc {
+              cmd := exeFile.toString
+              args := #["single", "--build", buildDir.toString, mod.name.toString, srcUri]
+              env := ← getAugmentedEnv
+            }
+          return DepSet.mk #[docFile] docDeps
 
 def coreTarget (component : Lean.Name) : FetchM (Job <| Array FilePath) := do
   let exeJob ← «doc-gen4».fetch
