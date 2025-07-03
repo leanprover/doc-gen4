@@ -97,43 +97,37 @@ inductive UriSource
   | vscode
   | file
 
-def UriSource.parse : LogIO UriSource := do
+def UriSource.parse : IO UriSource := do
   match ← IO.getEnv "DOCGEN_SRC" with
   | .none | .some "github" | .some "" => pure .github
   | "vscode" => pure .vscode
   | "file" => pure .file
   | _ => error "$DOCGEN_SRC should be github, file, or vscode."
 
-section Uri.UriEscape
-
 /-! Note that all URIs use `/` even when the system path separator is `\`. -/
 
 
 /-- The github URI of the source code of the package. -/
-package_facet srcUri.github (pkg) : String := do
-  Job.async do
-    let url ← getGitRemoteUrl pkg.dir "origin"
-    let .some baseUrl := getGithubBaseUrl url
-        | error <|
-          s!"Could not interpret Git remote uri {url} as a Github source repo.\n"
-            ++ "See README on source URIs for more details."
-    let commit ← getProjectCommit pkg.dir
-    logInfo s!"Found git remote for {pkg.name} at {baseUrl} @ {commit}"
-    let subdir ← getGitSubDirectory pkg.dir
-    return "/".intercalate <| baseUrl :: "blob" :: commit :: filteredPath (subdir / pkg.config.srcDir)
+package_facet srcUri.github (pkg) : String := Job.async do
+  let url ← getGitRemoteUrl pkg.dir "origin"
+  let .some baseUrl := getGithubBaseUrl url
+      | error <|
+        s!"Could not interpret Git remote uri {url} as a Github source repo.\n"
+          ++ "See README on source URIs for more details."
+  let commit ← getProjectCommit pkg.dir
+  logInfo s!"Found git remote for {pkg.name} at {baseUrl} @ {commit}"
+  let subdir ← getGitSubDirectory pkg.dir
+  return "/".intercalate <| baseUrl :: "blob" :: commit :: filteredPath (subdir / pkg.config.srcDir)
 
 /-- The `vscode://` URI of the source code of the package. -/
-package_facet srcUri.vscode (pkg) : String := do
-  Job.async do
-    let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
-    return s!"vscode://file/{dir}"
+package_facet srcUri.vscode (pkg) : String := .pure <$> do
+  let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
+  return s!"vscode://file/{dir}"
 
 /-- The `file://` URI of the source code of the package. -/
-package_facet srcUri.file (pkg) : String := do
-  Job.async do
-    let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
-    return s!"file://{dir}"
-
+package_facet srcUri.file (pkg) : String := .pure <$> do
+  let dir ← IO.FS.realPath (pkg.dir / pkg.config.srcDir)
+  return s!"file://{dir}"
 
 /-- The URI of the source code of the package, respecting `DOCGEN_SRC`. -/
 package_facet srcUri (pkg) : String := do
