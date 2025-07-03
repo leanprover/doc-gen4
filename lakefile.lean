@@ -142,7 +142,8 @@ package_facet srcUri (pkg) : String := do
   | .file => fetch <| pkg.facet `srcUri.file
 
 
-private def makeLibSrcUriFacet (lib : LeanLib) (which : Lean.Name) [FamilyDef FacetOut (`package ++ which) String] :
+private def makeLibSrcUriFacet (lib : LeanLib) (which : Lean.Name)
+    [FamilyDef FacetOut (Package.facetKind ++ which) String] :
     FetchM (Job String) := do
   let pkgUri ← fetch <| lib.pkg.facet which
   pkgUri.mapM (sync := true) fun pkgUri => do
