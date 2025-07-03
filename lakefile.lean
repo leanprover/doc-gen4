@@ -104,7 +104,7 @@ def UriSource.parse : IO UriSource := do
   | "file" => pure .file
   | _ => error "$DOCGEN_SRC should be github, file, or vscode."
 
-/-! Note that all URIs use `/` even when the system path separator is `\`. -/
+/-! Note that all URIs can use `/` even when the system path separator is `\`. -/
 
 
 /-- The github URI of the source code of the package. -/
