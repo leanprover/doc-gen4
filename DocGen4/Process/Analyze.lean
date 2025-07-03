@@ -114,14 +114,14 @@ of this `MetaM` run and mentioned by the `AnalyzeTask`.
 -/
 def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
   let env ← getEnv
+  let allModules := env.header.moduleNames
   let relevantModules :=
     match task with
     | .analyzePrefixModules topLevel =>
-      let modules := env.header.moduleNames.filter (topLevel.isPrefixOf ·)
+      let modules := allModules.filter (topLevel.isPrefixOf ·)
       Std.HashSet.insertMany (Std.HashSet.emptyWithCapacity modules.size) modules
     | .analyzeConcreteModules modules =>
       Std.HashSet.insertMany (Std.HashSet.emptyWithCapacity modules.size) modules
-  let allModules := env.header.moduleNames
 
   let mut res ← getAllModuleDocs relevantModules.toArray
 
@@ -129,7 +129,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
 
   for (name, cinfo) in env.constants do
     let some modidx := env.getModuleIdxFor? name | unreachable!
-    let moduleName := env.allImportedModuleNames[modidx]!
+    let moduleName := allModules[modidx]!
     if !relevantModules.contains moduleName then
       continue
 
@@ -143,7 +143,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
         }
         let analysis ← Prod.fst <$> ((DocInfo.ofConstant (name, cinfo)).run options).toIO config { env := env } {} {}
         if let some dinfo := analysis then
-          let moduleName := env.allImportedModuleNames[modidx]!
+          let moduleName := allModules[modidx]!
           let module := res[moduleName]!
           return res.insert moduleName {module with members := module.members.push (ModuleMember.docInfo dinfo)}
         else

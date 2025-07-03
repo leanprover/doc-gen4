@@ -31,7 +31,8 @@ def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy)
     options := ⟨[
       (`pp.tagAppFns, true),
       (`pp.funBinderTypes, true),
-      (`debug.skipKernelTC, true)
+      (`debug.skipKernelTC, true),
+      (`Elab.async, false)
     ]⟩,
     -- TODO: Figure out whether this could cause some bugs
     fileName := default,
