@@ -30,7 +30,7 @@ namespace Output
 -/
 def splitAround (s : String) (p : Char → Bool) : List String := splitAroundAux s p 0 0 []
 
-instance : Inhabited Element := ⟨"", Lean.RBMap.empty, #[]⟩
+instance : Inhabited Element := ⟨"", Std.TreeMap.empty, #[]⟩
 
 /-- Parse an array of Xml/Html document from String. -/
 def manyDocument : Parser (Array Element) := many (prolog *> element <* many Misc) <* eof
@@ -143,7 +143,7 @@ def addHeadingAttributes (el : Element) (funName : String)
   match el with
   | Element.Element name attrs contents => do
     let id := xmlGetHeadingId el
-    let anchorAttributes := Lean.RBMap.empty
+    let anchorAttributes := Std.TreeMap.empty
       |>.insert "class" "hover-link"
       |>.insert "href" s!"#{id}"
     let anchor := Element.Element "a" anchorAttributes #[Content.Character "#"]
@@ -166,7 +166,7 @@ def findBibitem? (href : String) (thePrefix : String := "") : HtmlM (Option BibI
 def extendAnchor (el : Element) (funName : String) : HtmlM Element := do
   match el with
   | Element.Element name attrs contents =>
-    match attrs.find? "href" with
+    match attrs.get? "href" with
     | some href =>
       let bibitem ← findBibitem? href "references.html#ref_"
       let attrs := attrs.insert "href" (← extendLink href)
@@ -203,7 +203,7 @@ def autoLink (el : Element) : HtmlM Element := do
       let link? ← nameToLink? s
       match link? with
       | some link =>
-        let attributes := Lean.RBMap.empty.insert "href" link
+        let attributes := Std.TreeMap.empty.insert "href" link
         return [Content.Element <| Element.Element "a" attributes #[Content.Character s]]
       | none =>
         let sHead := s.dropRightWhile (· != '.')
@@ -211,7 +211,7 @@ def autoLink (el : Element) : HtmlM Element := do
         let link'? ← nameToLink? sTail
         match link'? with
         | some link' =>
-          let attributes := Lean.RBMap.empty.insert "href" link'
+          let attributes := Std.TreeMap.empty.insert "href" link'
           return [
             Content.Character sHead,
             Content.Element <| Element.Element "a" attributes #[Content.Character sTail]
@@ -235,7 +235,7 @@ partial def modifyElement (element : Element) (funName : String) : HtmlM Element
     -- auto link for inline <code></code>
     else if name = "code" ∧
       -- don't linkify code blocks explicitly tagged with a language other than lean
-      (((attrs.find? "class").getD "").splitOn.all (fun s => s == "language-lean" || !s.startsWith "language-")) then
+      (((attrs.get? "class").getD "").splitOn.all (fun s => s == "language-lean" || !s.startsWith "language-")) then
       autoLink el
     -- recursively modify
     else

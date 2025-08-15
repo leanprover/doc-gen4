@@ -100,7 +100,7 @@ instance : ToString ExternEntry where
     | .opaque .. => ""
 
 instance : ToString ExternAttrData where
-  toString data := (data.arity?.map toString |>.getD "") ++ " " ++ String.intercalate " " (data.entries.map toString)
+  toString data := String.intercalate " " (data.entries.map toString)
 
 instance : ToString Linter.DeprecationEntry where
   toString entry := Id.run do

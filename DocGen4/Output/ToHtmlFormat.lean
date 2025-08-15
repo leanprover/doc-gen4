@@ -47,7 +47,7 @@ def escape (s : String) : String :=
 -- once <https://github.com/leanprover/lean4/issues/4411> is fixed
 
 def _root_.Lean.Xml.Attributes.toStringEscaped (as : Xml.Attributes) : String :=
-  as.fold (fun s n v => s ++ s!" {n}=\"{Html.escape v}\"") ""
+  as.foldl (fun s n v => s ++ s!" {n}=\"{Html.escape v}\"") ""
 
 mutual
 
