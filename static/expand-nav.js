@@ -9,14 +9,16 @@ document.querySelector('.navframe').addEventListener('load', function() {
             var href = a.href.split('#')[0];
             // find the one with the current url
             if (href === currentPageURL) {
-                a.style.fontStyle = 'italic';
+                a.style.fontWeight = 'bold';
+                a.style.color = 'inherit';
                 // open all detail tags above the current
                 var el = a.parentNode.closest('details');
                 while (el) {
                     el.open = true;
                     el = el.parentNode.closest('details');
                 }
-                // seeing as we found the link we were looking for, stop
+                // center the link we were looking for and stop
+                a.scrollIntoView({ behavior: 'instant', block: 'center' });
                 break;
             }
         }
