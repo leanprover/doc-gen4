@@ -1,4 +1,4 @@
-document.querySelector('.navframe').addEventListener('load', function() {
+function expandNav() {
     // Get the current page URL without the suffix after #
     var currentPageURL = window.location.href.split('#')[0];
 
@@ -23,4 +23,11 @@ document.querySelector('.navframe').addEventListener('load', function() {
             }
         }
     }
-});
+}
+
+var navFrame = document.querySelector('.navframe');
+if (navFrame.contentDocument.readyState === "complete") {
+    expandNav();
+} else {
+    navFrame.addEventListener('load', expandNav);
+}
