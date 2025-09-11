@@ -217,7 +217,7 @@ def mk (direct : Array α) (trans : Array (DepSet α)) : DepSet α := Id.run do
 def toArray (d : DepSet α) : Array α := d.1 ++ d.2.toArray
 
 instance [Lean.ToJson α] : Lean.ToJson (OrdHashSet α) where toJson x := Lean.toJson x.toArray
-instance [ToText α] : Lake.ToText (DepSet α) where toText d := Lake.ToText.toText d.toArray
+instance [QueryText α] : Lake.QueryText (DepSet α) where queryText d := Lake.QueryText.queryText d.toArray
 
 end DepSet
 
