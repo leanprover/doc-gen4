@@ -110,7 +110,7 @@ def jsxText : Parser :=
     fn := fun c s =>
       let startPos := s.pos
       let s := takeWhile1Fn (not ∘ "[{<>}]$".contains) "expected JSX text" c s
-      mkNodeToken `jsxText startPos c s }
+      mkNodeToken `jsxText startPos true c s }
 
 @[combinator_formatter DocGen4.Jsx.jsxText] def jsxText.formatter : Formatter := pure ()
 @[combinator_parenthesizer DocGen4.Jsx.jsxText] def jsxText.parenthesizer : Parenthesizer := pure ()
