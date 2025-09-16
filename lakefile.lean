@@ -21,7 +21,7 @@ require «UnicodeBasic» from git
   "https://github.com/fgdorais/lean4-unicode-basic" @ "main"
 
 require Cli from git
-  "https://github.com/mhuisi/lean4-cli" @ "main"
+  "https://github.com/leanprover/lean4-cli" @ "main"
 
 /--
 Obtain the subdirectory of the Lean package relative to the root of the enclosing git repository.
