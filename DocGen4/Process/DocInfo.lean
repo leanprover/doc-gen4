@@ -81,6 +81,18 @@ def getArgs : DocInfo → Array Arg
 | classInductiveInfo i => i.args
 | ctorInfo i => i.args
 
+def getSorried : DocInfo → Bool
+| axiomInfo i => i.sorried
+| theoremInfo i => i.sorried
+| opaqueInfo i => i.sorried
+| definitionInfo i => i.sorried
+| instanceInfo i => i.sorried
+| inductiveInfo i => i.sorried
+| structureInfo i => i.sorried
+| classInfo i => i.sorried
+| classInductiveInfo i => i.sorried
+| ctorInfo i => i.sorried
+
 def getAttrs : DocInfo → Array String
 | axiomInfo i => i.attrs
 | theoremInfo i => i.attrs
