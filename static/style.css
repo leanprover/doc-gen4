@@ -679,16 +679,8 @@ main h2, main h3, main h4, main h5, main h6 {
     margin-left: 4ex; /* extra indentation */
 }
 
-.decl.sorried {
-    background-color: #fff0f0;
-}
-
-.decl .sorry_msg {
-    background-color: #ffdada;
-    /* this pushes it flush with the colored margin */
-    margin-left: -8px;
-    margin-right: -8px;
-    padding: 8px;
+.decl.sorried .decl_name {
+    text-decoration: underline wavy #cca733;
 }
 
 .decl .sorry_msg > strong {

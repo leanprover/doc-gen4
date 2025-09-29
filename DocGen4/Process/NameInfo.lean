@@ -62,7 +62,6 @@ def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
     let fmt ← prettyPrintBinder binder infos
     return Arg.mk fmt (!binder.isOfKind ``Parser.Term.explicitBinder)
   let type ← prettyPrintTermStx type infos
-  let axioms ← collectAxioms n
   match ← findDeclarationRanges? n with
   -- TODO: Maybe selection range is more relevant? Figure this out in the future
   | some range =>
@@ -70,7 +69,6 @@ def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
       toNameInfo := { name := n, type, doc := ← findDocString? (← getEnv) n},
       args,
       declarationRange := range.range,
-      sorried := axioms.contains ``sorryAx,
       attrs := ← getAllAttributes n
     }
   | none => panic! s!"{n} is a declaration without position"
@@ -78,5 +76,4 @@ def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let e := Expr.const v.name (v.levelParams.map mkLevelParam)
   ofTypedName v.name (← inferType e)
-
 end DocGen4.Process

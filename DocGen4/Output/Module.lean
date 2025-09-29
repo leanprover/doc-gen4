@@ -43,10 +43,11 @@ and name.
 def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
   nodes := nodes.push <| Html.element "span" false #[("class", "decl_kind")] #[doc.getKindDescription]
-  nodes := nodes.push
-    <span class="decl_name">
-      {← declNameToHtmlBreakWithinLink doc.getName}
-    </span>
+  -- TODO: Can we inline if-then-else and avoid repeating <span> here?
+  if doc.getSorried then
+    nodes := nodes.push <span class="decl_name" title="declaration uses 'sorry'"> {← declNameToHtmlBreakWithinLink doc.getName} </span>
+  else
+    nodes := nodes.push <span class="decl_name"> {← declNameToHtmlBreakWithinLink doc.getName} </span>
   for arg in doc.getArgs do
     nodes := nodes.push (← argToHtml arg)
 

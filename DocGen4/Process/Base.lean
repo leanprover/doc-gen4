@@ -62,9 +62,9 @@ structure Info extends NameInfo where
   -/
   attrs : Array String
   /--
-  Whether this item depends on `sorryAx`.
+  Whether this declaration directly uses `sorryAx`.
   -/
-  sorried : Bool := true
+  sorried : Bool := false
   /--
   Whether this info item should be rendered
   -/
