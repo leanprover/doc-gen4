@@ -14,6 +14,7 @@ open Lean Meta
 
 def TheoremInfo.ofTheoremVal (v : TheoremVal) : MetaM TheoremInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
-  return { toInfo := info }
+  -- We mark direct uses of sorry:
+  return { toInfo := { info with sorried := v.value.hasSorry } }
 
 end DocGen4.Process

@@ -679,6 +679,14 @@ main h2, main h3, main h4, main h5, main h6 {
     margin-left: 4ex; /* extra indentation */
 }
 
+.decl.sorried .decl_name {
+    text-decoration: underline wavy #cca733;
+}
+
+.decl .sorry_msg > strong {
+    color: #a90000;
+}
+
 .imports li, code, .decl_header, .attributes, .structure_field_info,
         .constructor, .instances li, .instances-for-list li, .equation, .structure_ext_ctor {
     font-size: 92%;

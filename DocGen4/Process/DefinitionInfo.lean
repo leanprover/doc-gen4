@@ -42,6 +42,7 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : AnalyzeM DefinitionInfo
   let info ← Info.ofConstantVal v.toConstantVal
   let isUnsafe := v.safety == DefinitionSafety.unsafe
   let isNonComputable := isNoncomputable (← getEnv) v.name
+  let sorried := v.value.hasSorry
 
   let equations ←
     tryCatchRuntimeEx
@@ -51,7 +52,7 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : AnalyzeM DefinitionInfo
         return none)
 
   return {
-    toInfo := info,
+    toInfo := { info with sorried := sorried },
     isUnsafe,
     hints := v.hints,
     equations,

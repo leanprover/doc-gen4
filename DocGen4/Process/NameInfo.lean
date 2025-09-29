@@ -76,5 +76,4 @@ def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
 def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
   let e := Expr.const v.name (v.levelParams.map mkLevelParam)
   ofTypedName v.name (← inferType e)
-
 end DocGen4.Process

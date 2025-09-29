@@ -43,10 +43,11 @@ and name.
 def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
   nodes := nodes.push <| Html.element "span" false #[("class", "decl_kind")] #[doc.getKindDescription]
-  nodes := nodes.push
-    <span class="decl_name">
-      {← declNameToHtmlBreakWithinLink doc.getName}
-    </span>
+  -- TODO: Can we inline if-then-else and avoid repeating <span> here?
+  if doc.getSorried then
+    nodes := nodes.push <span class="decl_name" title="declaration uses 'sorry'"> {← declNameToHtmlBreakWithinLink doc.getName} </span>
+  else
+    nodes := nodes.push <span class="decl_name"> {← declNameToHtmlBreakWithinLink doc.getName} </span>
   for arg in doc.getArgs do
     nodes := nodes.push (← argToHtml arg)
 
@@ -90,8 +91,9 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
       #[Html.element "div" false #[("class", "attributes")] #[attrStr]]
     else
       #[]
+  let cssClass := "decl" ++ if doc.getSorried then " sorried" else ""
   pure
-    <div class="decl" id={doc.getName.toString}>
+    <div class={cssClass} id={doc.getName.toString}>
       <div class={doc.getKind}>
         <div class="gh_link">
           <a href={← getSourceUrl module doc.getDeclarationRange}>source</a>
