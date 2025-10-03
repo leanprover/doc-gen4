@@ -15,7 +15,7 @@ require MD4Lean from git
   "https://github.com/acmepjz/md4lean" @ "main"
 
 require BibtexQuery from git
-  "https://github.com/dupuisf/BibtexQuery" @ "master"
+  "https://github.com/TwoFx/BibtexQuery" @ "nightly-testing"
 
 require «UnicodeBasic» from git
   "https://github.com/fgdorais/lean4-unicode-basic" @ "main"
