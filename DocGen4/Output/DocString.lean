@@ -12,7 +12,7 @@ namespace DocGen4
 namespace Output
 
 /-- Auxiliary function for `splitAround`. -/
-@[specialize] partial def splitAroundAux (s : String) (p : Char → Bool) (b i : String.Pos) (r : List String) : List String :=
+@[specialize] partial def splitAroundAux (s : String) (p : Char → Bool) (b i : String.Pos.Raw) (r : List String) : List String :=
   if s.atEnd i then
     let r := (s.extract b i)::r
     r.reverse
@@ -242,7 +242,7 @@ partial def modifyElement (element : Element) (funName : String) : HtmlM Element
       return ⟨ name, attrs, ← modifyContents contents funName modifyElement ⟩
 
 /-- Find all references in a markdown text. -/
-partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String) (i : String.Pos := 0)
+partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String) (i : String.Pos.Raw := 0)
     (ret : Std.HashSet String := ∅) : Std.HashSet String :=
   let lps := s.posOfAux '[' s.endPos i
   if lps < s.endPos then
