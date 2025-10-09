@@ -249,7 +249,8 @@ partial def findAllNotes (s : String) (i : String.Pos := 0)
     let lpe := s.posOfAux ']' s.endPos lps
     if lpe < s.endPos then
       let expected := "note "
-      if (Substring.toString ⟨s, 0, lps⟩).toLower.endsWith expected then
+      dbg_trace s!"last bit of the string: {(Substring.toString ⟨s, lps - expected.endPos, lps⟩)}";
+      if (Substring.toString ⟨s, i, lps⟩).toLower.endsWith expected then
         let citekey := Substring.toString ⟨s, ⟨lps.1 + 1⟩, lpe⟩
         findAllNotes s lpe (ret.insert citekey)
       else
