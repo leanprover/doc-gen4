@@ -279,7 +279,7 @@ partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String
 def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html) := do
   let notesMarkdown := "\n\n" ++ (String.join <|
     (findAllNotes docString).toList.map fun s =>
-      s!"[{s}]: ##Mathlib.LibraryNote.{s}\n")
+      s!"[{s}]: ##Mathlib.LibraryNote.«{s}»\n")
   let refsMarkdown := "\n\n" ++ (String.join <|
     (findAllReferences (← read).refsMap docString).toList.map fun s =>
       s!"[{s}]: references.html#ref_{s}\n")
