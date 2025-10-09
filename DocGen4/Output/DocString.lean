@@ -249,8 +249,7 @@ partial def findAllNotes (s : String) (i : String.Pos := 0)
     let lpe := s.posOfAux ']' s.endPos lps
     if lpe < s.endPos then
       let expected := "note "
-      dbg_trace s!"last bit of the string: {(Substring.toString ⟨s, lps - expected.endPos, lps⟩)}";
-      if (Substring.toString ⟨s, i, lps⟩).toLower.endsWith expected then
+      if (Substring.toString ⟨s, lps - expected.endPos, lps⟩).toLower == expected then
         let citekey := Substring.toString ⟨s, ⟨lps.1 + 1⟩, lpe⟩
         findAllNotes s lpe (ret.insert citekey)
       else
@@ -279,7 +278,7 @@ partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String
 /-- Convert docstring to Html. -/
 def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html) := do
   let notesMarkdown := "\n\n" ++ (String.join <|
-    (findAllReferences (← read).refsMap docString).toList.map fun s =>
+    (findAllNotes docString).toList.map fun s =>
       s!"[{s}]: ##Mathlib.LibraryNote.{s}\n")
   let refsMarkdown := "\n\n" ++ (String.join <|
     (findAllReferences (← read).refsMap docString).toList.map fun s =>
