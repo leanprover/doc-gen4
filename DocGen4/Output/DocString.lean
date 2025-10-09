@@ -241,6 +241,24 @@ partial def modifyElement (element : Element) (funName : String) : HtmlM Element
     else
       return ⟨ name, attrs, ← modifyContents contents funName modifyElement ⟩
 
+/-- Find all library note references in a markdown text. -/
+partial def findAllNotes (s : String) (i : String.Pos := 0)
+    (ret : Std.HashSet String := ∅) : Std.HashSet String :=
+  let lps := s.posOfAux '[' s.endPos i
+  if lps < s.endPos then
+    let lpe := s.posOfAux ']' s.endPos lps
+    if lpe < s.endPos then
+      let expected := "note "
+      if (Substring.toString ⟨s, lps - expected.endPos, lps⟩).toLower == expected then
+        let citekey := Substring.toString ⟨s, ⟨lps.1 + 1⟩, lpe⟩
+        findAllNotes s lpe (ret.insert citekey)
+      else
+        findAllNotes s lpe ret
+    else
+      ret
+  else
+    ret
+
 /-- Find all references in a markdown text. -/
 partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String) (i : String.Pos := 0)
     (ret : Std.HashSet String := ∅) : Std.HashSet String :=
@@ -259,10 +277,13 @@ partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String
 
 /-- Convert docstring to Html. -/
 def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html) := do
+  let notesMarkdown := "\n\n" ++ (String.join <|
+    (findAllReferences (← read).refsMap docString).toList.map fun s =>
+      s!"[{s}]: ##Mathlib.LibraryNote.{s}\n")
   let refsMarkdown := "\n\n" ++ (String.join <|
     (findAllReferences (← read).refsMap docString).toList.map fun s =>
       s!"[{s}]: references.html#ref_{s}\n")
-  match MD4Lean.renderHtml (docString ++ refsMarkdown) with
+  match MD4Lean.renderHtml (docString ++ notesMarkdown ++ refsMarkdown) with
   | .some rendered =>
     match manyDocument rendered.mkIterator with
     | .success _ res =>
