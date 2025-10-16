@@ -13,7 +13,7 @@ def foundationalTypes : BaseHtmlM Html := templateLiftExtends (baseHtml "Foundat
 
       <p>Some of Lean's types are not defined in any Lean source files (even the <code>prelude</code>) since they come from its foundational type theory. This page provides basic documentation for these types.</p>
       <p>For a more in-depth explanation of Lean's type theory, refer to
-      <a href="https://leanprover.github.io/theorem_proving_in_lean4/dependent_type_theory.html">TPiL</a>.</p>
+      <a href="https://leanprover.github.io/theorem_proving_in_lean4/Dependent-Type-Theory/">TPiL</a>.</p>
 
 
       <h2 id="codesort-ucode"><code>Sort u</code></h2>
