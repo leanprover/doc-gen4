@@ -264,7 +264,7 @@ def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html)
       s!"[{s}]: references.html#ref_{s}\n")
   match MD4Lean.renderHtml (docString ++ refsMarkdown) with
   | .some rendered =>
-    match manyDocument rendered.mkIterator with
+    match manyDocument ⟨rendered, rendered.startValidPos⟩ with
     | .success _ res =>
       let newRes ← modifyElements res funName modifyElement
       -- TODO: use `toString` instead of `eToStringEscaped`
