@@ -19,7 +19,7 @@ namespace DocGen4.Bibtex
 
 /-- Process the contents of bib file. -/
 def process' (contents : String) : Except String (Array BibItem) := do
-  match BibtexQuery.Parser.bibtexFile contents.iter with
+  match BibtexQuery.Parser.bibtexFile ⟨contents, contents.startValidPos⟩ with
   | .success _ arr =>
     let arr ← arr.toArray.filterMapM ProcessedEntry.ofEntry
     return arr |> sortEntry |> deduplicateTag |>.map fun x =>
@@ -31,7 +31,7 @@ def process' (contents : String) : Except String (Array BibItem) := do
         plaintext := html.map cToPlaintext |>.toList |> String.join
       }
   | .error it err =>
-    throw s!"failed to parse bib file at pos {it.2}: {err}"
+    throw s!"failed to parse bib file at pos {it.2.offset}: {err}"
 
 /-- Process the contents of bib file. -/
 def process (contents : String) : IO (Array BibItem) := do
