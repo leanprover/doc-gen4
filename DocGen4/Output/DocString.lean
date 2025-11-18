@@ -13,16 +13,16 @@ namespace Output
 
 /-- Auxiliary function for `splitAround`. -/
 @[specialize] partial def splitAroundAux (s : String) (p : Char → Bool) (b i : String.Pos.Raw) (r : List String) : List String :=
-  if s.atEnd i then
-    let r := (s.extract b i)::r
+  if String.Pos.Raw.atEnd s i then
+    let r := (String.Pos.Raw.extract s b i)::r
     r.reverse
   else
-    let c := s.get i
+    let c := String.Pos.Raw.get s i
     if p c then
-      let i := s.next i
-      splitAroundAux s p i i (c.toString::s.extract b (i.decreaseBy 1)::r)
+      let i := String.Pos.Raw.next s i
+      splitAroundAux s p i i (c.toString :: String.Pos.Raw.extract s b (i.decreaseBy 1) :: r)
     else
-      splitAroundAux s p b (s.next i) r
+      splitAroundAux s p b (String.Pos.Raw.next s i) r
 
 /--
   Similar to `String.split` in Lean core, but keeps the separater.
@@ -54,7 +54,7 @@ partial def xmlGetHeadingId (el : Xml.Element) : String :=
     | Content.Comment _ => ""
     | Content.Character s => s
     replaceCharSeq pattern replacement s :=
-      s.split pattern
+      s.splitToList pattern
       |>.filter (!·.isEmpty)
       |> replacement.intercalate
     unicodeToDrop (c : Char) : Bool :=
