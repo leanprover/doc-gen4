@@ -244,11 +244,11 @@ partial def modifyElement (element : Element) (funName : String) : HtmlM Element
 /-- Find all references in a markdown text. -/
 partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String) (i : String.Pos.Raw := 0)
     (ret : Std.HashSet String := ∅) : Std.HashSet String :=
-  let lps := s.posOfAux '[' s.endPos i
-  if lps < s.endPos then
-    let lpe := s.posOfAux ']' s.endPos lps
-    if lpe < s.endPos then
-      let citekey := Substring.toString ⟨s, ⟨lps.1 + 1⟩, lpe⟩
+  let lps := s.posOfAux '[' s.rawEndPos i
+  if lps < s.rawEndPos then
+    let lpe := s.posOfAux ']' s.rawEndPos lps
+    if lpe < s.rawEndPos then
+      let citekey := Substring.Raw.toString ⟨s, ⟨lps.1 + 1⟩, lpe⟩
       match refsMap[citekey]? with
       | .some _ => findAllReferences refsMap s lpe (ret.insert citekey)
       | .none => findAllReferences refsMap s lpe ret
