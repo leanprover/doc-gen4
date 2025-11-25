@@ -15,13 +15,10 @@ require MD4Lean from git
   "https://github.com/acmepjz/md4lean" @ "main"
 
 require BibtexQuery from git
-  "https://github.com/dupuisf/BibtexQuery" @ "nightly-testing"
-
-require «UnicodeBasic» from git
-  "https://github.com/fgdorais/lean4-unicode-basic" @ "nightly-testing"
+  "https://github.com/TwoFx/BibtexQuery" @ "3e7acf3fcb34d16611484fc2009c6598e1844832"
 
 require Cli from git
-  "https://github.com/leanprover/lean4-cli" @ "main"
+  "https://github.com/leanprover/lean4-cli" @ "nightly-testing"
 
 /--
 Obtain the subdirectory of the Lean package relative to the root of the enclosing git repository.
@@ -36,11 +33,11 @@ def getGitSubDirectory (directory : System.FilePath := "." ) : IO System.FilePat
     let explanation := "Failed to execute git rev-parse --show-prefix"
     let err := s!"git exited with code {out.exitCode} while looking for the git subdirectory in {directory}"
     throw <| IO.userError <| explanation ++ "\n" ++ err
-  let subdir := out.stdout.trimRight
+  let subdir := out.stdout.trimAsciiEnd
   -- e.g. if the Lean package is under a directory "myleanpackage",
   -- `git rev-parse --show-prefix` would return "myleanpackage/".
   -- We drop the trailing path separator.
-  return if subdir = "" then "." else subdir.dropRight 1
+  return if subdir == "".toSlice then "." else subdir.dropEnd 1 |>.copy
 
 /--
 Obtain the Github URL of a project by parsing the origin remote.
@@ -55,7 +52,7 @@ def getGitRemoteUrl (directory : System.FilePath := "." ) (remote : String := "o
     let explanation := "Failed to find a git remote in your project, consider reading: https://github.com/leanprover/doc-gen4#source-locations"
     let err := s!"git exited with code {out.exitCode} while looking for the git remote in {directory}"
     throw <| IO.userError <| explanation ++ "\n" ++ err
-  return out.stdout.trimRight
+  return out.stdout.trimAsciiEnd.copy
 
 /--
 Obtain the git commit hash of the project that is currently getting analyzed.
@@ -68,7 +65,7 @@ def getProjectCommit (directory : System.FilePath := "." ) : IO String := do
   }
   if out.exitCode != 0 then
     throw <| IO.userError <| s!"git exited with code {out.exitCode} while looking for the current commit in {directory}"
-  return out.stdout.trimRight
+  return out.stdout.trimAsciiEnd.copy
 
 def filteredPath (path : FilePath) : List String := path.components.filter (· != ".")
 
@@ -82,11 +79,11 @@ Three link types from git supported:
 def getGithubBaseUrl (url : String) : Option String :=
   if url.startsWith "git@github.com:" && url.endsWith ".git" then
     let url := url.drop "git@github.com:".length
-    let url := url.dropRight ".git".length
+    let url := url.dropEnd ".git".length
     .some s!"https://github.com/{url}"
   else if url.startsWith "https://github.com/" then
     if url.endsWith ".git" then
-      .some <| url.dropRight ".git".length
+      .some <| url.dropEnd ".git".length |>.copy
     else
       .some url
   else
