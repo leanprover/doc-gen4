@@ -251,12 +251,12 @@ corresponds to which identifier it will thus say that `" + "` corresponds to
 only `+` should be linked, taking care of this is what this function is
 responsible for.
 -/
-def splitWhitespaces (s : String) : (String × String × String) := Id.run do
-  let mut length := s.length
-  let mut s := s.trimLeft
-  let front := "".pushn ' ' (length - s.length)
-  length := s.length
-  s := s.trimRight
+def splitWhitespaces (s : String) : String × String × String :=
+  let length := s.length
+  let s := s.trimAsciiStart
+  let front := "".pushn ' ' (length - s.positions.count)
+  let length := s.positions.count
+  let s := s.trimAsciiEnd.copy
   let back := "".pushn ' ' (length - s.length)
   (front, s, back)
 

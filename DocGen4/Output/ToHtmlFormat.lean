@@ -87,7 +87,7 @@ partial def toStringAux : Html → String
 | raw s => s
 
 def toString (html : Html) : String :=
-  html.toStringAux.trimRight
+  html.toStringAux.trimAsciiEnd.copy
 
 partial def textLength : Html → Nat
 | raw s => s.length  -- measures lengths of escape sequences too!
