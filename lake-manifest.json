@@ -15,7 +15,7 @@
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "14607afb6759e27a1e9f31cbcdb30b5eb7dfd977",
+   "rev": "b6838ebf6518939d7306df4020892c39df1f3d27",
    "name": "UnicodeBasic",
    "manifestFile": "lake-manifest.json",
    "inputRev": "nightly-testing",
