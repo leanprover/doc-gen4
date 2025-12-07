@@ -4,6 +4,25 @@ import Cli
 
 open DocGen4 Lean Cli
 
+def defaultMaxHeartbeats : Nat := 100_000_000
+
+/-- Parse a natural number, allowing underscores as separators (e.g., "100_000_000").
+
+ See discussion: https://leanprover.zulipchat.com/#narrow/channel/270676-lean4/topic/String.2EtoNat.3F.20and.20String.2EtoInt.3F.20handling.20underscores/with/562357458
+ See this related issue: https://github.com/leanprover/lean4/issues/11538
+ -/
+def parseNatWithUnderscores (s : String) : Option Nat :=
+  (s.replace "_" "").toNat?
+
+/-- Get maxHeartbeats from CLI flag, falling back to environment variable, then default. -/
+def getMaxHeartbeats (p : Parsed) : IO Nat := do
+  match p.flag? "max-heartbeats" with
+  | some flag => pure <| (parseNatWithUnderscores (flag.as! String)).getD defaultMaxHeartbeats
+  | none => do
+    match ← IO.getEnv "DOCGEN_MAX_HEARTBEATS" with
+    | some s => pure <| (parseNatWithUnderscores s).getD defaultMaxHeartbeats
+    | none => pure defaultMaxHeartbeats
+
 def getTopLevelModules (p : Parsed) : IO (List String) :=  do
   let topLevelModules := p.variableArgsAs! String |>.toList
   if topLevelModules.length == 0 then
@@ -21,9 +40,10 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
+  let maxHeartbeats ← getMaxHeartbeats p
   let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
   let sourceUri := p.positionalArg! "sourceUri" |>.as! String
-  let (doc, hierarchy) ← load <| .analyzeConcreteModules relevantModules
+  let (doc, hierarchy) ← load (.analyzeConcreteModules relevantModules) maxHeartbeats
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
   discard <| htmlOutputResults baseConfig doc (some sourceUri)
   return 0
@@ -41,9 +61,10 @@ def runGenCoreCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
+  let maxHeartbeats ← getMaxHeartbeats p
   let manifestOutput? := (p.flag? "manifest").map (·.as! String)
   let module := p.positionalArg! "module" |>.as! String |> String.toName
-  let (doc, hierarchy) ← load <| .analyzePrefixModules module
+  let (doc, hierarchy) ← load (.analyzePrefixModules module) maxHeartbeats
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
   let outputs ← htmlOutputResults baseConfig doc none
   if let .some manifestOutput := manifestOutput? then
@@ -74,12 +95,17 @@ def runBibPrepassCmd (p : Parsed) : IO UInt32 := do
     | _ => throw <| IO.userError "there should be exactly one source file"
   return 0
 
+/--
+ See discussion: https://leanprover.zulipchat.com/#narrow/channel/270676-lean4/topic/String.2EtoNat.3F.20and.20String.2EtoInt.3F.20handling.20underscores/with/562357458
+ If https://github.com/leanprover/lean4/issues/11538 is resolved, change "max-heartbeats" to be of type Nat directly.
+ -/
 def singleCmd := `[Cli|
   single VIA runSingleCmd;
   "Only generate the documentation for the module it was given, might contain broken links unless all documentation is generated."
 
   FLAGS:
     b, build : String; "Build directory."
+    "max-heartbeats" : String; "Maximum heartbeats for elaboration (default: 100_000_000). Supports underscores as separators. Can also be set via DOCGEN_MAX_HEARTBEATS env var."
 
   ARGS:
     module : String; "The module to generate the HTML for. Does not have to be part of topLevelModules."
@@ -101,6 +127,7 @@ def genCoreCmd := `[Cli|
   FLAGS:
     b, build : String; "Build directory."
     m, manifest : String; "Manifest output, to list all the files generated."
+    "max-heartbeats" : String; "Maximum heartbeats for elaboration (default: 100_000_000). Supports underscores as separators. Can also be set via DOCGEN_MAX_HEARTBEATS env var."
 
   ARGS:
     module : String; "The module to generate the HTML for."

@@ -91,6 +91,12 @@ The different options are:
 ## Disabling equations
 Generation of equations for definitions is enabled by default, but can be disabled by setting the `DISABLE_EQUATIONS` environment variable to `1`.
 
+## Max heartbeats
+The maximum number of heartbeats for elaboration can be configured by setting the `DOCGEN_MAX_HEARTBEATS` environment variable. The default is `100_000_000`. Underscores can be used as separators for readability. For example:
+```
+DOCGEN_MAX_HEARTBEATS=200_000_000 lake build YourLibraryName:docs
+```
+
 ## How does `docs#Nat.add` from the Lean Zulip work?
 If someone sends a message that contains `docs#Nat.add` on the Lean Zulip this will
 automatically link to `Nat.add` from the `mathlib4` documentation. The way that this
