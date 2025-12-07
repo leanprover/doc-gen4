@@ -23,6 +23,12 @@ require «UnicodeBasic» from git
 require Cli from git
   "https://github.com/leanprover/lean4-cli" @ "main"
 
+/-- Get max heartbeats CLI args from environment variable if set. -/
+def getMaxHeartbeatsArgs : IO (Array String) := do
+  match ← IO.getEnv "DOCGEN_MAX_HEARTBEATS" with
+  | some value => return #["--max-heartbeats", value]
+  | none => return #[]
+
 /--
 Obtain the subdirectory of the Lean package relative to the root of the enclosing git repository.
 -/
@@ -240,7 +246,7 @@ module_facet docs (mod) : DepSet FilePath := do
             let srcUri ← uriJob.await
             proc {
               cmd := exeFile.toString
-              args := #["single", "--build", buildDir.toString, mod.name.toString, srcUri]
+              args := #["single", "--build", buildDir.toString, mod.name.toString, srcUri] ++ (← getMaxHeartbeatsArgs)
               env := ← getAugmentedEnv
             }
           return DepSet.mk #[docFile] docDeps
@@ -259,7 +265,7 @@ def coreTarget (component : Lean.Name) : FetchM (Job <| Array FilePath) := do
           cmd := exeFile.toString
           args := #["genCore", component.toString,
             "--build", buildDir.toString,
-            "--manifest", manifestFile.toString]
+            "--manifest", manifestFile.toString] ++ (← getMaxHeartbeatsArgs)
           env := ← getAugmentedEnv
         }
       addTrace (← computeTrace dataFile)
