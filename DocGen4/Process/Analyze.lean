@@ -112,7 +112,7 @@ def mkOptions : IO DocGenOptions := do
 Run the doc-gen analysis on all modules that are loaded into the `Environment`
 of this `MetaM` run and mentioned by the `AnalyzeTask`.
 -/
-def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
+def process (task : AnalyzeTask) (maxHeartbeats : Nat := 5000000) : MetaM (AnalyzerResult × Hierarchy) := do
   let env ← getEnv
   let allModules := env.header.moduleNames
   let relevantModules :=
@@ -136,7 +136,7 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
     res ← tryCatchRuntimeEx
       (do
         let config := {
-          maxHeartbeats := 5000000,
+          maxHeartbeats := maxHeartbeats,
           options := ← getOptions,
           fileName := ← getFileName,
           fileMap := ← getFileMap,

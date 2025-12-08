@@ -38,6 +38,6 @@ def load (task : Process.AnalyzeTask) (maxHeartbeats : Nat := 100000000) : IO (P
     fileMap := default,
   }
 
-  Prod.fst <$> Meta.MetaM.toIO (Process.process task) config { env := env } {} {}
+  Prod.fst <$> Meta.MetaM.toIO (Process.process task maxHeartbeats) config { env := env } {} {}
 
 end DocGen4
