@@ -98,6 +98,7 @@ def runBibPrepassCmd (p : Parsed) : IO UInt32 := do
 /--
  See discussion: https://leanprover.zulipchat.com/#narrow/channel/270676-lean4/topic/String.2EtoNat.3F.20and.20String.2EtoInt.3F.20handling.20underscores/with/562357458
  If https://github.com/leanprover/lean4/issues/11538 is resolved, change "max-heartbeats" to be of type Nat directly.
+ See: https://github.com/leanprover/lean4/pull/11541
  -/
 def singleCmd := `[Cli|
   single VIA runSingleCmd;

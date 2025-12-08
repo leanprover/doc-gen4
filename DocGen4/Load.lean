@@ -28,6 +28,7 @@ def load (task : Process.AnalyzeTask) (maxHeartbeats : Nat := 100000000) : IO (P
   let config := {
     maxHeartbeats := maxHeartbeats,
     options := ⟨[
+      (`maxHeartbeats, maxHeartbeats),
       (`pp.tagAppFns, true),
       (`pp.funBinderTypes, true),
       (`debug.skipKernelTC, true),

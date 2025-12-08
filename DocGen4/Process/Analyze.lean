@@ -135,9 +135,10 @@ def process (task : AnalyzeTask) (maxHeartbeats : Nat := 5000000) : MetaM (Analy
 
     res ← tryCatchRuntimeEx
       (do
+        let opts := (← getOptions).setNat `maxHeartbeats maxHeartbeats
         let config := {
           maxHeartbeats := maxHeartbeats,
-          options := ← getOptions,
+          options := opts,
           fileName := ← getFileName,
           fileMap := ← getFileMap,
         }
