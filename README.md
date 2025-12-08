@@ -92,7 +92,7 @@ The different options are:
 Generation of equations for definitions is enabled by default, but can be disabled by setting the `DISABLE_EQUATIONS` environment variable to `1`.
 
 ## Max heartbeats
-The maximum number of heartbeats for elaboration can be configured by setting the `DOCGEN_MAX_HEARTBEATS` environment variable. The default is `100_000_000`. Underscores can be used as separators for readability. For example:
+The maximum number of heartbeats for elaboration can be configured by setting the `DOCGEN_MAX_HEARTBEATS` environment variable. The default is `100_000_000`. For example:
 ```
 DOCGEN_MAX_HEARTBEATS=200_000_000 lake build YourLibraryName:docs
 ```
