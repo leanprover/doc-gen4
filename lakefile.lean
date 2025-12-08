@@ -25,8 +25,9 @@ require Cli from git
 
 /-- Get max heartbeats CLI args from environment variable if set. -/
 def getMaxHeartbeatsArgs : IO (Array String) := do
-  IO.eprintln s!"DEBUG: Checking DOCGEN_MAX_HEARTBEATS"
-  match ← IO.getEnv "DOCGEN_MAX_HEARTBEATS" with
+  let val ← IO.getEnv "DOCGEN_MAX_HEARTBEATS"
+  IO.eprintln s!"DEBUG: DOCGEN_MAX_HEARTBEATS = {val}"
+  match val with
   | some value => return #["--max-heartbeats", value]
   | none => return #[]
 
