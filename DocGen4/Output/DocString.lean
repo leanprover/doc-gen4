@@ -242,13 +242,13 @@ partial def modifyElement (element : Element) (funName : String) : HtmlM Element
       return ⟨ name, attrs, ← modifyContents contents funName modifyElement ⟩
 
 /-- Find all references in a markdown text. -/
-partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String) (i : s.ValidPos := s.startValidPos)
+partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String) (i : s.Pos := s.startPos)
     (ret : Std.HashSet String := ∅) : Std.HashSet String :=
   let lps := i.find '['
-  if hs : lps ≠ s.endValidPos then
+  if hs : lps ≠ s.endPos then
     let lpe := lps.find ']'
-    if lpe ≠ s.endValidPos then
-      let citekey := (lps.next hs).extract lpe
+    if lpe ≠ s.endPos then
+      let citekey := s.extract (lps.next hs) lpe
       match refsMap[citekey]? with
       | .some _ => findAllReferences refsMap s lpe (ret.insert citekey)
       | .none => findAllReferences refsMap s lpe ret
@@ -264,7 +264,7 @@ def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html)
       s!"[{s}]: references.html#ref_{s}\n")
   match MD4Lean.renderHtml (docString ++ refsMarkdown) with
   | .some rendered =>
-    match manyDocument ⟨rendered, rendered.startValidPos⟩ with
+    match manyDocument ⟨rendered, rendered.startPos⟩ with
     | .success _ res =>
       let newRes ← modifyElements res funName modifyElement
       -- TODO: use `toString` instead of `eToStringEscaped`

@@ -32,7 +32,7 @@ def toArray : HierarchyMap → Array (Name × Hierarchy)
 def hForIn [Monad m] (t : HierarchyMap) (init : σ) (f : (Name × Hierarchy) → σ → m (ForInStep σ)) : m σ :=
   t.forIn init (fun a b acc => f (a, b) acc)
 
-instance : ForIn m HierarchyMap (Name × Hierarchy) where
+instance [Monad m] : ForIn m HierarchyMap (Name × Hierarchy) where
   forIn := HierarchyMap.hForIn
 
 end HierarchyMap
