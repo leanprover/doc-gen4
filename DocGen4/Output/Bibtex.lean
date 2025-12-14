@@ -19,7 +19,7 @@ namespace DocGen4.Bibtex
 
 /-- Process the contents of bib file. -/
 def process' (contents : String) : Except String (Array BibItem) := do
-  match BibtexQuery.Parser.bibtexFile ⟨contents, contents.startValidPos⟩ with
+  match BibtexQuery.Parser.bibtexFile ⟨contents, contents.startPos⟩ with
   | .success _ arr =>
     let arr ← arr.toArray.filterMapM ProcessedEntry.ofEntry
     return arr |> sortEntry |> deduplicateTag |>.map fun x =>

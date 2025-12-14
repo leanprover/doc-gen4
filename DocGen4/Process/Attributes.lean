@@ -113,7 +113,7 @@ instance : ToString Linter.DeprecationEntry where
     if let some since := entry.since? then
       string := string ++ s!"(since := \"{since}\")"
 
-    string := string.trimRight
+    string := string.trimAsciiEnd.copy
     return string
 
 /--

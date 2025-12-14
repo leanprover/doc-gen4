@@ -33,7 +33,7 @@ def preprocessBibFile (buildDir : System.FilePath) (contents : String) (process 
   IO.FS.writeFile (basePath buildDir / "references.bib") contents
   IO.FS.writeFile (declarationsBasePath buildDir / "references.json") "[]"
   -- if contents is empty, just do nothing
-  if contents.trim.isEmpty then
+  if contents.trimAscii.isEmpty then
     return
   -- run the user provided process function
   let items ← process contents
