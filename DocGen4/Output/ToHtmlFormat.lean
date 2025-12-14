@@ -87,7 +87,7 @@ partial def toStringAux : Html → String
 | raw s => s
 
 def toString (html : Html) : String :=
-  html.toStringAux.trimRight
+  html.toStringAux.trimAsciiEnd.copy
 
 partial def textLength : Html → Nat
 | raw s => s.length  -- measures lengths of escape sequences too!
@@ -109,7 +109,7 @@ def jsxText : Parser :=
   withAntiquot (mkAntiquot "jsxText" `jsxText) {
     fn := fun c s =>
       let startPos := s.pos
-      let s := takeWhile1Fn (not ∘ "[{<>}]$".contains) "expected JSX text" c s
+      let s := takeWhile1Fn (!"[{<>}]$".contains ·) "expected JSX text" c s
       mkNodeToken `jsxText startPos true c s }
 
 @[combinator_formatter DocGen4.Jsx.jsxText] def jsxText.formatter : Formatter := pure ()

@@ -32,7 +32,7 @@ def toArray : HierarchyMap → Array (Name × Hierarchy)
 def hForIn [Monad m] (t : HierarchyMap) (init : σ) (f : (Name × Hierarchy) → σ → m (ForInStep σ)) : m σ :=
   t.forIn init (fun a b acc => f (a, b) acc)
 
-instance : ForIn m HierarchyMap (Name × Hierarchy) where
+instance [Monad m] : ForIn m HierarchyMap (Name × Hierarchy) where
   forIn := HierarchyMap.hForIn
 
 end HierarchyMap
@@ -105,7 +105,7 @@ partial def fromDirectoryAux (dir : System.FilePath) (previous : Name) : IO (Arr
     if ← entry.path.isDir then
       children := children ++ (← fromDirectoryAux entry.path (.str previous entry.fileName))
     else if entry.path.extension = some "html" then
-      children := children.push <| .str previous (entry.fileName.dropRight ".html".length)
+      children := children.push <| .str previous (entry.fileName.dropEnd ".html".length).copy
   return children
 
 def fromDirectory (dir : System.FilePath) : IO Hierarchy := do
@@ -116,7 +116,7 @@ def fromDirectory (dir : System.FilePath) : IO Hierarchy := do
       else if ← entry.path.isDir then
         children := children ++ (← fromDirectoryAux entry.path (.mkSimple entry.fileName))
       else if entry.path.extension = some "html" then
-        children := children.push <| .mkSimple (entry.fileName.dropRight ".html".length)
+        children := children.push <| .mkSimple (entry.fileName.dropEnd ".html".length).copy
     return Hierarchy.fromArray children
 
 end Hierarchy

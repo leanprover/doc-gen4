@@ -70,7 +70,7 @@ partial def xmlGetHeadingId (el : Xml.Element) : String :=
 def nameToLink? (s : String) : HtmlM (Option String) := do
   let res ← getResult
   if s.endsWith ".lean" && s.contains '/' then
-    return (← getRoot) ++ s.dropRight 5 ++ ".html"
+    return (← getRoot) ++ s.dropEnd 5 ++ ".html"
   else if let some name := Lean.Syntax.decodeNameLit ("`" ++ s) then
     -- with exactly the same name
     if res.name2ModIdx.contains name then
@@ -106,7 +106,7 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
 def extendLink (s : String)  : HtmlM String := do
   -- for intra doc links
   if s.startsWith "##" then
-    if let some link ← nameToLink? (s.drop 2) then
+    if let some link ← nameToLink? (s.drop 2).copy then
       return link
     else
       return s!"{← getRoot}find/?pattern={s.drop 2}#doc"
@@ -158,7 +158,7 @@ def addHeadingAttributes (el : Element) (funName : String)
 /-- Find a bibitem if `href` starts with `thePrefix`. -/
 def findBibitem? (href : String) (thePrefix : String := "") : HtmlM (Option BibItem) := do
   if href.startsWith thePrefix then
-    pure <| (← read).refsMap[href.drop thePrefix.length]?
+    pure <| (← read).refsMap[href.drop thePrefix.length |>.copy]?
   else
     pure .none
 
@@ -206,8 +206,8 @@ def autoLink (el : Element) : HtmlM Element := do
         let attributes := Std.TreeMap.empty.insert "href" link
         return [Content.Element <| Element.Element "a" attributes #[Content.Character s]]
       | none =>
-        let sHead := s.dropRightWhile (· != '.')
-        let sTail := s.takeRightWhile (· != '.')
+        let sHead := s.dropEndWhile (· != '.') |>.copy
+        let sTail := s.takeEndWhile (· != '.') |>.copy
         let link'? ← nameToLink? sTail
         match link'? with
         | some link' =>
@@ -242,13 +242,13 @@ partial def modifyElement (element : Element) (funName : String) : HtmlM Element
       return ⟨ name, attrs, ← modifyContents contents funName modifyElement ⟩
 
 /-- Find all references in a markdown text. -/
-partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String) (i : String.Pos.Raw := 0)
+partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String) (i : s.Pos := s.startPos)
     (ret : Std.HashSet String := ∅) : Std.HashSet String :=
-  let lps := s.posOfAux '[' s.rawEndPos i
-  if lps < s.rawEndPos then
-    let lpe := s.posOfAux ']' s.rawEndPos lps
-    if lpe < s.rawEndPos then
-      let citekey := Substring.Raw.toString ⟨s, ⟨lps.1 + 1⟩, lpe⟩
+  let lps := i.find '['
+  if hs : lps ≠ s.endPos then
+    let lpe := lps.find ']'
+    if lpe ≠ s.endPos then
+      let citekey := s.extract (lps.next hs) lpe
       match refsMap[citekey]? with
       | .some _ => findAllReferences refsMap s lpe (ret.insert citekey)
       | .none => findAllReferences refsMap s lpe ret
@@ -264,7 +264,7 @@ def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html)
       s!"[{s}]: references.html#ref_{s}\n")
   match MD4Lean.renderHtml (docString ++ refsMarkdown) with
   | .some rendered =>
-    match manyDocument ⟨rendered, rendered.startValidPos⟩ with
+    match manyDocument ⟨rendered, rendered.startPos⟩ with
     | .success _ res =>
       let newRes ← modifyElements res funName modifyElement
       -- TODO: use `toString` instead of `eToStringEscaped`
