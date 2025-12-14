@@ -115,7 +115,7 @@ package_facet srcUri.github (pkg) : String := Job.async do
         s!"Could not interpret Git remote uri {url} as a Github source repo.\n"
           ++ "See README on source URIs for more details."
   let commit ← getProjectCommit pkg.dir
-  logInfo s!"Found git remote for {pkg.name} at {baseUrl} @ {commit}"
+  logInfo s!"Found git remote for {pkg.baseName} at {baseUrl} @ {commit}"
   let subdir ← getGitSubDirectory pkg.dir
   return "/".intercalate <| baseUrl :: "blob" :: commit :: filteredPath (subdir / pkg.config.srcDir)
 
