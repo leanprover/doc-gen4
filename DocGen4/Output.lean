@@ -88,14 +88,14 @@ def htmlOutputDeclarationDatas (buildDir : System.FilePath) (result : AnalyzerRe
     let jsonDecls ← Module.toJson mod
     FS.writeFile (declarationsBasePath buildDir / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
 
-/-- Custom source linker type: given a module name, returns a function from declaration range to URL -/
-abbrev SourceLinkerFn := Name → Option DeclarationRange → String
+/-- Custom source linker type: given an optional source URL and module name, returns a function from declaration range to URL -/
+abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → String
 
 def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String)
     (sourceLinker? : Option SourceLinkerFn := none) : IO (Array System.FilePath) := do
   let config : SiteContext := {
     result := result
-    sourceLinker := sourceLinker?.getD (SourceLinker.sourceLinker sourceUrl?)
+    sourceLinker := (sourceLinker?.getD SourceLinker.sourceLinker) sourceUrl?
     refsMap := .ofList (baseConfig.refs.map fun x => (x.citekey, x)).toList
   }
 
