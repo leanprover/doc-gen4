@@ -88,11 +88,14 @@ def htmlOutputDeclarationDatas (buildDir : System.FilePath) (result : AnalyzerRe
     let jsonDecls ← Module.toJson mod
     FS.writeFile (declarationsBasePath buildDir / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
 
-def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String) :
-    IO (Array System.FilePath) := do
+/-- Custom source linker type: given an optional source URL and module name, returns a function from declaration range to URL -/
+abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → String
+
+def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String)
+    (sourceLinker? : Option SourceLinkerFn := none) : IO (Array System.FilePath) := do
   let config : SiteContext := {
     result := result
-    sourceLinker := SourceLinker.sourceLinker sourceUrl?
+    sourceLinker := (sourceLinker?.getD SourceLinker.sourceLinker) sourceUrl?
     refsMap := .ofList (baseConfig.refs.map fun x => (x.citekey, x)).toList
   }
 
@@ -182,9 +185,10 @@ def headerDataOutput (buildDir : System.FilePath) : IO Unit := do
 The main entrypoint for outputting the documentation HTML based on an
 `AnalyzerResult`.
 -/
-def htmlOutput (buildDir : System.FilePath) (result : AnalyzerResult) (hierarchy : Hierarchy) (sourceUrl? : Option String) : IO Unit := do
+def htmlOutput (buildDir : System.FilePath) (result : AnalyzerResult) (hierarchy : Hierarchy)
+    (sourceUrl? : Option String) (sourceLinker? : Option SourceLinkerFn := none) : IO Unit := do
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  discard <| htmlOutputResults baseConfig result sourceUrl?
+  discard <| htmlOutputResults baseConfig result sourceUrl? sourceLinker?
   htmlOutputIndex baseConfig
 
 end DocGen4
