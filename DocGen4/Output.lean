@@ -92,11 +92,13 @@ def htmlOutputDeclarationDatas (buildDir : System.FilePath) (result : AnalyzerRe
 abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → String
 
 def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String)
-    (sourceLinker? : Option SourceLinkerFn := none) : IO (Array System.FilePath) := do
+    (sourceLinker? : Option SourceLinkerFn := none)
+    (declarationDecorator? : Option DeclarationDecoratorFn := none) : IO (Array System.FilePath) := do
   let config : SiteContext := {
     result := result
     sourceLinker := (sourceLinker?.getD SourceLinker.sourceLinker) sourceUrl?
     refsMap := .ofList (baseConfig.refs.map fun x => (x.citekey, x)).toList
+    declarationDecorator := declarationDecorator?.getD defaultDeclarationDecorator
   }
 
   FS.createDirAll <| basePath baseConfig.buildDir
@@ -186,9 +188,10 @@ The main entrypoint for outputting the documentation HTML based on an
 `AnalyzerResult`.
 -/
 def htmlOutput (buildDir : System.FilePath) (result : AnalyzerResult) (hierarchy : Hierarchy)
-    (sourceUrl? : Option String) (sourceLinker? : Option SourceLinkerFn := none) : IO Unit := do
+    (sourceUrl? : Option String) (sourceLinker? : Option SourceLinkerFn := none)
+    (declarationDecorator? : Option DeclarationDecoratorFn := none) : IO Unit := do
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  discard <| htmlOutputResults baseConfig result sourceUrl? sourceLinker?
+  discard <| htmlOutputResults baseConfig result sourceUrl? sourceLinker? declarationDecorator?
   htmlOutputIndex baseConfig
 
 end DocGen4

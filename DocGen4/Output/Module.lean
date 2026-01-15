@@ -91,6 +91,9 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
       #[Html.element "div" false #[("class", "attributes")] #[attrStr]]
     else
       #[]
+  -- custom decoration (e.g., verification badges from external tools)
+  let decorator ← getDeclarationDecorator
+  let decoratorHtml := decorator module doc.getName doc.getKind
   let cssClass := "decl" ++ if doc.getSorried then " sorried" else ""
   pure
     <div class={cssClass} id={doc.getName.toString}>
@@ -98,6 +101,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
         <div class="gh_link">
           <a href={← getSourceUrl module doc.getDeclarationRange}>source</a>
         </div>
+        [decoratorHtml]
         [attrsHtml]
         {← docInfoHeader doc}
         [docStringHtml]
