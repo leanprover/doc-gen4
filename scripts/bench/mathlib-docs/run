@@ -43,5 +43,5 @@ lake exe cache get
 lake build DocGen4
 
 # Benchmark documentation generation
-"$REPO_ROOT/$BENCH/measure.py" -t mathlib-docs -m instructions -m maxrss -m task-clock -m wall-clock -- \
-  DOCGEN_SRC="file" lake build DocGen4:docs
+env DOCGEN_SRC="file" "$REPO_ROOT/$BENCH/measure.py" -t mathlib-docs -m instructions -m maxrss -m task-clock -m wall-clock -- \
+  lake build DocGen4:docs
