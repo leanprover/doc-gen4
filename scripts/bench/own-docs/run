@@ -13,4 +13,4 @@ lake clean
 lake build DocGen4
 
 "$BENCH/measure.py" -t own-docs -m instructions -m maxrss -m task-clock -m wall-clock -- \
-  lake build DocGen4:docs
+  DOCGEN_SRC="file" lake build DocGen4:docs

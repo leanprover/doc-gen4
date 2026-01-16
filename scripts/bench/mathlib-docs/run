@@ -44,4 +44,4 @@ lake build DocGen4
 
 # Benchmark documentation generation
 "$REPO_ROOT/$BENCH/measure.py" -t mathlib-docs -m instructions -m maxrss -m task-clock -m wall-clock -- \
-  lake build DocGen4:docs
+  DOCGEN_SRC="file" lake build DocGen4:docs
