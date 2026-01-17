@@ -39,11 +39,12 @@ MATHLIB_NO_CACHE_ON_UPDATE=1 lake update doc-gen4
 # Get Mathlib cache
 lake exe cache get
 
-# Build DocGen4 first (we want to measure docs generation, not tool building)
+# Build DocGen4 and its executable first (we want to measure docs generation, not tool building)
 lake build DocGen4
+lake build doc-gen4
 
 popd
 
 # Benchmark documentation generation
 env DOCGEN_SRC="file" "$REPO_ROOT/$BENCH/measure.py" -t mathlib-docs -m instructions -m maxrss -m task-clock -m wall-clock -- \
-  lake --dir "$TMPDIR/mathproject" build DocGen4:docs
+  lake --dir "$TMPDIR/mathproject" build Mathlib:docs
