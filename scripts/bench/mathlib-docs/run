@@ -18,7 +18,7 @@ fi
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-cd "$TMPDIR"
+pushd "$TMPDIR"
 
 # Create a new Mathlib project using the math-lax template
 lake +"$TOOLCHAIN" new mathproject math-lax
@@ -42,6 +42,8 @@ lake exe cache get
 # Build DocGen4 first (we want to measure docs generation, not tool building)
 lake build DocGen4
 
+popd
+
 # Benchmark documentation generation
 env DOCGEN_SRC="file" "$REPO_ROOT/$BENCH/measure.py" -t mathlib-docs -m instructions -m maxrss -m task-clock -m wall-clock -- \
-  lake build DocGen4:docs
+  lake --dir "$TMPDIR/mathproject" build DocGen4:docs
