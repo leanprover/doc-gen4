@@ -192,6 +192,18 @@ inductive DocInfo where
 | ctorInfo (info : ConstructorInfo) : DocInfo
   deriving Inhabited
 
+def DocInfo.toInfo : DocInfo → Info
+  | .axiomInfo info => info.toInfo
+  | .theoremInfo info => info.toInfo
+  | .opaqueInfo info => info.toInfo
+  | .definitionInfo info => info.toInfo
+  | .instanceInfo info => info.toInfo
+  | .inductiveInfo info => info.toInfo
+  | .structureInfo info => info.toInfo
+  | .classInfo info => info.toInfo
+  | .classInductiveInfo info => info.toInfo
+  | .ctorInfo info => info
+
 /--
 Turns an `Expr` into a pretty printed `CodeWithInfos`.
 -/
