@@ -22,13 +22,13 @@ def loadInit (imports : Array Name) : IO Hierarchy := do
 Load a list of modules from the current Lean search path into an `Environment`
 to process for documentation.
 -/
-def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy) := do
+def load (task : Process.AnalyzeTask) (maxHeartbeats : Nat := 100000000) : IO (Process.AnalyzerResult × Hierarchy) := do
   initSearchPath (← findSysroot)
   let env ← envOfImports task.getLoad
   let config := {
-    -- TODO: parameterize maxHeartbeats
-    maxHeartbeats := 100000000,
+    maxHeartbeats := maxHeartbeats,
     options := ⟨[
+      (`maxHeartbeats, maxHeartbeats),
       (`pp.tagAppFns, true),
       (`pp.funBinderTypes, true),
       (`debug.skipKernelTC, true),
@@ -39,6 +39,6 @@ def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy)
     fileMap := default,
   }
 
-  Prod.fst <$> Meta.MetaM.toIO (Process.process task) config { env := env } {} {}
+  Prod.fst <$> Meta.MetaM.toIO (Process.process task maxHeartbeats) config { env := env } {} {}
 
 end DocGen4
