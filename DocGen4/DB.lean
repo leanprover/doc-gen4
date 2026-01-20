@@ -668,9 +668,9 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
             db.saveOpaque modName pos info.definitionSafety
           | .definitionInfo info =>
             db.saveDefinition modName pos info.isUnsafe info.hints info.isNonComputable
-            -- if let some eqns := info.equations then
-            --   for h : j in 0...eqns.size do
-            --     db.saveDefinitionEquation modName pos eqns[j] j.toInt64
+            if let some eqns := info.equations then
+              for h : j in 0...eqns.size do
+                db.saveDefinitionEquation modName pos eqns[j] j.toInt64
           | .instanceInfo info =>
             db.saveInstance modName pos info.className.toString
             for h : j in 0...info.typeNames.size do
