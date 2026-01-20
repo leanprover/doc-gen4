@@ -243,7 +243,7 @@ module_facet docs (mod) : DepSet FilePath := do
             let srcUri ← uriJob.await
             proc {
               cmd := exeFile.toString
-              args := #["single", "--build", buildDir.toString, "--db", s!"lean-docs-{mod.name}.db", mod.name.toString, srcUri]
+              args := #["single", "--build", buildDir.toString, "--db", "lean-docs.db", mod.name.toString, srcUri]
               env := ← getAugmentedEnv
             }
           return DepSet.mk #[docFile] docDeps
@@ -262,7 +262,7 @@ def coreTarget (component : Lean.Name) : FetchM (Job <| Array FilePath) := do
           cmd := exeFile.toString
           args := #["genCore", component.toString,
             "--build", buildDir.toString,
-            "--db", s!"lean-core-docs-{component}.db",
+            "--db", "lean-docs.db",
             "--manifest", manifestFile.toString]
           env := ← getAugmentedEnv
         }
