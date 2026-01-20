@@ -41,6 +41,7 @@ MATHLIB_NO_CACHE_ON_UPDATE=1 lake update doc-gen4
 
 # Build DocGen4 and its executable first (we want to measure docs generation, not tool building)
 lake build DocGen4
+lake build Mathlib
 lake build doc-gen4
 
 popd
