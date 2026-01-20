@@ -640,7 +640,6 @@ open DB
 def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (dbFile : String) (sourceUrl? : Option String) : IO Unit := do
   let dbFile := buildDir / dbFile
   let db ← ensureDb dbFile
-  let ms1 ← IO.monoMsNow
   db.sqlite.transaction do
     for (modName, modInfo) in doc.moduleInfo do
       let modName := modName.toString
@@ -699,8 +698,6 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
           | .ctorInfo info =>
             -- Here we do nothing because they were inserted along with the inductive
             pure ()
-  let ms2 ← IO.monoMsNow
-  (← IO.FS.Handle.mk "db-timing" .append).write <| s!"{doc.moduleInfo.keysArray}\t{ms2 - ms1}ms\n".toUTF8
   pure ()
 
 where
