@@ -28,12 +28,12 @@ def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy)
   let config := {
     -- TODO: parameterize maxHeartbeats
     maxHeartbeats := 100000000,
-    options := ⟨[
-      (`pp.tagAppFns, true),
-      (`pp.funBinderTypes, true),
-      (`debug.skipKernelTC, true),
-      (`Elab.async, false)
-    ]⟩,
+    options :=
+      Options.empty
+        |>.setBool `pp.tagAppFns true
+        |>.setBool `pp.funBinderTypes true
+        |>.setBool `debug.skipKernelTC true
+        |>.setBool `Elab.async false,
     -- TODO: Figure out whether this could cause some bugs
     fileName := default,
     fileMap := default,
