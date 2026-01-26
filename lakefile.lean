@@ -15,13 +15,13 @@ require MD4Lean from git
   "https://github.com/acmepjz/md4lean" @ "main"
 
 require BibtexQuery from git
-  "https://github.com/dupuisf/BibtexQuery" @ "master"
+  "https://github.com/dupuisf/BibtexQuery" @ "nightly-testing"
 
 require «UnicodeBasic» from git
-  "https://github.com/fgdorais/lean4-unicode-basic" @ "main"
+  "https://github.com/fgdorais/lean4-unicode-basic" @ "nightly-testing"
 
 require Cli from git
-  "https://github.com/leanprover/lean4-cli" @ "main"
+  "https://github.com/leanprover/lean4-cli" @ "nightly-testing"
 
 /--
 Obtain the subdirectory of the Lean package relative to the root of the enclosing git repository.
