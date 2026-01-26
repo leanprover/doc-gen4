@@ -4,6 +4,205 @@ import SQLite
 namespace DocGen4.DB
 
 section
+open Lean
+open SQLite.Blob
+
+structure DocstringDataHandler where
+  serialize : Serializer Dynamic
+  deserialize : Deserializer Dynamic
+
+structure DocstringValues where
+  inlines : NameMap DocstringDataHandler := {}
+  blocks : NameMap DocstringDataHandler := {}
+
+def toBinaryElabInline (vals : DocstringValues) : Serializer ElabInline
+  | { name, val }, b =>
+    match vals.inlines.get? name with
+    | none => b.push 0 |> ToBinary.serializer name
+    | some s => b.push 1 |> ToBinary.serializer name |> s.serialize val
+
+def toBinaryElabBlock (vals : DocstringValues) : Serializer ElabBlock
+  | { name, val }, b =>
+    match vals.blocks.get? name with
+    | none => b.push 0 |> ToBinary.serializer name
+    | some s => b.push 1 |> ToBinary.serializer name |> s.serialize val
+
+structure Unknown where
+deriving BEq, Hashable, Ord, DecidableEq, Inhabited, TypeName
+
+instance : Subsingleton Unknown where
+  allEq := by intros; rfl
+
+def fromBinaryElabInline (vals : DocstringValues) : Deserializer ElabInline := do
+  match (← Deserializer.byte) with
+  | 0 =>
+    let name ← FromBinary.deserializer
+    pure { name := `unknown ++ name, val := .mk Unknown.mk }
+  | 1 =>
+    let name ← FromBinary.deserializer
+    match vals.inlines.get? name with
+    | none => pure { name := `unknown ++ name, val := .mk Unknown.mk }
+    | some d =>
+      let val ← d.deserialize
+      pure { name, val }
+  | other => throw s!"Expected 0 or 1 for `ElabInline`'s tag, got `{other}`"
+
+def fromBinaryElabBlock (vals : DocstringValues) : Deserializer ElabBlock := do
+  match (← Deserializer.byte) with
+  | 0 =>
+    let name ← FromBinary.deserializer
+    pure { name := `unknown ++ name, val := .mk Unknown.mk }
+  | 1 =>
+    let name ← FromBinary.deserializer
+    match vals.blocks.get? name with
+    | none => pure { name := `unknown ++ name, val := .mk Unknown.mk }
+    | some d =>
+      let val ← d.deserialize
+      pure { name, val }
+  | other => throw s!"Expected 0 or 1 for `ElabBlock`'s tag, got `{other}`"
+
+partial instance [ToBinary i] : ToBinary (Doc.Inline i) where
+  serializer := go
+where
+  go
+    | .text s, b => b.push 0 |> ToBinary.serializer s
+    | .linebreak s, b => b.push 1 |> ToBinary.serializer s
+    | .emph xs, b =>
+      have : ToBinary (Doc.Inline i) := ⟨go⟩
+      b.push 2 |> ToBinary.serializer xs
+    | .bold xs, b =>
+      have : ToBinary (Doc.Inline i) := ⟨go⟩
+      b.push 3 |> ToBinary.serializer xs
+    | .code s, b =>
+      b.push 4 |> ToBinary.serializer s
+    | .math .inline s, b => b.push 5 |> ToBinary.serializer s
+    | .math .display s, b => b.push 6 |> ToBinary.serializer s
+    | .link xs url, b =>
+      have : ToBinary (Doc.Inline i) := ⟨go⟩
+      b.push 7 |> ToBinary.serializer xs |> ToBinary.serializer url
+    | .footnote name xs, b =>
+      have : ToBinary (Doc.Inline i) := ⟨go⟩
+      b.push 8 |> ToBinary.serializer name |> ToBinary.serializer xs
+    | .image alt url, b => b.push 9 |> ToBinary.serializer alt |> ToBinary.serializer url
+    | .concat xs, b =>
+      have : ToBinary (Doc.Inline i) := ⟨go⟩
+      b.push 10 |> ToBinary.serializer xs
+    | .other container content, b =>
+      have : ToBinary (Doc.Inline i) := ⟨go⟩
+      b.push 11 |> ToBinary.serializer container |> ToBinary.serializer content
+
+partial instance [FromBinary i] : FromBinary (Doc.Inline i) where
+  deserializer := go
+where go := do
+  have : FromBinary (Doc.Inline i) := ⟨go⟩
+  match (← .byte) with
+  | 0 => .text <$> FromBinary.deserializer
+  | 1 => .linebreak <$> FromBinary.deserializer
+  | 2 => .emph <$> FromBinary.deserializer
+  | 3 => .bold <$> FromBinary.deserializer
+  | 4 => .code <$> FromBinary.deserializer
+  | 5 => .math .inline <$> FromBinary.deserializer
+  | 6 => .math .display <$> FromBinary.deserializer
+  | 7 => .link <$> FromBinary.deserializer <*> FromBinary.deserializer
+  | 8 => .footnote <$> FromBinary.deserializer <*> FromBinary.deserializer
+  | 9 => .image <$> FromBinary.deserializer <*> FromBinary.deserializer
+  | 10 => .concat <$> FromBinary.deserializer
+  | 11 => .other <$> FromBinary.deserializer <*> FromBinary.deserializer
+  | other => throw s!"Expected a tag for `Doc.Inline` in 0...12, got {other}"
+
+
+partial instance [ToBinary i] [ToBinary b] : ToBinary (Doc.Block i b) where
+  serializer := go
+where
+  go
+    | .para xs, bs => bs.push 0 |> ToBinary.serializer xs
+    | .code s, bs => bs.push 1 |> ToBinary.serializer s
+    | .concat xs, bs =>
+      have : ToBinary (Doc.Block i b) := ⟨go⟩
+      bs.push 2 |> ToBinary.serializer xs
+    | .ul xs, bs =>
+      have : ToBinary (Doc.Block i b) := ⟨go⟩
+      bs.push 3 |> ToBinary.serializer (xs.map (·.contents))
+    | .ol n xs, bs =>
+      have : ToBinary (Doc.Block i b) := ⟨go⟩
+      bs.push 4 |> ToBinary.serializer n |> ToBinary.serializer (xs.map (·.contents))
+    | .dl xs, bs =>
+      have : ToBinary (Doc.Block i b) := ⟨go⟩
+      bs.push 5 |> ToBinary.serializer (xs.map (fun i => (i.term, i.desc)))
+    | .blockquote xs, bs =>
+      have : ToBinary (Doc.Block i b) := ⟨go⟩
+      bs.push 6 |> ToBinary.serializer xs
+    | .other container content, bs =>
+      have : ToBinary (Doc.Block i b) := ⟨go⟩
+      bs.push 7 |> ToBinary.serializer container |> ToBinary.serializer content
+
+
+partial instance [FromBinary i] [FromBinary b] : FromBinary (Doc.Block i b) where
+  deserializer := go
+where go := do
+  have : FromBinary (Doc.Block i b) := ⟨go⟩
+  match (← .byte) with
+  | 0 => .para <$> FromBinary.deserializer
+  | 1 => .code <$> FromBinary.deserializer
+  | 2 => .concat <$> FromBinary.deserializer
+  | 3 =>
+    let xss : Array (Array (Doc.Block i b)) ← FromBinary.deserializer
+    return .ul <| xss.map (⟨·⟩)
+  | 4 =>
+    let n ← FromBinary.deserializer
+    let xss : Array (Array (Doc.Block i b)) ← FromBinary.deserializer
+    return .ol n <| xss.map (⟨·⟩)
+  | 5 =>
+    let items : Array (_ × _) ← FromBinary.deserializer
+    return .dl <| items.map (fun x => Doc.DescItem.mk x.1 x.2)
+  | 6 => .blockquote <$> FromBinary.deserializer
+  | 7 => .other <$> FromBinary.deserializer <*> FromBinary.deserializer
+  | other => throw s!"Expected a tag for `Doc.Block` in 0...8, got {other}"
+
+partial instance [ToBinary i] [ToBinary b] [ToBinary p] : ToBinary (Doc.Part i p b) where
+  serializer := go
+where
+  go
+    | .mk title titleString metadata content subParts, bs =>
+      have : ToBinary (Doc.Part i p b) := ⟨go⟩
+      bs
+        |> ToBinary.serializer title
+        |> ToBinary.serializer titleString
+        |> ToBinary.serializer metadata
+        |> ToBinary.serializer content
+        |> ToBinary.serializer subParts
+
+partial instance [FromBinary i] [FromBinary b] [FromBinary p] : FromBinary (Doc.Part i p b) where
+  deserializer := go
+where
+  go := do
+    have : FromBinary (Doc.Part i p b) := ⟨go⟩
+    .mk
+      <$> FromBinary.deserializer
+      <*> FromBinary.deserializer
+      <*> FromBinary.deserializer
+      <*> FromBinary.deserializer
+      <*> FromBinary.deserializer
+
+instance : ToBinary VersoDocString where
+  serializer
+    | {text, subsections}, b =>
+      -- TODO customizable handling of Verso docstring extension data
+      have : ToBinary ElabInline := ⟨toBinaryElabInline {}⟩
+      have : ToBinary ElabBlock := ⟨toBinaryElabBlock {}⟩
+      b |> ToBinary.serializer text |> ToBinary.serializer subsections
+
+instance : FromBinary VersoDocString where
+  deserializer := do
+    -- TODO customizable handling of Verso docstring extension data
+    have : FromBinary ElabInline := ⟨fromBinaryElabInline {}⟩
+    have : FromBinary ElabBlock := ⟨fromBinaryElabBlock {}⟩
+    .mk <$> FromBinary.deserializer <*> FromBinary.deserializer
+
+instance : SQLite.QueryParam VersoDocString := .asBlob
+
+end
+section
 open Lean Widget Elab
 open SQLite.Blob
 
@@ -219,7 +418,6 @@ partial def renderTagged
     | _ => renderTagged t
   | .append xs => xs.mapM renderTagged <&> (·.foldl (init := .empty) (· ++ ·))
 
-
 end
 
 def getDb (dbFile : System.FilePath) : IO SQLite := do
@@ -285,13 +483,20 @@ CREATE TABLE IF NOT EXISTS markdown_docstrings (
   FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS verso_docstrings (
+  module_name TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  content BLOB NOT NULL,
+  PRIMARY KEY (module_name, position),
+  FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS name_info (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
   kind TEXT,
   name TEXT NOT NULL,
   type TEXT NOT NULL,
-  doc TEXT,
   sorried INTEGER NOT NULL,
   render INTEGER NOT NULL,
   PRIMARY KEY (module_name, position),
@@ -395,10 +600,10 @@ CREATE TABLE IF NOT EXISTS structure_parents (
 
 CREATE TABLE IF NOT EXISTS structure_constructors (
   module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
+  position INTEGER NOT NULL, -- The structure's position
+  ctor_position INTEGER NOT NULL,
   name TEXT NOT NULL,
-  type TEXT NOT NULL,
-  doc TEXT,
+  type BLOB NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
 );
@@ -408,7 +613,6 @@ CREATE TABLE IF NOT EXISTS structure_fields (
   position INTEGER NOT NULL,
   name TEXT NOT NULL,
   type TEXT NOT NULL,
-  doc TEXT,
   render INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
   is_direct INTEGER NOT NULL,
@@ -417,12 +621,19 @@ CREATE TABLE IF NOT EXISTS structure_fields (
 );
 "#
 
+def withTableName (tableName : String) (act : IO α) : IO α :=
+  try
+    act
+  catch
+    | e => throw <| .userError s!"Exception while modifying `{tableName}`: {e.toString}"
+
 structure DB where
   sqlite : SQLite
   deleteModule (modName : String) : IO Unit
   saveModule (modName : String) (sourceUrl? : Option String) : IO Unit
   saveImport (modName : String) (imported : Lean.Name) : IO Unit
   saveMarkdownDocstring (modName : String) (position : Int64) (text : String) : IO Unit
+  saveVersoDocstring (modName : String) (position : Int64) (text : Lean.VersoDocString) : IO Unit
   saveDeclarationRange (modName : String) (position : Int64) (declRange : Lean.DeclarationRange) : IO Unit
   saveInfo (modName : String) (position : Int64) (kind : String) (info : Process.Info) : IO Unit
   saveAxiom (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
@@ -435,9 +646,14 @@ structure DB where
   saveConstructor (modName : String) (position : Int64) (typePosition : Int64) : IO Unit
   saveClassInductive (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
   saveStructure (modName : String) (position : Int64) (isClass : Bool) : IO Unit
-  saveStructureConstructor (modName : String) (position : Int64) (name : String) (type : Lean.Widget.CodeWithInfos) (doc : Option String) : IO Unit
+  saveStructureConstructor (modName : String) (position : Int64) (ctorPos : Int64) (info : Process.NameInfo) : IO Unit
   saveStructureParent (modName : String) (position : Int64) (sequence : Int32) (projectionFn : String) (type : Lean.Widget.CodeWithInfos) : IO Unit
-  saveStructureField (modName : String) (position : Int64) (sequence : Int64) (name : String) (type : Lean.Widget.CodeWithInfos) (doc : Option String) (render : Bool) (isDirect : Bool) : IO Unit
+  saveStructureField (modName : String) (position : Int64) (sequence : Int64) (name : String) (type : Lean.Widget.CodeWithInfos) (render : Bool) (isDirect : Bool) : IO Unit
+
+def DB.saveDocstring (db : DB) (modName : String) (position : Int64) (text : String ⊕ Lean.VersoDocString) : IO Unit :=
+  match text with
+  | .inl md => db.saveMarkdownDocstring modName position md
+  | .inr v => db.saveVersoDocstring modName position v
 
 instance : Coe DB SQLite where
   coe := DB.sqlite
@@ -473,30 +689,36 @@ instance : SQLite.QueryParam Lean.Widget.CodeWithInfos where
 def ensureDb (dbFile : System.FilePath) : IO DB := do
   let sqlite ← getDb dbFile
   let deleteModuleStmt ← sqlite.prepare "DELETE FROM modules WHERE name = ?"
-  let deleteModule modName := do
+  let deleteModule modName := withTableName "modules" do
     deleteModuleStmt.bind 1 modName
     run deleteModuleStmt
   let saveModuleStmt ← sqlite.prepare "INSERT INTO modules (name, source_url) VALUES (?, ?)"
-  let saveModule modName sourceUrl? := do
+  let saveModule modName sourceUrl? := withTableName "modules" do
     saveModuleStmt.bind 1 modName
     saveModuleStmt.bind 2 sourceUrl?
     run saveModuleStmt
   -- This is INSERT OR IGNORE because the module system often results in multiple imports of the same module (e.g. as meta)
   let saveImportStmt ← sqlite.prepare "INSERT OR IGNORE INTO module_imports (importer, imported) VALUES (?, ?)"
-  let saveImport modName imported := do
+  let saveImport modName imported := withTableName "module_imports" do
     saveImportStmt.bind 1 modName
     saveImportStmt.bind 2 imported.toString
     run saveImportStmt
   let saveMarkdownDocstringStmt ← sqlite.prepare "INSERT INTO markdown_docstrings (module_name, position, text) VALUES (?, ?, ?)"
-  let saveMarkdownDocstring modName position text := do
+  let saveMarkdownDocstring modName position text := withTableName "markdown_docstrings" do
     saveMarkdownDocstringStmt.bind 1 modName
     saveMarkdownDocstringStmt.bind 2 position
     saveMarkdownDocstringStmt.bind 3 text
     run saveMarkdownDocstringStmt
+  let saveVersoDocstringStmt ← sqlite.prepare "INSERT INTO verso_docstrings (module_name, position, content) VALUES (?, ?, ?)"
+  let saveVersoDocstring modName position text := withTableName "verso_docstrings" do
+    saveVersoDocstringStmt.bind 1 modName
+    saveVersoDocstringStmt.bind 2 position
+    saveVersoDocstringStmt.bind 3 text
+    run saveVersoDocstringStmt
   let saveDeclarationRangeStmt ←
     sqlite.prepare
       "INSERT INTO declaration_ranges (module_name, position, start_line, start_column, start_utf16, end_line, end_column, end_utf16) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  let saveDeclarationRange modName position (declRange : Lean.DeclarationRange) := do
+  let saveDeclarationRange modName position (declRange : Lean.DeclarationRange) := withTableName "declaration_ranges" do
     saveDeclarationRangeStmt.bind 1 modName
     saveDeclarationRangeStmt.bind 2 position
     saveDeclarationRangeStmt.bind 3 declRange.pos.line
@@ -506,31 +728,34 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveDeclarationRangeStmt.bind 7 declRange.endPos.column
     saveDeclarationRangeStmt.bind 8 declRange.endCharUtf16
     run saveDeclarationRangeStmt
-  let saveInfoStmt ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, doc, sorried, render) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  let saveInfo modName position kind (info : Process.Info) := do
+  let saveInfoStmt ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  let saveInfo modName position kind (info : Process.Info) := withTableName "name_info" do
     saveInfoStmt.bind 1 modName
     saveInfoStmt.bind 2 position
     saveInfoStmt.bind 3 kind
     saveInfoStmt.bind 4 info.name.toString
     saveInfoStmt.bind 5 info.type
-    saveInfoStmt.bind 6 info.doc
-    saveInfoStmt.bind 7 info.sorried
-    saveInfoStmt.bind 8 info.render
+    saveInfoStmt.bind 6 info.sorried
+    saveInfoStmt.bind 7 info.render
     run saveInfoStmt
+    match info.doc with
+    | some (.inl md) => saveMarkdownDocstring modName position md
+    | some (.inr v) => saveVersoDocstring modName position v
+    | none => pure ()
   let saveAxiomStmt ← sqlite.prepare "INSERT INTO axioms (module_name, position, is_unsafe) VALUES (?, ?, ?)"
-  let saveAxiom modName position isUnsafe := do
+  let saveAxiom modName position isUnsafe := withTableName "axioms" do
     saveAxiomStmt.bind 1 modName
     saveAxiomStmt.bind 2 position
     saveAxiomStmt.bind 3 isUnsafe
     run saveAxiomStmt
   let saveOpaqueStmt ← sqlite.prepare "INSERT INTO opaques (module_name, position, safety) VALUES (?, ?, ?)"
-  let saveOpaque modName position safety := do
+  let saveOpaque modName position safety := withTableName "opaques" do
     saveOpaqueStmt.bind 1 modName
     saveOpaqueStmt.bind 2 position
     saveOpaqueStmt.bind 3 safety
     run saveOpaqueStmt
   let saveDefinitionStmt ← sqlite.prepare "INSERT INTO definitions (module_name, position, is_unsafe, hints, is_noncomputable) VALUES (?, ?, ?, ?, ?)"
-  let saveDefinition modName position isUnsafe hints isNonComputable := do
+  let saveDefinition modName position isUnsafe hints isNonComputable := withTableName "definitions" do
     saveDefinitionStmt.bind 1 modName
     saveDefinitionStmt.bind 2 position
     saveDefinitionStmt.bind 3 isUnsafe
@@ -538,75 +763,79 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveDefinitionStmt.bind 5 isNonComputable
     run saveDefinitionStmt
   let saveDefinitionEquationStmt ← sqlite.prepare "INSERT INTO definition_equations (module_name, position, code, sequence) VALUES (?, ?, ?, ?)"
-  let saveDefinitionEquation modName position code sequence := do
+  let saveDefinitionEquation modName position code sequence := withTableName "definition_equations" do
     saveDefinitionEquationStmt.bind 1 modName
     saveDefinitionEquationStmt.bind 2 position
     saveDefinitionEquationStmt.bind 3 code
     saveDefinitionEquationStmt.bind 4 sequence
     run saveDefinitionEquationStmt
   let saveInstanceStmt ← sqlite.prepare "INSERT INTO instances (module_name, position, class_name) VALUES (?, ?, ?)"
-  let saveInstance modName position className := do
+  let saveInstance modName position className := withTableName "instances" do
     saveInstanceStmt.bind 1 modName
     saveInstanceStmt.bind 2 position
     saveInstanceStmt.bind 3 className
     run saveInstanceStmt
   let saveInstanceArgStmt ← sqlite.prepare "INSERT INTO instance_args (module_name, position, sequence, type_name) VALUES (?, ?, ?, ?)"
-  let saveInstanceArg modName position sequence typeName := do
+  let saveInstanceArg modName position sequence typeName := withTableName "instance_args" do
     saveInstanceArgStmt.bind 1 modName
     saveInstanceArgStmt.bind 2 position
     saveInstanceArgStmt.bind 3 sequence
     saveInstanceArgStmt.bind 4 typeName
     run saveInstanceArgStmt
   let saveInductiveStmt ← sqlite.prepare "INSERT INTO inductives (module_name, position, is_unsafe) VALUES (?, ?, ?)"
-  let saveInductive modName position isUnsafe := do
+  let saveInductive modName position isUnsafe := withTableName "inductives" do
     saveInductiveStmt.bind 1 modName
     saveInductiveStmt.bind 2 position
     saveInductiveStmt.bind 3 isUnsafe
     run saveInductiveStmt
   let saveConstructorStmt ← sqlite.prepare "INSERT INTO constructors (module_name, position, type_position) VALUES (?, ?, ?)"
-  let saveConstructor modName position typePosition := do
+  let saveConstructor modName position typePosition := withTableName "constructors" do
     saveConstructorStmt.bind 1 modName
     saveConstructorStmt.bind 2 position
     saveConstructorStmt.bind 3 typePosition
     run saveConstructorStmt
   let saveClassInductiveStmt ← sqlite.prepare "INSERT INTO class_inductives (module_name, position, is_unsafe) VALUES (?, ?, ?)"
-  let saveClassInductive modName position isUnsafe := do
+  let saveClassInductive modName position isUnsafe := withTableName "class_inductives" do
     saveClassInductiveStmt.bind 1 modName
     saveClassInductiveStmt.bind 2 position
     saveClassInductiveStmt.bind 3 isUnsafe
     run saveClassInductiveStmt
   let saveStructureStmt ← sqlite.prepare "INSERT INTO structures (module_name, position, is_class) VALUES (?, ?, ?)"
-  let saveStructure modName position isClass := do
+  let saveStructure modName position isClass := withTableName "structures" do
     saveStructureStmt.bind 1 modName
     saveStructureStmt.bind 2 position
     saveStructureStmt.bind 3 isClass
     run saveStructureStmt
-  let saveStructureConstructorStmt ← sqlite.prepare "INSERT INTO structure_constructors (module_name, position, name, type, doc) VALUES (?, ?, ?, ?, ?)"
-  let saveStructureConstructor modName position name type doc := do
+  let saveStructureConstructorStmt ← sqlite.prepare "INSERT INTO structure_constructors (module_name, position, ctor_position, name, type) VALUES (?, ?, ?, ?, ?)"
+  let saveStructureConstructor modName position ctorPos info := withTableName "structure_constructors" do
     saveStructureConstructorStmt.bind 1 modName
     saveStructureConstructorStmt.bind 2 position
-    saveStructureConstructorStmt.bind 3 name
-    saveStructureConstructorStmt.bind 4 type
-    saveStructureConstructorStmt.bind 5 doc
+    saveStructureConstructorStmt.bind 3 ctorPos
+    saveStructureConstructorStmt.bind 4 info.name.toString
+    saveStructureConstructorStmt.bind 5 info.type
     run saveStructureConstructorStmt
+    match info.doc with
+    | some (.inl md) => saveMarkdownDocstring modName ctorPos md
+    | some (.inr v) => saveVersoDocstring modName ctorPos v
+    | none => pure ()
+
   let saveStructureParentStmt ← sqlite.prepare "INSERT INTO structure_parents (module_name, position, sequence, projection_fn, type) VALUES (?, ?, ?, ?, ?)"
-  let saveStructureParent modName position sequence projectionFn type := do
+  let saveStructureParent modName position sequence projectionFn type := withTableName "structure_parents" do
     saveStructureParentStmt.bind 1 modName
     saveStructureParentStmt.bind 2 position
     saveStructureParentStmt.bind 3 sequence
     saveStructureParentStmt.bind 4 projectionFn
     saveStructureParentStmt.bind 5 type
     run saveStructureParentStmt
-  let saveStructureFieldStmt ← sqlite.prepare "INSERT INTO structure_fields (module_name, position, sequence, name, type, doc, render, is_direct) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  let saveStructureField modName position sequence name type doc render isDirect := do
+  let saveStructureFieldStmt ← sqlite.prepare "INSERT INTO structure_fields (module_name, position, sequence, name, type, render, is_direct) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  let saveStructureField modName position sequence name type render isDirect := withTableName "structure_fields" do
     saveStructureFieldStmt.bind 1 modName
     saveStructureFieldStmt.bind 2 position
     saveStructureFieldStmt.bind 3 sequence
     saveStructureFieldStmt.bind 4 name
     saveStructureFieldStmt.bind 5 type
-    saveStructureFieldStmt.bind 6 doc
-    saveStructureFieldStmt.bind 7 render
-    saveStructureFieldStmt.bind 8 isDirect
+    saveStructureFieldStmt.bind 6 render
+    saveStructureFieldStmt.bind 7 isDirect
     run saveStructureFieldStmt
   pure {
     sqlite,
@@ -614,6 +843,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveModule,
     saveImport,
     saveMarkdownDocstring,
+    saveVersoDocstring,
     saveDeclarationRange,
     saveInfo,
     saveAxiom,
@@ -630,8 +860,6 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveStructureParent,
     saveStructureField
   }
-
-
 
 end DB
 
@@ -706,15 +934,18 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
 where
   saveStructureInfo (isClass : Bool) (info : Process.StructureInfo) (db : DB) (modName : String) (pos : Int64) : StateT Int64 IO Unit := do
     db.saveStructure modName pos isClass
-    db.saveStructureConstructor modName pos info.ctor.name.toString info.ctor.type info.ctor.doc
+    modify (· + 1)
+    db.saveStructureConstructor modName pos (← get) info.ctor
     let mut seq : Int32 := 0
     for parent in info.parents do
       db.saveStructureParent modName pos seq parent.projFn.toString parent.type
       seq := seq + 1
+    modify (· + 1)
     for field in info.fieldInfo do
       let fpos ← get
       modify (· + 1)
-      db.saveStructureField modName pos fpos field.name.toString field.type field.doc field.render field.isDirect
+      db.saveStructureField modName pos fpos field.name.toString field.type field.render field.isDirect
+      if let some doc := field.doc then db.saveDocstring modName fpos doc
 
   infoKind : Process.DocInfo → String
     | .axiomInfo _ => "axiom"

@@ -117,7 +117,7 @@ as HTML.
 def modDocToHtml (mdoc : ModuleDoc) : HtmlM Html := do
   pure
     <div class="mod_doc">
-      [← docStringToHtml mdoc.doc ""]
+      [← docStringToHtml (.inl mdoc.doc) ""]
     </div>
 
 /--

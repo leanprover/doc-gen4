@@ -73,9 +73,9 @@ def getName : ModuleMember → Name
 | docInfo i => i.getName
 | modDoc _ => Name.anonymous
 
-def getDocString : ModuleMember → Option String
+def getDocString : ModuleMember → Option (String ⊕ VersoDocString)
 | docInfo i => i.getDocString
-| modDoc i => i.doc
+| modDoc i => some (.inl i.doc)
 
 def shouldRender : ModuleMember → Bool
 | docInfo i => i.shouldRender

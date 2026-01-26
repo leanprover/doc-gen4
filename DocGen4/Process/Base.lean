@@ -29,7 +29,7 @@ structure NameInfo where
   /--
   The doc string of the name if it exists.
   -/
-  doc : Option String
+  doc : Option (String ⊕ VersoDocString)
   deriving Inhabited
 
 /--
