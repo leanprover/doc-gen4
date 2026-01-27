@@ -423,7 +423,7 @@ structure DB where
   saveAxiom (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
   saveOpaque (modName : String) (position : Int64) (safety : Lean.DefinitionSafety) : IO Unit
   saveDefinition (modName : String) (position : Int64) (isUnsafe : Bool) (hints : Lean.ReducibilityHints) (isNonComputable : Bool) : IO Unit
-  saveDefinitionEquation (modName : String) (position : Int64) (code : Lean.Widget.CodeWithInfos) (sequence : Int64) : IO Unit
+  saveDefinitionEquation (modName : String) (position : Int64) (code : RenderedCode) (sequence : Int64) : IO Unit
   saveInstance (modName : String) (position : Int64) (className : String) : IO Unit
   saveInstanceArg (modName : String) (position : Int64) (sequence : Int64) (typeName : String) : IO Unit
   saveInductive (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
@@ -431,8 +431,8 @@ structure DB where
   saveClassInductive (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
   saveStructure (modName : String) (position : Int64) (isClass : Bool) : IO Unit
   saveStructureConstructor (modName : String) (position : Int64) (ctorPos : Int64) (info : Process.NameInfo) : IO Unit
-  saveStructureParent (modName : String) (position : Int64) (sequence : Int32) (projectionFn : String) (type : Lean.Widget.CodeWithInfos) : IO Unit
-  saveStructureField (modName : String) (position : Int64) (sequence : Int64) (name : String) (type : Lean.Widget.CodeWithInfos) (render : Bool) (isDirect : Bool) : IO Unit
+  saveStructureParent (modName : String) (position : Int64) (sequence : Int32) (projectionFn : String) (type : RenderedCode) : IO Unit
+  saveStructureField (modName : String) (position : Int64) (sequence : Int64) (name : String) (type : RenderedCode) (render : Bool) (isDirect : Bool) : IO Unit
 
 def DB.saveDocstring (db : DB) (modName : String) (position : Int64) (text : String ⊕ Lean.VersoDocString) : IO Unit :=
   match text with
@@ -465,9 +465,9 @@ instance : SQLite.QueryParam Lean.ReducibilityHints where
     | .regular i => SQLite.QueryParam.bind stmt index i.toNat.toInt64
 
 open SQLite.Blob in
-instance : SQLite.QueryParam Lean.Widget.CodeWithInfos where
+instance : SQLite.QueryParam RenderedCode where
   bind stmt index code := Id.run do
-    let str := ToBinary.serializer (renderTagged code) .empty
+    let str := ToBinary.serializer code .empty
     SQLite.QueryParam.bind stmt index str
 
 def ensureDb (dbFile : System.FilePath) : IO DB := do
@@ -547,7 +547,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveDefinitionStmt.bind 5 isNonComputable
     run saveDefinitionStmt
   let saveDefinitionEquationStmt ← sqlite.prepare "INSERT INTO definition_equations (module_name, position, code, sequence) VALUES (?, ?, ?, ?)"
-  let saveDefinitionEquation modName position code sequence := withTableName "definition_equations" do
+  let saveDefinitionEquation modName position (code : RenderedCode) sequence := withTableName "definition_equations" do
     saveDefinitionEquationStmt.bind 1 modName
     saveDefinitionEquationStmt.bind 2 position
     saveDefinitionEquationStmt.bind 3 code
@@ -604,7 +604,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     | none => pure ()
 
   let saveStructureParentStmt ← sqlite.prepare "INSERT INTO structure_parents (module_name, position, sequence, projection_fn, type) VALUES (?, ?, ?, ?, ?)"
-  let saveStructureParent modName position sequence projectionFn type := withTableName "structure_parents" do
+  let saveStructureParent modName position sequence projectionFn (type : RenderedCode) := withTableName "structure_parents" do
     saveStructureParentStmt.bind 1 modName
     saveStructureParentStmt.bind 2 position
     saveStructureParentStmt.bind 3 sequence
@@ -612,7 +612,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveStructureParentStmt.bind 5 type
     run saveStructureParentStmt
   let saveStructureFieldStmt ← sqlite.prepare "INSERT INTO structure_fields (module_name, position, sequence, name, type, render, is_direct) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  let saveStructureField modName position sequence name type render isDirect := withTableName "structure_fields" do
+  let saveStructureField modName position sequence name (type : RenderedCode) render isDirect := withTableName "structure_fields" do
     saveStructureFieldStmt.bind 1 modName
     saveStructureFieldStmt.bind 2 position
     saveStructureFieldStmt.bind 3 sequence

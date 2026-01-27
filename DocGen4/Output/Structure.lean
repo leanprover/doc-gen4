@@ -25,13 +25,13 @@ def fieldToHtml (f : Process.FieldInfo) : HtmlM Html := do
         pure #[]
     pure
       <li id={name} class="structure_field">
-        <div class="structure_field_info">{shortName} [args] {" : "} [← infoFormatToHtml f.type]</div>
+        <div class="structure_field_info">{shortName} [args] {" : "} [← renderedCodeToHtml f.type]</div>
         [doc]
       </li>
   else
     pure
       <li class="structure_field inherited_field">
-        <div class="structure_field_info"><a href={← declNameToLink f.name}>{shortName}</a> [args] {" : "} [← infoFormatToHtml f.type]</div>
+        <div class="structure_field_info"><a href={← declNameToLink f.name}>{shortName}</a> [args] {" : "} [← renderedCodeToHtml f.type]</div>
       </li>
 
 /--

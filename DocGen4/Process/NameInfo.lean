@@ -7,6 +7,7 @@ import Lean
 
 import DocGen4.Process.Base
 import DocGen4.Process.Attributes
+import DocGen4.RenderedCode
 
 namespace DocGen4.Process
 open Lean Meta
@@ -72,7 +73,7 @@ def NameInfo.ofTypedName (n : Name) (t : Expr) : MetaM NameInfo := do
 /--
 Pretty prints a `Lean.Parser.Term.bracketedBinder`.
 -/
-private def prettyPrintBinder (stx : Syntax) (infos : SubExpr.PosMap Elab.Info) : MetaM Widget.CodeWithInfos := do
+private def prettyPrintBinder (stx : Syntax) (infos : SubExpr.PosMap Elab.Info) : MetaM RenderedCode := do
   let fmt ← PrettyPrinter.format Parser.Term.bracketedBinder.formatter stx
   let tt := Widget.TaggedText.prettyTagged fmt
   let ctx := {
@@ -84,9 +85,9 @@ private def prettyPrintBinder (stx : Syntax) (infos : SubExpr.PosMap Elab.Info) 
     fileMap := default,
     ngen := ← getNGen
   }
-  Widget.tagCodeInfos ctx infos tt
+  return renderTagged (← Widget.tagCodeInfos ctx infos tt)
 
-private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) : MetaM Widget.CodeWithInfos := do
+private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) : MetaM RenderedCode := do
   let fmt ← PrettyPrinter.formatTerm stx
   let tt := Widget.TaggedText.prettyTagged fmt
   let ctx := {
@@ -98,7 +99,7 @@ private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) :
     fileMap := default,
     ngen := ← getNGen
   }
-  Widget.tagCodeInfos ctx infos tt
+  return renderTagged (← Widget.tagCodeInfos ctx infos tt)
 
 def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
   -- Use the main signature delaborator. We need to run sanitization, parenthesization, and formatting ourselves

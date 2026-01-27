@@ -5,6 +5,7 @@ Authors: Henrik Böving
 -/
 
 import Lean
+import DocGen4.RenderedCode
 
 namespace DocGen4.Process
 open Lean Widget Meta
@@ -25,7 +26,7 @@ structure NameInfo where
   /--
   The pretty printed type of this name.
   -/
-  type : CodeWithInfos
+  type : RenderedCode
   /--
   The doc string of the name if it exists.
   -/
@@ -39,7 +40,7 @@ structure Arg where
   /--
   The pretty printed binder syntax itself.
   -/
-  binder : CodeWithInfos
+  binder : RenderedCode
   /--
   Whether the binder is implicit.
   -/
@@ -101,7 +102,7 @@ Information about a `def` declaration, note that partial defs are handled by `Op
 structure DefinitionInfo extends Info where
   isUnsafe : Bool
   hints : ReducibilityHints
-  equations : Option (Array CodeWithInfos)
+  equations : Option (Array RenderedCode)
   isNonComputable : Bool
   deriving Inhabited
 
@@ -145,7 +146,7 @@ structure StructureParentInfo where
   /-- Name of the projection function. -/
   projFn : Name
   /-- Pretty printed type. -/
-  type : CodeWithInfos
+  type : RenderedCode
 
 /--
 Information about a `structure` declaration.
@@ -205,9 +206,9 @@ def DocInfo.toInfo : DocInfo → Info
   | .ctorInfo info => info
 
 /--
-Turns an `Expr` into a pretty printed `CodeWithInfos`.
+Turns an `Expr` into a pretty printed `RenderedCode`.
 -/
-def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
+def prettyPrintTerm (expr : Expr) : MetaM RenderedCode := do
   let ⟨fmt, infos⟩ ← PrettyPrinter.ppExprWithInfos expr
   let tt := TaggedText.prettyTagged fmt
   let ctx := {
@@ -219,7 +220,7 @@ def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
     fileMap := default,
     ngen := ← getNGen
   }
-  tagCodeInfos ctx infos tt
+  return renderTagged (← tagCodeInfos ctx infos tt)
 
 def isInstance (declName : Name) : MetaM Bool := do
   return (instanceExtension.getState (← getEnv)).instanceNames.contains declName
