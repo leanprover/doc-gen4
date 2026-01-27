@@ -9,7 +9,7 @@ import DocGen4.Output.Module
 namespace DocGen4.Process
 
 open scoped DocGen4.Jsx
-open DocGen4 Lean
+open DocGen4 Output Lean
 
 /--
 Render the HTML for a single tactic.
@@ -25,12 +25,17 @@ Render the HTML for a single tactic.
 -/
 def TacticInfo.toHtml (tac : TacticInfo Html) : Output.BaseHtmlM Html := do
   let internalName := tac.internalName.toString
+  let defLink := (← moduleNameToLink tac.definingModule) ++ "#" ++ internalName
+  let tags := ", ".intercalate (tac.tags.map (·.toString)).qsort.toList
   return <div id={internalName}>
     <h2>{tac.userName}</h2>
     {tac.docString}
-    <dl>[
-      #[<dt>Defined in module:</dt>, <dd>{tac.definingModule.toString}</dd>]
-    ]</dl>
+    <dl>
+      <dt>Tags:</dt>
+      <dd>{tags}</dd>
+      <dt>Defined in module:</dt>
+      <dd><a href={defLink}>{tac.definingModule.toString}</a></dd>
+    </dl>
   </div>
 
 def TacticInfo.navLink (tac : TacticInfo α) : Html :=
@@ -54,7 +59,7 @@ def tactics (tacticInfo : Array (TacticInfo Html)) : BaseHtmlM Html := do
       [tacticInfo.map (· |>.navLink)]
     </nav>,
     Html.element "main" false #[] (
-      #[<p>The tactic language is a special-purpose programming language for constructing proofs, indicated using the <code>by</code> keyword.</p>] ++
+      #[<p>The tactic language is a special-purpose programming language for constructing proofs, indicated using the keyword <code>by</code>.</p>] ++
       sectionsHtml)
   ]
 
