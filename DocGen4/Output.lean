@@ -106,7 +106,6 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
 
   FS.createDirAll <| basePath baseConfig.buildDir
   FS.createDirAll <| declarationsBasePath baseConfig.buildDir
-  FS.createDirAll <| supplementPath baseConfig.buildDir
 
   discard <| htmlOutputDeclarationDatas baseConfig.buildDir result |>.run {} config baseConfig
 

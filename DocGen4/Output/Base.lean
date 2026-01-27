@@ -15,7 +15,6 @@ def basePathComponent := "doc"
 def basePath (buildDir : System.FilePath) := buildDir / basePathComponent
 def srcBasePath (buildDir : System.FilePath) := basePath buildDir / "src"
 def declarationsBasePath (buildDir : System.FilePath) := buildDir / "doc-data"
-def supplementPath (buildDir : System.FilePath) := declarationsBasePath buildDir / "supplement"
 
 /-- The structure representing a processed bibitem. -/
 structure BibItem where
