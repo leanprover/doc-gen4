@@ -76,7 +76,7 @@ def loadTacticsJSON (buildDir : System.FilePath) : IO (Array (TacticInfo Html)) 
         | .error err =>
           throw <| IO.userError s!"failed to parse file '{entry.path}': {err}"
         | .ok (arr : Array (TacticInfo _)) => result := result ++ arr
-  return result
+  return result.qsort (lt := (·.userName < ·.userName))
 
 /-- Save sections of supplementary pages declared in a specific module.
 
