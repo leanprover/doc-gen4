@@ -128,7 +128,7 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
       FS.createDirAll d
     FS.writeFile filePath moduleHtml.toString
     FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json") (toString (toJson cfg.backrefs))
-    saveTacticsJSON (baseConfig.buildDir / s!"tactics-{module.name}.json") tactics
+    saveTacticsJSON (declarationsBasePath baseConfig.buildDir / s!"tactics-{module.name}.json") tactics
     -- The output paths need to be relative to the build directory, as they are stored in a build
     -- artifact.
     outputs := outputs.push relFilePath
