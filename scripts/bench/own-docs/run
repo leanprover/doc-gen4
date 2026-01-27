@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euxo pipefail
+
+BENCH="scripts/bench"
+
+# Prepare build
+
+lake clean
+
+# We want to measure the time taken to generate documentation, not to
+# build the tool, so we build it and the library first:
+lake build DocGen4
+lake build doc-gen4
+
+env DOCGEN_SRC="file" "$BENCH/measure.py" -t own-docs -m instructions -m maxrss -m task-clock -m wall-clock -- \
+  lake build DocGen4:docs

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BENCH="scripts/bench"
+
+echo "Running benchmark: own-docs"
+"$BENCH/own-docs/run"
+
+echo "Running benchmark: mathlib-docs"
+"$BENCH/mathlib-docs/run"
+

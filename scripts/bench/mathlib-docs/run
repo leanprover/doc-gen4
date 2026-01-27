@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euxo pipefail
+
+BENCH="scripts/bench"
+REPO_ROOT="$(pwd)"
+
+# Look up the Lean toolchain version from lean-toolchain
+TOOLCHAIN_FULL=$(cat "$REPO_ROOT/lean-toolchain")
+TOOLCHAIN=${TOOLCHAIN_FULL#*:}
+
+# Validate that it's a release or RC version (e.g., 4.27.0, v4.27.0, 4.27.0-rc1, v4.27.0-rc1)
+if [[ ! "$TOOLCHAIN" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
+  echo "Error: Toolchain '$TOOLCHAIN' is not a Lean release or RC version" >&2
+  exit 1
+fi
+
+# Create a temp directory and set up cleanup
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
+
+pushd "$TMPDIR"
+
+# Create a new Mathlib project using the math-lax template
+lake +"$TOOLCHAIN" new mathproject math-lax
+
+cd mathproject
+
+# Add a dependency to the doc-gen4 checkout
+cat >> lakefile.toml <<EOF
+
+[[require]]
+name = "doc-gen4"
+path = "$REPO_ROOT"
+EOF
+
+# Update doc-gen4 dependency
+MATHLIB_NO_CACHE_ON_UPDATE=1 lake update doc-gen4
+
+# Get Mathlib cache
+lake exe cache get
+
+# Build DocGen4 and its executable first (we want to measure docs generation, not tool building)
+lake build DocGen4
+lake build doc-gen4
+
+popd
+
+# Benchmark documentation generation
+env DOCGEN_SRC="file" "$REPO_ROOT/$BENCH/measure.py" -t mathlib-docs -m instructions -m maxrss -m task-clock -m wall-clock -- \
+  lake --dir "$TMPDIR/mathproject" build Mathlib:docs

@@ -71,6 +71,18 @@ structure SiteBaseContext where
   refs : Array BibItem
 
 /--
+Declaration decorator function type: given a module name, declaration name, and declaration kind,
+returns optional extra HTML to inject into the declaration's rendering.
+This enables external tools to add badges, links, or other decorations to declarations.
+-/
+abbrev DeclarationDecoratorFn := Name → Name → String → Array Html
+
+/--
+The default declaration decorator that produces no extra HTML.
+-/
+def defaultDeclarationDecorator : DeclarationDecoratorFn := fun _ _ _ => #[]
+
+/--
 The read-only context used in the `HtmlM` monad for HTML templating.
 -/
 structure SiteContext where
@@ -86,6 +98,12 @@ structure SiteContext where
   The references as a map.
   -/
   refsMap : Std.HashMap String BibItem
+  /--
+  A function to decorate declarations with extra HTML (e.g., verification badges).
+  Receives (moduleName, declarationName, declarationKind) and returns extra HTML.
+  Defaults to producing no extra HTML.
+  -/
+  declarationDecorator : DeclarationDecoratorFn := defaultDeclarationDecorator
 
 /--
 The writable state used in the `HtmlM` monad for HTML templating.
@@ -151,6 +169,7 @@ def getHierarchy : BaseHtmlM Hierarchy := do return (← read).hierarchy
 def getCurrentName : BaseHtmlM (Option Name) := do return (← read).currentName
 def getResult : HtmlM AnalyzerResult := do return (← read).result
 def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String := do return (← read).sourceLinker module range
+def getDeclarationDecorator : HtmlM DeclarationDecoratorFn := do return (← read).declarationDecorator
 
 /--
 If a template is meant to be extended because it for example only provides the
