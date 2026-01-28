@@ -283,6 +283,7 @@ library_facet docs (lib) : Array FilePath := do
   let moduleJobs := Job.collectArray <| ← mods.mapM (fetch <| ·.facet `docs)
   let coreJobs ← coreDocs.fetch
   let exeJob ← «doc-gen4».fetch
+  let bibPrepassJob ← bibPrepass.fetch
   -- Shared with DocGen4.Output
   let buildDir := (← getRootPackage).buildDir
   let basePath := buildDir / "doc"
@@ -310,18 +311,19 @@ library_facet docs (lib) : Array FilePath := do
     basePath / "find" / "index.html",
     basePath / "find" / "find.js"
   ]
-  exeJob.bindM fun exeFile => do
-    coreJobs.bindM fun coreDeps => do
-      moduleJobs.mapM fun modDeps => do
-        buildFileUnlessUpToDate' dataFile do
-          logInfo "Documentation indexing"
-          proc {
-            cmd := exeFile.toString
-            args := #["index", "--build", buildDir.toString]
-          }
-        let traces ← staticFiles.mapM computeTrace
-        addTrace <| mixTraceArray traces
-        return (DepSet.mk (#[dataFile] ++ staticFiles) (modDeps.push (.mk coreDeps #[]))).toArray
+  bibPrepassJob.bindM fun _ => do
+    exeJob.bindM fun exeFile => do
+      coreJobs.bindM fun coreDeps => do
+        moduleJobs.mapM fun modDeps => do
+          buildFileUnlessUpToDate' dataFile do
+            logInfo "Documentation indexing"
+            proc {
+              cmd := exeFile.toString
+              args := #["index", "--build", buildDir.toString]
+            }
+          let traces ← staticFiles.mapM computeTrace
+          addTrace <| mixTraceArray traces
+          return (DepSet.mk (#[dataFile] ++ staticFiles) (modDeps.push (.mk coreDeps #[]))).toArray
 
 library_facet docsHeader (lib) : FilePath := do
   let mods ← (← lib.modules.fetch).await
