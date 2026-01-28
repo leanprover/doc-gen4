@@ -5,6 +5,7 @@ Authors: Henrik Böving
 -/
 import DocGen4.Process
 import DocGen4.Output.ToHtmlFormat
+import DocGen4.RenderedCode
 
 namespace DocGen4.Output
 
@@ -280,64 +281,60 @@ def splitWhitespaces (s : String) : String × String × String :=
   (front, s, back)
 
 /--
-Implementation for `infoFormatToHtml`.
-
-Returns (1) whether the HTML contains an anchor tag and (2) the resulting HTML.
+Convert RenderedCode to HTML with declaration links.
+Returns (hasAnchor, html) where hasAnchor indicates if the result contains an anchor tag.
+This is used to avoid creating nested anchors (invalid HTML).
 -/
-private partial def infoFormatToHtmlAux (i : CodeWithInfos) : HtmlM (Bool × Array Html) := do
-  match i with
+partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM (Bool × Array Html) := do
+  match code with
   | .text t => return (false, #[t])
-  | .append tt => tt.foldlM (fun (a?, acc) t => do
-    let (a?', acc') ← infoFormatToHtmlAux t
-    return (a? || a?', acc ++ acc')) (false, #[])
-  | .tag a t =>
-    match a.info.val.info with
-    | Info.ofTermInfo i =>
-      let cleanExpr :=  i.expr.consumeMData
-      match cleanExpr with
-      | .const name _ =>
-        -- TODO: this is some very primitive blacklisting but real Blacklisting needs MetaM
-        -- find a better solution
-        if (← getResult).name2ModIdx.contains name then
-          match t with
-          | .text t =>
-            let (front, t, back) := splitWhitespaces t
-            let elem := <a href={← declNameToLink name}>{t}</a>
-            return (true, #[Html.text front, elem, Html.text back])
-          | _ =>
-            toHtmlMaybeLink t (← declNameToLink name)
+  | .append xs =>
+    xs.foldlM (init := (false, #[])) fun (a?, acc) t => do
+      let (a?', acc') ← renderedCodeToHtmlAux t
+      pure (a? || a?', acc ++ acc')
+  | .tag tag inner =>
+    let (innerHasAnchor, innerHtml) ← renderedCodeToHtmlAux inner
+    match tag with
+    | .const name =>
+      if (← getResult).name2ModIdx.contains name then
+        let link ← declNameToLink name
+        -- Avoid nested anchors: if inner content already has anchors, don't wrap again
+        -- Match original behavior: no fn wrapper when const is in name2ModIdx
+        if innerHasAnchor then
+          return (true, innerHtml)
         else
-          toHtmlWrapFn t
-      | .sort _ =>
-        match t with
-        | .text t =>
-          let sortPrefix :: rest := t.splitOn " " | unreachable!
-          let sortLink := <a href={s!"{← getRoot}foundational_types.html"}>{sortPrefix}</a>
-          let mut restStr := String.intercalate " " rest
-          if restStr.length != 0 then
-            restStr := " " ++ restStr
-          return (true, #[sortLink, Html.text restStr])
-        | _ =>
-          toHtmlMaybeLink t s!"{← getRoot}foundational_types.html"
-      | _ => toHtmlWrapFn t
-    | _ => toHtmlWrapFn t
+          return (true, #[<a href={link}>[innerHtml]</a>])
+      else
+        return (innerHasAnchor, fn innerHtml)
+    | .sort _ =>
+      let link := s!"{← getRoot}foundational_types.html"
+      -- Avoid nested anchors
+      -- Match original behavior: no fn wrapper when creating sort link
+      if innerHasAnchor then
+        return (true, innerHtml)
+      else
+        return (true, #[<a href={link}>[innerHtml]</a>])
+    -- For Phase 1 compatibility: treat keyword/string as plain content (no extra styling)
+    -- This matches the original infoFormatToHtml behavior
+    | .keyword => return (innerHasAnchor, innerHtml)
+    | .string => return (innerHasAnchor, innerHtml)
+    | .otherExpr => return (innerHasAnchor, fn innerHtml)
 where
-  toHtmlWrapFn (t : TaggedText SubexprInfo) : HtmlM (Bool × Array Html) := do
-    let (a?, acc) ← infoFormatToHtmlAux t
-    return (a?, #[<span class="fn">[acc]</span>])
-  toHtmlMaybeLink (t : TaggedText SubexprInfo) (link : String) : HtmlM (Bool × Array Html) := do
-    let (a?, acc) ← infoFormatToHtmlAux t
-    if a? then
-      return (true, acc)
-    else
-      return (true, #[<a href={link}>[acc]</a>])
+  fn (html : Array Html) : Array Html := #[<span class="fn">[html]</span>]
+
+/--
+Convert RenderedCode to HTML with declaration links.
+-/
+def renderedCodeToHtml (code : RenderedCode) : HtmlM (Array Html) :=
+  Prod.snd <$> renderedCodeToHtmlAux code
 
 /-
 Turns a `CodeWithInfos` object, that is basically a Lean syntax tree with
 information about what the identifiers mean, into an HTML object that links
 to as much information as possible.
 -/
-def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := Prod.snd <$> infoFormatToHtmlAux i
+def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) :=
+  renderedCodeToHtml (renderTagged i)
 
 def baseHtmlHeadDeclarations : BaseHtmlM (Array Html) := do
   return #[

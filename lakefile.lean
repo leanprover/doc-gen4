@@ -23,6 +23,9 @@ require «UnicodeBasic» from git
 require Cli from git
   "https://github.com/leanprover/lean4-cli" @ "main"
 
+require leansqlite from git
+  "https://github.com/david-christiansen/leansqlite" @ "main"
+
 /--
 Obtain the subdirectory of the Lean package relative to the root of the enclosing git repository.
 -/
@@ -240,7 +243,7 @@ module_facet docs (mod) : DepSet FilePath := do
             let srcUri ← uriJob.await
             proc {
               cmd := exeFile.toString
-              args := #["single", "--build", buildDir.toString, mod.name.toString, srcUri]
+              args := #["single", "--build", buildDir.toString, "--db", "lean-docs.db", mod.name.toString, srcUri]
               env := ← getAugmentedEnv
             }
           return DepSet.mk #[docFile] docDeps
@@ -259,6 +262,7 @@ def coreTarget (component : Lean.Name) : FetchM (Job <| Array FilePath) := do
           cmd := exeFile.toString
           args := #["genCore", component.toString,
             "--build", buildDir.toString,
+            "--db", "lean-docs.db",
             "--manifest", manifestFile.toString]
           env := ← getAugmentedEnv
         }

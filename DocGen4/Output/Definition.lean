@@ -11,8 +11,8 @@ open Lean Widget
 /-- This is basically an arbitrary number that seems to work okay. -/
 def equationLimit : Nat := 200
 
-def equationToHtml (c : CodeWithInfos) : HtmlM Html := do
-  return <li class="equation">[← infoFormatToHtml c]</li>
+def equationToHtml (c : RenderedCode) : HtmlM Html := do
+  return <li class="equation">[← renderedCodeToHtml c]</li>
 
 /--
 Attempt to render all `simp` equations for this definition. At a size

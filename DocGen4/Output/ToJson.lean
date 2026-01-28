@@ -120,7 +120,7 @@ def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM Js
 def DocInfo.toJson (sourceLinker : Option DeclarationRange → String) (info : Process.DocInfo) : HtmlM JsonDeclaration := do
   let name := info.getName.toString
   let kind := info.getKind
-  let doc := info.getDocString.getD ""
+  let doc := info.getMarkdownDocString.getD ""
   let docLink ← declNameToLink info.getName
   let sourceLink := sourceLinker info.getDeclarationRange
   let line := info.getDeclarationRange.pos.line

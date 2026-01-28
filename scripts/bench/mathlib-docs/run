@@ -25,6 +25,9 @@ lake +"$TOOLCHAIN" new mathproject math-lax
 
 cd mathproject
 
+# Get Mathlib cache
+lake exe cache get
+
 # Add a dependency to the doc-gen4 checkout
 cat >> lakefile.toml <<EOF
 
@@ -36,11 +39,9 @@ EOF
 # Update doc-gen4 dependency
 MATHLIB_NO_CACHE_ON_UPDATE=1 lake update doc-gen4
 
-# Get Mathlib cache
-lake exe cache get
-
 # Build DocGen4 and its executable first (we want to measure docs generation, not tool building)
 lake build DocGen4
+lake build Mathlib
 lake build doc-gen4
 
 popd

@@ -258,7 +258,11 @@ partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String
     ret
 
 /-- Convert docstring to Html. -/
-def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html) := do
+def docStringToHtml (docString : String ⊕ VersoDocString) (funName : String) : HtmlM (Array Html) := do
+  let docString :=
+    match docString with
+    | .inl md => md
+    | .inr v => toMarkdown v
   let refsMarkdown := "\n\n" ++ (String.join <|
     (findAllReferences (← read).refsMap docString).toList.map fun s =>
       s!"[{s}]: references.html#ref_{s}\n")
@@ -276,6 +280,13 @@ def docStringToHtml (docString : String) (funName : String) : HtmlM (Array Html)
   | .none =>
     addError <| "Error: failed to parse markdown:\n" ++ docString
     return #[.raw "<span style='color:red;'>Error: failed to parse markdown: </span>", .text docString]
-
+where
+  -- TODO: natively render Verso docstrings
+  toMarkdown : VersoDocString → String
+  | .mk bs ps => Doc.MarkdownM.run' do
+      for b in bs do
+        Doc.ToMarkdown.toMarkdown b
+      for p in ps do
+        Doc.ToMarkdown.toMarkdown p
 end Output
 end DocGen4
