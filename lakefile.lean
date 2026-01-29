@@ -307,6 +307,7 @@ library_facet docs (lib) : Array FilePath := do
     basePath / "foundational_types.html",
     basePath / "references.html",
     basePath / "references.bib",
+    basePath / "Tactics.html",
     basePath / "find" / "index.html",
     basePath / "find" / "find.js"
   ]
