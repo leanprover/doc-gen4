@@ -2,7 +2,7 @@ import DocGen4
 import Lean
 import Cli
 
-open DocGen4 Lean Cli
+open DocGen4 DocGen4.DB DocGen4.Output Lean Cli
 
 def getTopLevelModules (p : Parsed) : IO (List String) :=  do
   let topLevelModules := p.variableArgsAs! String |>.toList
@@ -59,6 +59,50 @@ def runGenCoreCmd (p : Parsed) : IO UInt32 := do
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
   IO.println "You most likely want to use me via Lake now, check my README on Github on how to:"
   IO.println "https://github.com/leanprover/doc-gen4"
+  return 0
+
+/-- A source linker that uses URLs from the database, falling back to core module URLs -/
+def dbSourceLinker (sourceUrls : Std.HashMap Name String) (_gitUrl? : Option String) (module : Name) : Option DeclarationRange → String :=
+  let root := module.getRoot
+  let leanHash := Lean.githash
+  if root == `Lean ∨ root == `Init ∨ root == `Std then
+    let parts := module.components.map (Name.toString (escape := false))
+    let path := "/".intercalate parts
+    Output.SourceLinker.mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/{path}.lean"
+  else if root == `Lake then
+    let parts := module.components.map (Name.toString (escape := false))
+    let path := "/".intercalate parts
+    Output.SourceLinker.mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/lake/{path}.lean"
+  else
+    -- Look up source URL from database
+    match sourceUrls[module]? with
+    | some url =>
+      if url.startsWith "vscode://file/" then
+        Output.SourceLinker.mkVscodeSourceLinker url
+      else if url.startsWith "https://github.com" then
+        Output.SourceLinker.mkGithubSourceLinker url
+      else
+        fun _ => url
+    | none =>
+      -- Fallback for modules without source URL
+      fun _ => "#"
+
+def runFromDbCmd (p : Parsed) : IO UInt32 := do
+  let buildDir := match p.flag? "build" with
+    | some dir => dir.as! String
+    | none => ".lake/build/doc-from-db"  -- Different default for DB-generated docs
+  let dbPath := p.positionalArg! "db" |>.as! String
+  IO.println s!"Loading documentation from database: {dbPath}"
+  let dbResult ← loadFromDb dbPath
+  let result := dbResult.result
+  IO.println s!"Loaded {result.moduleNames.size} modules with {result.name2ModIdx.size} declarations"
+  -- Add `references` pseudo-module to hierarchy since references.html is always generated
+  let hierarchy := Hierarchy.fromArray (result.moduleNames.push `references)
+  let baseConfig ← getSimpleBaseContext buildDir hierarchy
+  IO.println s!"Generating HTML to: {buildDir}"
+  discard <| htmlOutputResults baseConfig result none (sourceLinker? := some (dbSourceLinker dbResult.sourceUrls))
+  htmlOutputIndex baseConfig
+  IO.println "Done!"
   return 0
 
 def runBibPrepassCmd (p : Parsed) : IO UInt32 := do
@@ -135,6 +179,17 @@ def headerDataCmd := `[Cli|
     b, build : String; "Build directory."
 ]
 
+def fromDbCmd := `[Cli|
+  fromDb VIA runFromDbCmd;
+  "Generate all HTML documentation from a SQLite database. Output goes to a separate directory for easy comparison with traditional generation."
+
+  FLAGS:
+    b, build : String; "Output directory for generated docs (default: .lake/build/doc-from-db)"
+
+  ARGS:
+    db : String; "Path to the SQLite database"
+]
+
 def docGenCmd : Cmd := `[Cli|
   "doc-gen4" VIA runDocGenCmd; ["0.1.0"]
   "A documentation generator for Lean 4."
@@ -144,7 +199,8 @@ def docGenCmd : Cmd := `[Cli|
     indexCmd;
     genCoreCmd;
     bibPrepassCmd;
-    headerDataCmd
+    headerDataCmd;
+    fromDbCmd
 ]
 
 def main (args : List String) : IO UInt32 :=

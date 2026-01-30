@@ -211,7 +211,11 @@ def getDb (dbFile : System.FilePath) : IO SQLite := do
   db.exec "PRAGMA busy_timeout = 5000"
   db.exec "PRAGMA journal_mode = WAL"
   db.exec "PRAGMA foreign_keys = ON"
-  db.transaction (db.exec ddl)
+  try
+    db.transaction (db.exec ddl)
+  catch
+  | e =>
+    throw <| .userError s!"Exception while creating schema: {e}"
   return db
 where
   ddl :=
@@ -295,6 +299,14 @@ CREATE TABLE IF NOT EXISTS axioms (
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
 );
 
+-- Internal names (like recursors) that aren't rendered but should link to a rendered declaration
+CREATE TABLE IF NOT EXISTS internal_names (
+  name TEXT NOT NULL PRIMARY KEY,
+  target_module TEXT NOT NULL,
+  target_position INTEGER NOT NULL,
+  FOREIGN KEY (target_module, target_position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS constructors (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
@@ -334,6 +346,7 @@ CREATE TABLE IF NOT EXISTS definitions (
   is_unsafe INTEGER NOT NULL,
   hints TEXT NOT NULL,
   is_noncomputable INTEGER NOT NULL,
+  has_equations INTEGER NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
 );
@@ -346,6 +359,15 @@ CREATE TABLE IF NOT EXISTS definition_equations (
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
 );
+
+-- Trigger to ensure has_equations is true when equations are inserted
+CREATE TRIGGER IF NOT EXISTS ensure_has_equations_on_insert
+AFTER INSERT ON definition_equations
+BEGIN
+  UPDATE definitions
+  SET has_equations = 1
+  WHERE module_name = NEW.module_name AND position = NEW.position AND has_equations = 0;
+END;
 
 CREATE TABLE IF NOT EXISTS instances (
   module_name TEXT NOT NULL,
@@ -395,11 +417,42 @@ CREATE TABLE IF NOT EXISTS structure_constructors (
 CREATE TABLE IF NOT EXISTS structure_fields (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
-  name TEXT NOT NULL,
-  type TEXT NOT NULL,
-  render INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
+  proj_name TEXT NOT NULL,
+  type BLOB NOT NULL,
   is_direct INTEGER NOT NULL,
+  PRIMARY KEY (module_name, position, sequence),
+  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
+  -- Note: No FK on proj_name because the projection function may be in a different module
+  -- (for inherited fields) that hasn't been processed yet. The JOIN at load time handles this.
+);
+
+CREATE TABLE IF NOT EXISTS structure_field_args (
+  module_name TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  field_sequence INTEGER NOT NULL,
+  arg_sequence INTEGER NOT NULL,
+  binder BLOB NOT NULL,
+  is_implicit INTEGER NOT NULL,
+  PRIMARY KEY (module_name, position, field_sequence, arg_sequence),
+  FOREIGN KEY (module_name, position, field_sequence) REFERENCES structure_fields(module_name, position, sequence) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS declaration_args (
+  module_name TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  sequence INTEGER NOT NULL,
+  binder BLOB NOT NULL,
+  is_implicit INTEGER NOT NULL,
+  PRIMARY KEY (module_name, position, sequence),
+  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS declaration_attrs (
+  module_name TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  sequence INTEGER NOT NULL,
+  attr TEXT NOT NULL,
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
 );
@@ -422,7 +475,7 @@ structure DB where
   saveInfo (modName : String) (position : Int64) (kind : String) (info : Process.Info) : IO Unit
   saveAxiom (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
   saveOpaque (modName : String) (position : Int64) (safety : Lean.DefinitionSafety) : IO Unit
-  saveDefinition (modName : String) (position : Int64) (isUnsafe : Bool) (hints : Lean.ReducibilityHints) (isNonComputable : Bool) : IO Unit
+  saveDefinition (modName : String) (position : Int64) (isUnsafe : Bool) (hints : Lean.ReducibilityHints) (isNonComputable : Bool) (hasEquations : Bool) : IO Unit
   saveDefinitionEquation (modName : String) (position : Int64) (code : RenderedCode) (sequence : Int64) : IO Unit
   saveInstance (modName : String) (position : Int64) (className : String) : IO Unit
   saveInstanceArg (modName : String) (position : Int64) (sequence : Int64) (typeName : String) : IO Unit
@@ -431,8 +484,15 @@ structure DB where
   saveClassInductive (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
   saveStructure (modName : String) (position : Int64) (isClass : Bool) : IO Unit
   saveStructureConstructor (modName : String) (position : Int64) (ctorPos : Int64) (info : Process.NameInfo) : IO Unit
+  /-- Save minimal info to name_info for name lookups (not for rendering) -/
+  saveNameOnly (modName : String) (position : Int64) (kind : String) (name : Lean.Name) (type : RenderedCode) (declRange : Lean.DeclarationRange) : IO Unit
   saveStructureParent (modName : String) (position : Int64) (sequence : Int32) (projectionFn : String) (type : RenderedCode) : IO Unit
-  saveStructureField (modName : String) (position : Int64) (sequence : Int64) (name : String) (type : RenderedCode) (render : Bool) (isDirect : Bool) : IO Unit
+  saveStructureField (modName : String) (position : Int64) (sequence : Int64) (projName : String) (type : RenderedCode) (isDirect : Bool) : IO Unit
+  saveStructureFieldArg (modName : String) (position : Int64) (fieldSeq : Int64) (argSeq : Int64) (binder : RenderedCode) (isImplicit : Bool) : IO Unit
+  saveArg (modName : String) (position : Int64) (sequence : Int64) (binder : RenderedCode) (isImplicit : Bool) : IO Unit
+  saveAttr (modName : String) (position : Int64) (sequence : Int64) (attr : String) : IO Unit
+  /-- Save an internal name (like a recursor) that should link to its target declaration -/
+  saveInternalName (name : Lean.Name) (targetModule : String) (targetPosition : Int64) : IO Unit
 
 def DB.saveDocstring (db : DB) (modName : String) (position : Int64) (text : String ⊕ Lean.VersoDocString) : IO Unit :=
   match text with
@@ -513,6 +573,8 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveDeclarationRangeStmt.bind 8 declRange.endCharUtf16
     run saveDeclarationRangeStmt
   let saveInfoStmt ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  let saveArgStmt' ← sqlite.prepare "INSERT INTO declaration_args (module_name, position, sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?)"
+  let saveAttrStmt' ← sqlite.prepare "INSERT INTO declaration_attrs (module_name, position, sequence, attr) VALUES (?, ?, ?, ?)"
   let saveInfo modName position kind (info : Process.Info) := withTableName "name_info" do
     saveInfoStmt.bind 1 modName
     saveInfoStmt.bind 2 position
@@ -526,6 +588,25 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     | some (.inl md) => saveMarkdownDocstring modName position md
     | some (.inr v) => saveVersoDocstring modName position v
     | none => pure ()
+    -- Save args
+    for h : j in 0...info.args.size do
+      let arg := info.args[j]
+      withTableName "declaration_args" do
+        saveArgStmt'.bind 1 modName
+        saveArgStmt'.bind 2 position
+        saveArgStmt'.bind 3 j.toInt64
+        saveArgStmt'.bind 4 arg.binder
+        saveArgStmt'.bind 5 arg.implicit
+        run saveArgStmt'
+    -- Save attrs
+    for h : j in 0...info.attrs.size do
+      let attr := info.attrs[j]
+      withTableName "declaration_attrs" do
+        saveAttrStmt'.bind 1 modName
+        saveAttrStmt'.bind 2 position
+        saveAttrStmt'.bind 3 j.toInt64
+        saveAttrStmt'.bind 4 attr
+        run saveAttrStmt'
   let saveAxiomStmt ← sqlite.prepare "INSERT INTO axioms (module_name, position, is_unsafe) VALUES (?, ?, ?)"
   let saveAxiom modName position isUnsafe := withTableName "axioms" do
     saveAxiomStmt.bind 1 modName
@@ -538,13 +619,14 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveOpaqueStmt.bind 2 position
     saveOpaqueStmt.bind 3 safety
     run saveOpaqueStmt
-  let saveDefinitionStmt ← sqlite.prepare "INSERT INTO definitions (module_name, position, is_unsafe, hints, is_noncomputable) VALUES (?, ?, ?, ?, ?)"
-  let saveDefinition modName position isUnsafe hints isNonComputable := withTableName "definitions" do
+  let saveDefinitionStmt ← sqlite.prepare "INSERT INTO definitions (module_name, position, is_unsafe, hints, is_noncomputable, has_equations) VALUES (?, ?, ?, ?, ?, ?)"
+  let saveDefinition modName position isUnsafe hints isNonComputable hasEquations := withTableName "definitions" do
     saveDefinitionStmt.bind 1 modName
     saveDefinitionStmt.bind 2 position
     saveDefinitionStmt.bind 3 isUnsafe
     saveDefinitionStmt.bind 4 hints
     saveDefinitionStmt.bind 5 isNonComputable
+    saveDefinitionStmt.bind 6 hasEquations
     run saveDefinitionStmt
   let saveDefinitionEquationStmt ← sqlite.prepare "INSERT INTO definition_equations (module_name, position, code, sequence) VALUES (?, ?, ?, ?)"
   let saveDefinitionEquation modName position (code : RenderedCode) sequence := withTableName "definition_equations" do
@@ -611,16 +693,58 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveStructureParentStmt.bind 4 projectionFn
     saveStructureParentStmt.bind 5 type
     run saveStructureParentStmt
-  let saveStructureFieldStmt ← sqlite.prepare "INSERT INTO structure_fields (module_name, position, sequence, name, type, render, is_direct) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  let saveStructureField modName position sequence name (type : RenderedCode) render isDirect := withTableName "structure_fields" do
+  -- Store projection function name directly; lookup happens at load time
+  let saveStructureFieldStmt ← sqlite.prepare "INSERT INTO structure_fields (module_name, position, sequence, proj_name, type, is_direct) VALUES (?, ?, ?, ?, ?, ?)"
+  let saveStructureField modName position sequence projName (type : RenderedCode) isDirect := withTableName "structure_fields" do
     saveStructureFieldStmt.bind 1 modName
     saveStructureFieldStmt.bind 2 position
     saveStructureFieldStmt.bind 3 sequence
-    saveStructureFieldStmt.bind 4 name
+    saveStructureFieldStmt.bind 4 projName
     saveStructureFieldStmt.bind 5 type
-    saveStructureFieldStmt.bind 6 render
-    saveStructureFieldStmt.bind 7 isDirect
+    saveStructureFieldStmt.bind 6 isDirect
     run saveStructureFieldStmt
+  let saveStructureFieldArgStmt ← sqlite.prepare "INSERT INTO structure_field_args (module_name, position, field_sequence, arg_sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?, ?)"
+  let saveStructureFieldArg modName position fieldSeq argSeq (binder : RenderedCode) isImplicit := withTableName "structure_field_args" do
+    saveStructureFieldArgStmt.bind 1 modName
+    saveStructureFieldArgStmt.bind 2 position
+    saveStructureFieldArgStmt.bind 3 fieldSeq
+    saveStructureFieldArgStmt.bind 4 argSeq
+    saveStructureFieldArgStmt.bind 5 binder
+    saveStructureFieldArgStmt.bind 6 isImplicit
+    run saveStructureFieldArgStmt
+  let saveArgStmt ← sqlite.prepare "INSERT INTO declaration_args (module_name, position, sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?)"
+  let saveArg modName position sequence (binder : RenderedCode) isImplicit := withTableName "declaration_args" do
+    saveArgStmt.bind 1 modName
+    saveArgStmt.bind 2 position
+    saveArgStmt.bind 3 sequence
+    saveArgStmt.bind 4 binder
+    saveArgStmt.bind 5 isImplicit
+    run saveArgStmt
+  let saveAttrStmt ← sqlite.prepare "INSERT INTO declaration_attrs (module_name, position, sequence, attr) VALUES (?, ?, ?, ?)"
+  let saveAttr modName position sequence attr := withTableName "declaration_attrs" do
+    saveAttrStmt.bind 1 modName
+    saveAttrStmt.bind 2 position
+    saveAttrStmt.bind 3 sequence
+    saveAttrStmt.bind 4 attr
+    run saveAttrStmt
+  -- For saving minimal info to name_info for name lookups only (not rendering)
+  let saveNameOnlyStmt ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, 0, 0)"
+  let saveNameOnly modName position kind (name : Lean.Name) (type : RenderedCode) (declRange : Lean.DeclarationRange) := withTableName "name_info" do
+    saveNameOnlyStmt.bind 1 modName
+    saveNameOnlyStmt.bind 2 position
+    saveNameOnlyStmt.bind 3 kind
+    saveNameOnlyStmt.bind 4 name.toString
+    saveNameOnlyStmt.bind 5 type
+    run saveNameOnlyStmt
+    -- Also save declaration range
+    saveDeclarationRange modName position declRange
+  -- For saving internal names (like recursors) that link to their target declaration
+  let saveInternalNameStmt ← sqlite.prepare "INSERT OR IGNORE INTO internal_names (name, target_module, target_position) VALUES (?, ?, ?)"
+  let saveInternalName (name : Lean.Name) (targetModule : String) (targetPosition : Int64) := withTableName "internal_names" do
+    saveInternalNameStmt.bind 1 name.toString
+    saveInternalNameStmt.bind 2 targetModule
+    saveInternalNameStmt.bind 3 targetPosition
+    run saveInternalNameStmt
   pure {
     sqlite,
     deleteModule,
@@ -642,7 +766,12 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveStructure,
     saveStructureConstructor,
     saveStructureParent,
-    saveStructureField
+    saveStructureField,
+    saveStructureFieldArg,
+    saveArg,
+    saveAttr,
+    saveNameOnly,
+    saveInternalName
   }
 
 end DB
@@ -653,7 +782,9 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
   let dbFile := buildDir / dbFile
   let db ← ensureDb dbFile
   let ms1 ← IO.monoMsNow
-  db.sqlite.transaction do
+  db.sqlite.transaction (mode := .immediate) do
+    -- Collect structure field info to save in second pass (after all declarations are in name_info)
+    let mut pendingStructureFields : Array (String × Int64 × Process.StructureInfo) := #[]
     for (modName, modInfo) in doc.moduleInfo do
       let modName := modName.toString
       db.deleteModule modName
@@ -670,8 +801,10 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
           db.saveMarkdownDocstring modName pos doc.doc
         | .docInfo info =>
           let baseInfo := info.toInfo
-          db.saveInfo modName pos (infoKind info) baseInfo
-          db.saveDeclarationRange modName pos baseInfo.declarationRange
+          -- Skip saving ctorInfo here - they're saved along with their parent inductive
+          if !info.isCtorInfo then
+            db.saveInfo modName pos (infoKind info) baseInfo
+            db.saveDeclarationRange modName pos baseInfo.declarationRange
           match info with
           | .axiomInfo info =>
             db.saveAxiom modName pos info.isUnsafe
@@ -680,16 +813,24 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
           | .opaqueInfo info =>
             db.saveOpaque modName pos info.definitionSafety
           | .definitionInfo info =>
-            db.saveDefinition modName pos info.isUnsafe info.hints info.isNonComputable
+            db.saveDefinition modName pos info.isUnsafe info.hints info.isNonComputable info.equations.isSome
             if let some eqns := info.equations then
               for h : j in 0...eqns.size do
                 db.saveDefinitionEquation modName pos eqns[j] j.toInt64
           | .instanceInfo info =>
+            -- Save definition data (InstanceInfo extends DefinitionInfo)
+            db.saveDefinition modName pos info.isUnsafe info.hints info.isNonComputable info.equations.isSome
+            if let some eqns := info.equations then
+              for h : j in 0...eqns.size do
+                db.saveDefinitionEquation modName pos eqns[j] j.toInt64
+            -- Save instance-specific data
             db.saveInstance modName pos info.className.toString
             for h : j in 0...info.typeNames.size do
               db.saveInstanceArg modName pos j.toInt64 info.typeNames[j].toString
           | .inductiveInfo info =>
             db.saveInductive modName pos info.isUnsafe
+            -- Save recursors (main + aux) as internal names linking to this inductive
+            saveRecursors doc.name2ModIdx db modName pos info.name
             for ctor in info.ctors do
               let cpos := i
               i := i + 1
@@ -697,11 +838,17 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
               db.saveDeclarationRange modName cpos ctor.declarationRange
               db.saveConstructor modName cpos pos
           | .structureInfo info =>
-            i := (← (saveStructureInfo false info db modName pos).run i).2
+            -- First pass: save structure metadata (not fields)
+            i := (← (saveStructureMetadata false info db modName pos doc.name2ModIdx).run i).2
+            pendingStructureFields := pendingStructureFields.push (modName, pos, info)
           | .classInfo info =>
-            i := (← (saveStructureInfo true info db modName pos).run i).2
+            -- First pass: save structure metadata (not fields)
+            i := (← (saveStructureMetadata true info db modName pos doc.name2ModIdx).run i).2
+            pendingStructureFields := pendingStructureFields.push (modName, pos, info)
           | .classInductiveInfo info =>
             db.saveClassInductive modName pos info.isUnsafe
+            -- Save recursors (main + aux) as internal names linking to this class inductive
+            saveRecursors doc.name2ModIdx db modName pos info.name
             for ctor in info.ctors do
               let cpos := i
               i := i + 1
@@ -711,25 +858,69 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
           | .ctorInfo info =>
             -- Here we do nothing because they were inserted along with the inductive
             pure ()
+    -- Second pass: save structure fields (now that all projection functions are in name_info)
+    for (modName, pos, info) in pendingStructureFields do
+      saveStructureFields info db modName pos
   let ms2 ← IO.monoMsNow
   (← IO.FS.Handle.mk "db-timing" .append).write <| s!"{doc.moduleInfo.keysArray}\t{ms2 - ms1}ms\n".toUTF8
   pure ()
 
 where
-  saveStructureInfo (isClass : Bool) (info : Process.StructureInfo) (db : DB) (modName : String) (pos : Int64) : StateT Int64 IO Unit := do
+  -- Save all recursors (main + aux) for an inductive type
+  -- Uses name2ModIdx (from env.const2ModIdx) to check if names exist
+  saveRecursors (name2ModIdx : Std.HashMap Lean.Name Lean.ModuleIdx) (db : DB) (modName : String) (pos : Int64) (indName : Lean.Name) : IO Unit := do
+    -- Save the main recursor
+    db.saveInternalName (Lean.mkRecName indName) modName pos
+    -- Save aux recursors if they exist in the environment
+    for auxName in [Lean.mkCasesOnName indName, Lean.mkRecOnName indName, Lean.mkBRecOnName indName] do
+      if name2ModIdx.contains auxName then
+        db.saveInternalName auxName modName pos
+    -- Special case: Eq and HEq also have ndrec and ndrecOn (non-dependent versions)
+    if indName == `Eq then
+      db.saveInternalName `Eq.ndrec modName pos
+      db.saveInternalName `Eq.ndrecOn modName pos
+    if indName == `HEq then
+      db.saveInternalName `HEq.ndrec modName pos
+      db.saveInternalName `HEq.ndrecOn modName pos
+
+  -- First pass: save structure metadata (not fields)
+  saveStructureMetadata (isClass : Bool) (info : Process.StructureInfo) (db : DB) (modName : String) (pos : Int64) (name2ModIdx : Std.HashMap Lean.Name Lean.ModuleIdx) : StateT Int64 IO Unit := do
     db.saveStructure modName pos isClass
+    -- Save recursors for this structure
+    saveRecursors name2ModIdx db modName pos info.name
     modify (· + 1)
-    db.saveStructureConstructor modName pos (← get) info.ctor
+    let ctorPos := ← get
+    db.saveStructureConstructor modName pos ctorPos info.ctor
+    -- Also save to name_info for name lookups (constructor is not rendered separately)
+    -- Use the structure's declaration range for the constructor
+    db.saveNameOnly modName ctorPos "constructor" info.ctor.name info.ctor.type info.declarationRange
     let mut seq : Int32 := 0
     for parent in info.parents do
       db.saveStructureParent modName pos seq parent.projFn.toString parent.type
       seq := seq + 1
     modify (· + 1)
+    -- Skip field count to maintain position consistency
+    -- Note: We don't save projection functions here because:
+    -- - Direct fields (isDirect = true): projection function is saved when the definition is processed
+    -- - Inherited fields (isDirect = false): projection function is in a different module and will
+    --   be saved when that module is processed. The lookup at load time handles missing projections.
+    modify (· + info.fieldInfo.size.toInt64)
+
+  -- Second pass: save structure fields (after all projection functions are in name_info)
+  -- The INSERT...SELECT in saveStructureField handles the projection function lookup
+  saveStructureFields (info : Process.StructureInfo) (db : DB) (modName : String) (pos : Int64) : IO Unit := do
+    let mut fieldSeq : Int64 := 0
     for field in info.fieldInfo do
-      let fpos ← get
-      modify (· + 1)
-      db.saveStructureField modName pos fpos field.name.toString field.type field.render field.isDirect
-      if let some doc := field.doc then db.saveDocstring modName fpos doc
+      let projName := field.name.toString
+      db.saveStructureField modName pos fieldSeq projName field.type field.isDirect
+      -- Save projection function name to internal_names so it can be linked
+      -- (projection functions like _private.*.field link to their parent structure)
+      db.saveInternalName field.name modName pos
+      -- Save field args to structure_field_args
+      for h : j in 0...field.args.size do
+        let arg := field.args[j]
+        db.saveStructureFieldArg modName pos fieldSeq j.toInt64 arg.binder arg.implicit
+      fieldSeq := fieldSeq + 1
 
   infoKind : Process.DocInfo → String
     | .axiomInfo _ => "axiom"
@@ -742,3 +933,482 @@ where
     | .classInfo info => "class"
     | .classInductiveInfo info => "class inductive"
     | .ctorInfo info => "constructor"
+
+/-! ## DB Reading -/
+
+section Reading
+open Lean SQLite.Blob
+
+/-- Open a database for reading. -/
+def openDbForReading (dbFile : System.FilePath) : IO SQLite := do
+  let db ← SQLite.openWith dbFile .readonly
+  db.exec "PRAGMA busy_timeout = 50000"
+  return db
+
+/-- Read RenderedCode from a blob. -/
+def readRenderedCode (blob : ByteArray) : IO RenderedCode := do
+  match fromBinary blob with
+  | .ok code => return code
+  | .error e => throw <| IO.userError s!"Failed to deserialize RenderedCode: {e}"
+
+/-- Read VersoDocString from a blob. -/
+def readVersoDocString (blob : ByteArray) : IO VersoDocString := do
+  match fromBinary blob with
+  | .ok doc => return doc
+  | .error e => throw <| IO.userError s!"Failed to deserialize VersoDocString: {e}"
+
+/-- Get all module names from the database. -/
+def getModuleNames (db : SQLite) : IO (Array Name) := withTableName "modules (B)" do
+  let stmt ← db.prepare "SELECT name FROM modules ORDER BY name"
+  let mut names := #[]
+  while (← stmt.step) do
+    let name := (← stmt.columnText 0).toName
+    names := names.push name
+  return names
+
+/-- Get all module source URLs from the database. -/
+def getModuleSourceUrls (db : SQLite) : IO (Std.HashMap Name String) := withTableName "modules (C)" do
+  let stmt ← db.prepare "SELECT name, source_url FROM modules WHERE source_url IS NOT NULL"
+  let mut urls : Std.HashMap Name String := {}
+  while (← stmt.step) do
+    let name := (← stmt.columnText 0).toName
+    let url ← stmt.columnText 1
+    urls := urls.insert name url
+  return urls
+
+/-- Get all module imports from the database. -/
+def getModuleImports (db : SQLite) (moduleName : Name) : IO (Array Name) := withTableName "module_imports" do
+  let stmt ← db.prepare "SELECT imported FROM module_imports WHERE importer = ?"
+  stmt.bind 1 moduleName.toString
+  let mut imports := #[]
+  while (← stmt.step) do
+    let name := (← stmt.columnText 0).toName
+    imports := imports.push name
+  return imports
+
+/-- Build the name-to-module index needed for cross-linking. -/
+def buildName2ModIdx (db : SQLite) (moduleNames : Array Name) : IO (Std.HashMap Name ModuleIdx) := do
+  -- First build a map from module name string to index
+  let modNameToIdx : Std.HashMap Name ModuleIdx :=
+    moduleNames.foldl (init := {}) fun acc modName =>
+      acc.insert modName acc.size
+  -- Now query all names and their modules
+  let stmt ← db.prepare "SELECT name, module_name FROM name_info"
+  let mut result : Std.HashMap Name ModuleIdx := {}
+  while (← stmt.step) do
+    let name := (← stmt.columnText 0).toName
+    let moduleName := (← stmt.columnText 1).toName
+    if let some idx := modNameToIdx[moduleName]? then
+      result := result.insert name idx
+  -- Also add internal names (like recursors) that map to their target's module.
+  -- Only add if not already in result (name_info entries take precedence).
+  let internalStmt ← db.prepare "SELECT name, target_module FROM internal_names"
+  while (← internalStmt.step) do
+    let name := (← internalStmt.columnText 0).toName
+    if !result.contains name then
+      let targetModule := (← internalStmt.columnText 1).toName
+      if let some idx := modNameToIdx[targetModule]? then
+        result := result.insert name idx
+  return result
+
+/-- Load declaration arguments from the database. -/
+def loadArgs (db : SQLite) (moduleName : String) (position : Int64) : IO (Array Process.Arg) := withTableName "declaration_args" do
+  let stmt ← db.prepare "SELECT binder, is_implicit FROM declaration_args WHERE module_name = ? AND position = ? ORDER BY sequence"
+  stmt.bind 1 moduleName
+  stmt.bind 2 position
+  let mut args := #[]
+  while (← stmt.step) do
+    let binderBlob ← stmt.columnBlob 0
+    let binder ← readRenderedCode binderBlob
+    let isImplicit := (← stmt.columnInt64 1) != 0
+    args := args.push { binder, implicit := isImplicit }
+  return args
+
+/-- Load declaration attributes from the database. -/
+def loadAttrs (db : SQLite) (moduleName : String) (position : Int64) : IO (Array String) := withTableName "declaration_attrs" do
+  let stmt ← db.prepare "SELECT attr FROM declaration_attrs WHERE module_name = ? AND position = ? ORDER BY sequence"
+  stmt.bind 1 moduleName
+  stmt.bind 2 position
+  let mut attrs := #[]
+  while (← stmt.step) do
+    let attr ← stmt.columnText 0
+    attrs := attrs.push attr
+  return attrs
+
+/-- Load a docstring from the database. -/
+def loadDocstring (db : SQLite) (moduleName : String) (position : Int64) : IO (Option (String ⊕ VersoDocString)) := withTableName "markdown_docstrings verso_docstrings" do
+  -- Try markdown first
+  let mdStmt ← db.prepare "SELECT text FROM markdown_docstrings WHERE module_name = ? AND position = ?"
+  mdStmt.bind 1 moduleName
+  mdStmt.bind 2 position
+  if (← mdStmt.step) then
+    let text ← mdStmt.columnText 0
+    return some (.inl text)
+  -- Try verso
+  let versoStmt ← db.prepare "SELECT content FROM verso_docstrings WHERE module_name = ? AND position = ?"
+  versoStmt.bind 1 moduleName
+  versoStmt.bind 2 position
+  if (← versoStmt.step) then
+    let blob ← versoStmt.columnBlob 0
+    let doc ← readVersoDocString blob
+    return some (.inr doc)
+  return none
+
+/-- Load a declaration range from the database. -/
+def loadDeclarationRange (db : SQLite) (moduleName : String) (position : Int64) : IO (Option DeclarationRange) := withTableName "declaration_ranges" do
+  let stmt ← db.prepare "SELECT start_line, start_column, start_utf16, end_line, end_column, end_utf16 FROM declaration_ranges WHERE module_name = ? AND position = ?"
+  stmt.bind 1 moduleName
+  stmt.bind 2 position
+  if (← stmt.step) then
+    let startLine := (← stmt.columnInt64 0).toNatClampNeg
+    let startCol := (← stmt.columnInt64 1).toNatClampNeg
+    let startUtf16 := (← stmt.columnInt64 2).toNatClampNeg
+    let endLine := (← stmt.columnInt64 3).toNatClampNeg
+    let endCol := (← stmt.columnInt64 4).toNatClampNeg
+    let endUtf16 := (← stmt.columnInt64 5).toNatClampNeg
+    return some {
+      pos := ⟨startLine, startCol⟩
+      charUtf16 := startUtf16
+      endPos := ⟨endLine, endCol⟩
+      endCharUtf16 := endUtf16
+    }
+  return none
+
+/-- Load base Info from the database row. -/
+def loadInfo (db : SQLite) (moduleName : String) (position : Int64) (name : Name) (typeBlob : ByteArray) (sorried : Bool) (render : Bool) : IO Process.Info := do
+  let type ← readRenderedCode typeBlob
+  let doc ← loadDocstring db moduleName position
+  let args ← loadArgs db moduleName position
+  let attrs ← loadAttrs db moduleName position
+  let some declRange ← loadDeclarationRange db moduleName position
+    | throw <| IO.userError s!"Missing declaration range for {name}"
+  return {
+    name
+    type
+    doc
+    args
+    declarationRange := declRange
+    attrs
+    sorried
+    render
+  }
+
+/-- Load definition equations from the database.
+    Takes hasEquations flag to distinguish `none` from `some #[]`. -/
+def loadEquations (db : SQLite) (moduleName : String) (position : Int64) (hasEquations : Bool) : IO (Option (Array RenderedCode)) := withTableName "definition_equations" do
+  if !hasEquations then return none
+  let stmt ← db.prepare "SELECT code FROM definition_equations WHERE module_name = ? AND position = ? ORDER BY sequence"
+  stmt.bind 1 moduleName
+  stmt.bind 2 position
+  let mut eqns := #[]
+  while (← stmt.step) do
+    let blob ← stmt.columnBlob 0
+    let code ← readRenderedCode blob
+    eqns := eqns.push code
+  return some eqns
+
+/-- Load instance type names from the database. -/
+def loadInstanceArgs (db : SQLite) (moduleName : String) (position : Int64) : IO (Array Name) := do
+  let stmt ← db.prepare "SELECT type_name FROM instance_args WHERE module_name = ? AND position = ? ORDER BY sequence"
+  stmt.bind 1 moduleName
+  stmt.bind 2 position
+  let mut typeNames := #[]
+  while (← stmt.step) do
+    let typeName := (← stmt.columnText 0).toName
+    typeNames := typeNames.push typeName
+  return typeNames
+
+/-- Load structure parents from the database. -/
+def loadStructureParents (db : SQLite) (moduleName : String) (position : Int64) : IO (Array Process.StructureParentInfo) := do
+  let stmt ← db.prepare "SELECT projection_fn, type FROM structure_parents WHERE module_name = ? AND position = ? ORDER BY sequence"
+  stmt.bind 1 moduleName
+  stmt.bind 2 position
+  let mut parents := #[]
+  while (← stmt.step) do
+    let projFn := (← stmt.columnText 0).toName
+    let typeBlob ← stmt.columnBlob 1
+    let type ← readRenderedCode typeBlob
+    parents := parents.push { projFn, type }
+  return parents
+
+/-- Load structure field args from the database. -/
+def loadStructureFieldArgs (db : SQLite) (moduleName : String) (position : Int64) (fieldSeq : Int64) : IO (Array Process.Arg) := do
+  let stmt ← db.prepare "SELECT binder, is_implicit FROM structure_field_args WHERE module_name = ? AND position = ? AND field_sequence = ? ORDER BY arg_sequence"
+  stmt.bind 1 moduleName
+  stmt.bind 2 position
+  stmt.bind 3 fieldSeq
+  let mut args := #[]
+  while (← stmt.step) do
+    let binderBlob ← stmt.columnBlob 0
+    let binder ← readRenderedCode binderBlob
+    let isImplicit := (← stmt.columnInt64 1) != 0
+    args := args.push { binder, implicit := isImplicit }
+  return args
+
+/-- Load structure fields from the database. -/
+def loadStructureFields (db : SQLite) (moduleName : String) (position : Int64) : IO (Array Process.FieldInfo) := do
+  -- Get structure fields and look up projection function info by name
+  let stmt ← db.prepare "SELECT sequence, proj_name, type, is_direct FROM structure_fields WHERE module_name = ? AND position = ? ORDER BY sequence"
+  stmt.bind 1 moduleName
+  stmt.bind 2 position
+  let mut fields := #[]
+  while (← stmt.step) do
+    let fieldSeq := ← stmt.columnInt64 0
+    let name := (← stmt.columnText 1).toName
+    let typeBlob ← stmt.columnBlob 2
+    let type ← readRenderedCode typeBlob
+    let isDirect := (← stmt.columnInt64 3) != 0
+    -- Look up projection function by name to get its module and position
+    let projStmt ← db.prepare "SELECT module_name, position FROM name_info WHERE name = ? LIMIT 1"
+    projStmt.bind 1 name.toString
+    let (doc, attrs, declRange, render) ← if (← projStmt.step) then do
+      let projModName ← projStmt.columnText 0
+      let projPos ← projStmt.columnInt64 1
+      -- Load projection function's docstring, attrs, and declaration range
+      let doc ← loadDocstring db projModName projPos
+      let attrs ← loadAttrs db projModName projPos
+      let declRange ← loadDeclarationRange db projModName projPos
+      -- Get render flag from projection function's name_info
+      let render ← do
+        let renderStmt ← db.prepare "SELECT render FROM name_info WHERE module_name = ? AND position = ?"
+        renderStmt.bind 1 projModName
+        renderStmt.bind 2 projPos
+        if (← renderStmt.step) then
+          pure ((← renderStmt.columnInt64 0) != 0)
+        else
+          pure true
+      pure (doc, attrs, declRange, render)
+    else
+      -- Projection function not found in name_info - use defaults
+      -- This can happen for inherited fields whose parent module wasn't processed
+      pure (none, #[], none, true)
+    -- Load field-specific args from structure_field_args
+    let args ← loadStructureFieldArgs db moduleName position fieldSeq
+    fields := fields.push {
+      name
+      type
+      doc
+      args
+      declarationRange := declRange.getD default
+      attrs
+      render
+      isDirect
+    }
+  return fields
+
+/-- Load structure constructor from the database. -/
+def loadStructureConstructor (db : SQLite) (moduleName : String) (position : Int64) : IO (Option Process.NameInfo) := do
+  let stmt ← db.prepare "SELECT name, type, ctor_position FROM structure_constructors WHERE module_name = ? AND position = ?"
+  stmt.bind 1 moduleName
+  stmt.bind 2 position
+  if (← stmt.step) then
+    let name := (← stmt.columnText 0).toName
+    let typeBlob ← stmt.columnBlob 1
+    let ctorPos ← stmt.columnInt64 2
+    let type ← readRenderedCode typeBlob
+    let doc ← loadDocstring db moduleName ctorPos
+    return some { name, type, doc }
+  return none
+
+/-- Load constructors for an inductive type. -/
+def loadConstructors (db : SQLite) (moduleName : String) (position : Int64) : IO (List Process.ConstructorInfo) := do
+  let stmt ← db.prepare "SELECT c.position FROM constructors c WHERE c.module_name = ? AND c.type_position = ? ORDER BY c.position"
+  stmt.bind 1 moduleName
+  stmt.bind 2 position
+  let mut ctors := []
+  while (← stmt.step) do
+    let ctorPos ← stmt.columnInt64 0
+    -- Now load the full info for this constructor
+    let infoStmt ← db.prepare "SELECT name, type, sorried, render FROM name_info WHERE module_name = ? AND position = ?"
+    infoStmt.bind 1 moduleName
+    infoStmt.bind 2 ctorPos
+    if (← infoStmt.step) then
+      let name := (← infoStmt.columnText 0).toName
+      let typeBlob ← infoStmt.columnBlob 1
+      let sorried := (← infoStmt.columnInt64 2) != 0
+      let render := (← infoStmt.columnInt64 3) != 0
+      let info ← loadInfo db moduleName ctorPos name typeBlob sorried render
+      ctors := ctors ++ [info]
+  return ctors
+
+/-- Load a DocInfo from the database based on its kind. -/
+def loadDocInfo (db : SQLite) (moduleName : String) (position : Int64) (kind : String)
+    (name : Name) (typeBlob : ByteArray) (sorried : Bool) (render : Bool) : IO (Option Process.DocInfo) := do
+  let info ← loadInfo db moduleName position name typeBlob sorried render
+  match kind with
+  | "axiom" =>
+    let stmt ← db.prepare "SELECT is_unsafe FROM axioms WHERE module_name = ? AND position = ?"
+    stmt.bind 1 moduleName
+    stmt.bind 2 position
+    if (← stmt.step) then
+      let isUnsafe := (← stmt.columnInt64 0) != 0
+      return some <| .axiomInfo { toInfo := info, isUnsafe }
+    return none
+  | "theorem" =>
+    return some <| .theoremInfo { toInfo := info }
+  | "opaque" =>
+    let stmt ← db.prepare "SELECT safety FROM opaques WHERE module_name = ? AND position = ?"
+    stmt.bind 1 moduleName
+    stmt.bind 2 position
+    if (← stmt.step) then
+      let safetyStr ← stmt.columnText 0
+      let safety := match safetyStr with
+        | "unsafe" => .unsafe
+        | "partial" => .partial
+        | _ => .safe
+      return some <| .opaqueInfo { toInfo := info, definitionSafety := safety }
+    return none
+  | "definition" =>
+    let stmt ← db.prepare "SELECT is_unsafe, hints, is_noncomputable, has_equations FROM definitions WHERE module_name = ? AND position = ?"
+    stmt.bind 1 moduleName
+    stmt.bind 2 position
+    if (← stmt.step) then
+      let isUnsafe := (← stmt.columnInt64 0) != 0
+      let hintsStr ← stmt.columnText 1
+      let isNonComputable := (← stmt.columnInt64 2) != 0
+      let hasEquations := (← stmt.columnInt64 3) != 0
+      let hints : ReducibilityHints := match hintsStr with
+        | "opaque" => .opaque
+        | "abbrev" => .abbrev
+        | s => .regular (s.toNat?.getD 0 |>.toUInt32)
+      let equations ← loadEquations db moduleName position hasEquations
+      return some <| .definitionInfo { toInfo := info, isUnsafe, hints, equations, isNonComputable }
+    return none
+  | "instance" =>
+    let instStmt ← db.prepare "SELECT class_name FROM instances WHERE module_name = ? AND position = ?"
+    instStmt.bind 1 moduleName
+    instStmt.bind 2 position
+    if (← instStmt.step) then
+      let className := (← instStmt.columnText 0).toName
+      let defStmt ← db.prepare "SELECT is_unsafe, hints, is_noncomputable, has_equations FROM definitions WHERE module_name = ? AND position = ?"
+      defStmt.bind 1 moduleName
+      defStmt.bind 2 position
+      if (← defStmt.step) then
+        let isUnsafe := (← defStmt.columnInt64 0) != 0
+        let hintsStr ← defStmt.columnText 1
+        let isNonComputable := (← defStmt.columnInt64 2) != 0
+        let hasEquations := (← defStmt.columnInt64 3) != 0
+        let hints : ReducibilityHints := match hintsStr with
+          | "opaque" => .opaque
+          | "abbrev" => .abbrev
+          | s => .regular (s.toNat?.getD 0 |>.toUInt32)
+        let equations ← loadEquations db moduleName position hasEquations
+        let typeNames ← loadInstanceArgs db moduleName position
+        return some <| .instanceInfo { toInfo := info, isUnsafe, hints, equations, isNonComputable, className, typeNames }
+    return none
+  | "inductive" =>
+    let stmt ← db.prepare "SELECT is_unsafe FROM inductives WHERE module_name = ? AND position = ?"
+    stmt.bind 1 moduleName
+    stmt.bind 2 position
+    if (← stmt.step) then
+      let isUnsafe := (← stmt.columnInt64 0) != 0
+      let ctors ← loadConstructors db moduleName position
+      return some <| .inductiveInfo { toInfo := info, isUnsafe, ctors }
+    return none
+  | "structure" =>
+    let stmt ← db.prepare "SELECT is_class FROM structures WHERE module_name = ? AND position = ?"
+    stmt.bind 1 moduleName
+    stmt.bind 2 position
+    if (← stmt.step) then
+      let parents ← loadStructureParents db moduleName position
+      let fieldInfo ← loadStructureFields db moduleName position
+      let some ctor ← loadStructureConstructor db moduleName position
+        | return none
+      return some <| .structureInfo { toInfo := info, fieldInfo, parents, ctor }
+    return none
+  | "class" =>
+    let stmt ← db.prepare "SELECT is_class FROM structures WHERE module_name = ? AND position = ?"
+    stmt.bind 1 moduleName
+    stmt.bind 2 position
+    if (← stmt.step) then
+      let parents ← loadStructureParents db moduleName position
+      let fieldInfo ← loadStructureFields db moduleName position
+      let some ctor ← loadStructureConstructor db moduleName position
+        | return none
+      return some <| .classInfo { toInfo := info, fieldInfo, parents, ctor }
+    return none
+  | "class inductive" =>
+    let stmt ← db.prepare "SELECT is_unsafe FROM class_inductives WHERE module_name = ? AND position = ?"
+    stmt.bind 1 moduleName
+    stmt.bind 2 position
+    if (← stmt.step) then
+      let isUnsafe := (← stmt.columnInt64 0) != 0
+      let ctors ← loadConstructors db moduleName position
+      return some <| .classInductiveInfo { toInfo := info, isUnsafe, ctors }
+    return none
+  | "constructor" =>
+    -- Constructors are handled as part of their parent inductive
+    return some <| .ctorInfo info
+  | _ =>
+    return none
+
+/-- Load a module from the database. -/
+def loadModule (db : SQLite) (moduleName : Name) : IO Process.Module := do
+  let modNameStr := moduleName.toString
+  let imports ← getModuleImports db moduleName
+  -- Load all members (declarations and module docs) with their positions.
+  -- We'll sort by (declaration range, position) to maintain deterministic ordering
+  -- even when multiple declarations have the same position (which happens for
+  -- auto-generated declarations like instance defaults).
+  let stmt ← db.prepare "
+    SELECT n.position, n.kind, n.name, n.type, n.sorried, n.render
+    FROM name_info n
+    WHERE n.module_name = ?"
+  stmt.bind 1 modNameStr
+  let mut members : Array (Int64 × Process.ModuleMember) := #[]
+  while (← stmt.step) do
+    let position ← stmt.columnInt64 0
+    let kind ← stmt.columnText 1
+    let name := (← stmt.columnText 2).toName
+    let typeBlob ← stmt.columnBlob 3
+    let sorried := (← stmt.columnInt64 4) != 0
+    let render := (← stmt.columnInt64 5) != 0
+    if let some docInfo ← loadDocInfo db modNameStr position kind name typeBlob sorried render then
+      members := members.push (position, .docInfo docInfo)
+  -- Load module docs
+  let mdStmt ← db.prepare "
+    SELECT m.position, m.text
+    FROM markdown_docstrings m
+    WHERE m.module_name = ?
+      AND m.position NOT IN (SELECT position FROM name_info WHERE module_name = ?)"
+  mdStmt.bind 1 modNameStr
+  mdStmt.bind 2 modNameStr
+  while (← mdStmt.step) do
+    let position ← mdStmt.columnInt64 0
+    let doc ← mdStmt.columnText 1
+    if let some declRange ← loadDeclarationRange db modNameStr position then
+      members := members.push (position, .modDoc { doc, declarationRange := declRange })
+  -- Sort by (declaration range, position) to maintain deterministic ordering.
+  -- Primary key: declaration range position (line, column) using Position.lt
+  -- Secondary key: DB position (to break ties when ranges are equal)
+  let sortedMembers := members.qsort fun (pos1, m1) (pos2, m2) =>
+    let r1 := m1.getDeclarationRange.pos
+    let r2 := m2.getDeclarationRange.pos
+    if Position.lt r1 r2 then true
+    else if Position.lt r2 r1 then false
+    else pos1 < pos2  -- Tiebreaker: use DB position
+  return { name := moduleName, members := sortedMembers.map (·.2), imports }
+
+/-- Load all modules from the database. -/
+def loadAllModules (db : SQLite) (moduleNames : Array Name) : IO (Std.HashMap Name Process.Module) := do
+  let mut modules : Std.HashMap Name Process.Module := {}
+  for modName in moduleNames do
+    let module ← loadModule db modName
+    modules := modules.insert modName module
+  return modules
+
+/-- Result of loading from the database, including source URLs. -/
+structure LoadFromDbResult where
+  result : Process.AnalyzerResult
+  sourceUrls : Std.HashMap Name String
+
+/-- Load a complete AnalyzerResult from the database. -/
+def loadFromDb (dbFile : System.FilePath) : IO LoadFromDbResult := do
+  let db ← openDbForReading dbFile
+  let moduleNames ← getModuleNames db
+  let sourceUrls ← getModuleSourceUrls db
+  let name2ModIdx ← buildName2ModIdx db moduleNames
+  let moduleInfo ← loadAllModules db moduleNames
+  return { result := { name2ModIdx, moduleNames, moduleInfo }, sourceUrls }
+
+end Reading

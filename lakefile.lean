@@ -346,3 +346,32 @@ library_facet docsHeader (lib) : FilePath := do
             args := #["headerData", "--build", buildDir.toString]
           }
         return dataFile
+
+/-- Generate documentation from the SQLite database.
+This facet depends on the regular `docs` facet to ensure the database is populated first,
+then generates HTML from the database into a separate directory for comparison. -/
+library_facet dbdocs (lib) : FilePath := do
+  -- First, ensure the regular docs are built (which populates the DB)
+  let docsJob ← fetch <| lib.facet `docs
+  let exeJob ← «doc-gen4».fetch
+  let buildDir := (← getRootPackage).buildDir
+  let dbPath := buildDir / "lean-docs.db"
+  let outputDir := buildDir / "doc-from-db"
+  let outputDataDir := outputDir / "doc-data"
+  let outputMarker := outputDir / "doc" / "index.html"
+  docsJob.bindM fun _ => do
+    exeJob.mapM fun exeFile => do
+      buildFileUnlessUpToDate' outputMarker do
+        -- Copy references.json to the DB output directory so navbar includes references link
+        IO.FS.createDirAll outputDataDir
+        let srcRefsFile := buildDir / "doc-data" / "references.json"
+        let dstRefsFile := outputDataDir / "references.json"
+        if ← srcRefsFile.pathExists then
+          IO.FS.writeFile dstRefsFile (← IO.FS.readFile srcRefsFile)
+        logInfo s!"Generating documentation from database: {dbPath}"
+        proc {
+          cmd := exeFile.toString
+          args := #["fromDb", "--build", outputDir.toString, dbPath.toString]
+          env := ← getAugmentedEnv
+        }
+      return outputMarker
