@@ -48,4 +48,4 @@ popd
 
 # Benchmark documentation generation
 env DOCGEN_SRC="file" "$REPO_ROOT/$BENCH/measure.py" -t mathlib-docs -m instructions -m maxrss -m task-clock -m wall-clock -- \
-  lake --dir "$TMPDIR/mathproject" build Mathlib:docs
+  lake --dir "$TMPDIR/mathproject" build Mathlib:dbdocs
