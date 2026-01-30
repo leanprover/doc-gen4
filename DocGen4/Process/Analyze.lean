@@ -16,13 +16,15 @@ namespace DocGen4.Process
 
 open Lean Meta
 
+deriving instance Hashable for ModuleDoc
+
 /--
 Member of a module, either a declaration or some module doc string.
 -/
 inductive ModuleMember where
 | docInfo (info : DocInfo) : ModuleMember
 | modDoc (doc : ModuleDoc) : ModuleMember
-deriving Inhabited
+deriving Inhabited, Hashable
 
 /--
 A Lean module.
@@ -37,7 +39,7 @@ structure Module where
   -/
   members : Array ModuleMember
   imports : Array Name
-  deriving Inhabited
+  deriving Inhabited, Hashable
 
 /--
 The result of running a full doc-gen analysis on a project.

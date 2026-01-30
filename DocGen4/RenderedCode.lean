@@ -76,13 +76,15 @@ where
       .append <$> FromBinary.deserializer
     | other => throw s!"Expected 0...3 for `TaggedText`, got {other}"
 
+deriving instance Hashable for TaggedText
+
 /--
 A simplified representation of code with semantic tags for rendering.
 Unlike `CodeWithInfos`, this only contains the information needed for HTML rendering
 (links to declarations, syntax highlighting) and can be serialized to/from the database.
 -/
 def RenderedCode := Lean.Widget.TaggedText RenderedCode.Tag
-deriving Inhabited, BEq, Repr, ToBinary, FromBinary
+deriving Inhabited, BEq, Repr, ToBinary, FromBinary, Hashable
 
 def RenderedCode.empty : RenderedCode := .append #[]
 

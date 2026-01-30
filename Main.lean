@@ -22,12 +22,15 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
     | some dir => dir.as! String
     | none => ".lake/build"
   let dbFile? := p.flag? "db" |>.map (·.as! String)
+  let hashDir := match p.flag? "hash-dir" with
+    | some dir => dir.as! String
+    | none => s!"{buildDir}/doc-hashes"
   let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
   let sourceUri := p.positionalArg! "sourceUri" |>.as! String
   let (doc, hierarchy) ← load <| .analyzeConcreteModules relevantModules
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
   if let some dbFile := dbFile? then
-    updateModuleDb doc buildDir dbFile (some sourceUri)
+    updateModuleDb doc buildDir dbFile hashDir (some sourceUri)
   discard <| htmlOutputResults baseConfig doc (some sourceUri)
   return 0
 
@@ -45,12 +48,15 @@ def runGenCoreCmd (p : Parsed) : IO UInt32 := do
     | some dir => dir.as! String
     | none => ".lake/build"
   let dbFile? := p.flag? "db" |>.map (·.as! String)
+  let hashDir := match p.flag? "hash-dir" with
+    | some dir => dir.as! String
+    | none => s!"{buildDir}/doc-hashes"
   let manifestOutput? := (p.flag? "manifest").map (·.as! String)
   let module := p.positionalArg! "module" |>.as! String |> String.toName
   let (doc, hierarchy) ← load <| .analyzePrefixModules module
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
   if let some dbFile := dbFile? then
-    updateModuleDb doc buildDir dbFile none
+    updateModuleDb doc buildDir dbFile hashDir none
   let outputs ← htmlOutputResults baseConfig doc none
   if let .some manifestOutput := manifestOutput? then
     IO.FS.writeFile manifestOutput (Lean.toJson outputs).compress
@@ -131,6 +137,7 @@ def singleCmd := `[Cli|
   FLAGS:
     b, build : String; "Build directory."
     db : String; "Database"
+    "hash-dir" : String; "Directory for module hash files (default: <build>/doc-hashes)"
 
   ARGS:
     module : String; "The module to generate the HTML for. Does not have to be part of topLevelModules."
@@ -152,6 +159,7 @@ def genCoreCmd := `[Cli|
   FLAGS:
     b, build : String; "Build directory."
     db : String; "Database"
+    "hash-dir" : String; "Directory for module hash files (default: <build>/doc-hashes)"
     m, manifest : String; "Manifest output, to list all the files generated."
 
   ARGS:

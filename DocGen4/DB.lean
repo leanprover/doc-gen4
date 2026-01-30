@@ -204,11 +204,18 @@ instance : SQLite.QueryParam VersoDocString := .asBlob
 
 end
 
+/-- Hash of a module's input data, used for Lake trace integration.
+    Changes to module content cause changes to the hash file, triggering rebuilds of dependents. -/
+structure ModuleHash where
+  moduleName : String
+  hash : UInt64
+  deriving Lean.ToJson, Lean.FromJson, Inhabited
+
 def getDb (dbFile : System.FilePath) : IO SQLite := do
   -- SQLite atomically creates the DB file, and the schema and journal settings here are applied
   -- idempotently. This avoids DB creation race conditions.
   let db ← SQLite.openWith dbFile .readWriteCreate
-  db.exec "PRAGMA busy_timeout = 5000"
+  db.exec "PRAGMA busy_timeout = 60000"  -- 60 seconds for parallel builds
   db.exec "PRAGMA journal_mode = WAL"
   db.exec "PRAGMA foreign_keys = ON"
   try
@@ -307,6 +314,9 @@ CREATE TABLE IF NOT EXISTS internal_names (
   FOREIGN KEY (target_module, target_position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
 );
 
+-- Index for CASCADE deletes: when name_info rows are deleted, find matching internal_names
+CREATE INDEX IF NOT EXISTS idx_internal_names_target ON internal_names(target_module, target_position);
+
 CREATE TABLE IF NOT EXISTS constructors (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
@@ -315,6 +325,9 @@ CREATE TABLE IF NOT EXISTS constructors (
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
   FOREIGN KEY (module_name, type_position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
 );
+
+-- Index for CASCADE deletes on the second FK (type_position)
+CREATE INDEX IF NOT EXISTS idx_constructors_type_pos ON constructors(module_name, type_position);
 
 CREATE TABLE IF NOT EXISTS inductives (
   module_name TEXT NOT NULL,
@@ -458,11 +471,14 @@ CREATE TABLE IF NOT EXISTS declaration_attrs (
 );
 "#
 
-def withTableName (tableName : String) (act : IO α) : IO α :=
+def withDbContext (context : String) (act : IO α) : IO α := do
+  let ms ← IO.monoMsNow
   try
     act
   catch
-    | e => throw <| .userError s!"Exception while modifying `{tableName}`: {e.toString}"
+    | e =>
+      let ms' ← IO.monoMsNow
+      throw <| .userError s!"Exception in `{context}` after {ms' - ms}ms: {e.toString}"
 
 structure DB where
   sqlite : SQLite
@@ -533,28 +549,28 @@ instance : SQLite.QueryParam RenderedCode where
 def ensureDb (dbFile : System.FilePath) : IO DB := do
   let sqlite ← getDb dbFile
   let deleteModuleStmt ← sqlite.prepare "DELETE FROM modules WHERE name = ?"
-  let deleteModule modName := withTableName "modules" do
+  let deleteModule modName := withDbContext "write:delete:modules" do
     deleteModuleStmt.bind 1 modName
     run deleteModuleStmt
   let saveModuleStmt ← sqlite.prepare "INSERT INTO modules (name, source_url) VALUES (?, ?)"
-  let saveModule modName sourceUrl? := withTableName "modules" do
+  let saveModule modName sourceUrl? := withDbContext "write:insert:modules" do
     saveModuleStmt.bind 1 modName
     saveModuleStmt.bind 2 sourceUrl?
     run saveModuleStmt
   -- This is INSERT OR IGNORE because the module system often results in multiple imports of the same module (e.g. as meta)
   let saveImportStmt ← sqlite.prepare "INSERT OR IGNORE INTO module_imports (importer, imported) VALUES (?, ?)"
-  let saveImport modName imported := withTableName "module_imports" do
+  let saveImport modName imported := withDbContext "write:insert:module_imports" do
     saveImportStmt.bind 1 modName
     saveImportStmt.bind 2 imported.toString
     run saveImportStmt
   let saveMarkdownDocstringStmt ← sqlite.prepare "INSERT INTO markdown_docstrings (module_name, position, text) VALUES (?, ?, ?)"
-  let saveMarkdownDocstring modName position text := withTableName "markdown_docstrings" do
+  let saveMarkdownDocstring modName position text := withDbContext "write:insert:markdown_docstrings" do
     saveMarkdownDocstringStmt.bind 1 modName
     saveMarkdownDocstringStmt.bind 2 position
     saveMarkdownDocstringStmt.bind 3 text
     run saveMarkdownDocstringStmt
   let saveVersoDocstringStmt ← sqlite.prepare "INSERT INTO verso_docstrings (module_name, position, content) VALUES (?, ?, ?)"
-  let saveVersoDocstring modName position text := withTableName "verso_docstrings" do
+  let saveVersoDocstring modName position text := withDbContext "write:insert:verso_docstrings" do
     saveVersoDocstringStmt.bind 1 modName
     saveVersoDocstringStmt.bind 2 position
     saveVersoDocstringStmt.bind 3 text
@@ -562,7 +578,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
   let saveDeclarationRangeStmt ←
     sqlite.prepare
       "INSERT INTO declaration_ranges (module_name, position, start_line, start_column, start_utf16, end_line, end_column, end_utf16) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  let saveDeclarationRange modName position (declRange : Lean.DeclarationRange) := withTableName "declaration_ranges" do
+  let saveDeclarationRange modName position (declRange : Lean.DeclarationRange) := withDbContext "write:insert:declaration_ranges" do
     saveDeclarationRangeStmt.bind 1 modName
     saveDeclarationRangeStmt.bind 2 position
     saveDeclarationRangeStmt.bind 3 declRange.pos.line
@@ -575,7 +591,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
   let saveInfoStmt ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, ?, ?)"
   let saveArgStmt' ← sqlite.prepare "INSERT INTO declaration_args (module_name, position, sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?)"
   let saveAttrStmt' ← sqlite.prepare "INSERT INTO declaration_attrs (module_name, position, sequence, attr) VALUES (?, ?, ?, ?)"
-  let saveInfo modName position kind (info : Process.Info) := withTableName "name_info" do
+  let saveInfo modName position kind (info : Process.Info) := withDbContext "write:insert:name_info" do
     saveInfoStmt.bind 1 modName
     saveInfoStmt.bind 2 position
     saveInfoStmt.bind 3 kind
@@ -591,7 +607,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     -- Save args
     for h : j in 0...info.args.size do
       let arg := info.args[j]
-      withTableName "declaration_args" do
+      withDbContext "write:insert:declaration_args:info" do
         saveArgStmt'.bind 1 modName
         saveArgStmt'.bind 2 position
         saveArgStmt'.bind 3 j.toInt64
@@ -601,26 +617,26 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     -- Save attrs
     for h : j in 0...info.attrs.size do
       let attr := info.attrs[j]
-      withTableName "declaration_attrs" do
+      withDbContext "write:insert:declaration_attrs:info" do
         saveAttrStmt'.bind 1 modName
         saveAttrStmt'.bind 2 position
         saveAttrStmt'.bind 3 j.toInt64
         saveAttrStmt'.bind 4 attr
         run saveAttrStmt'
   let saveAxiomStmt ← sqlite.prepare "INSERT INTO axioms (module_name, position, is_unsafe) VALUES (?, ?, ?)"
-  let saveAxiom modName position isUnsafe := withTableName "axioms" do
+  let saveAxiom modName position isUnsafe := withDbContext "write:insert:axioms" do
     saveAxiomStmt.bind 1 modName
     saveAxiomStmt.bind 2 position
     saveAxiomStmt.bind 3 isUnsafe
     run saveAxiomStmt
   let saveOpaqueStmt ← sqlite.prepare "INSERT INTO opaques (module_name, position, safety) VALUES (?, ?, ?)"
-  let saveOpaque modName position safety := withTableName "opaques" do
+  let saveOpaque modName position safety := withDbContext "write:insert:opaques" do
     saveOpaqueStmt.bind 1 modName
     saveOpaqueStmt.bind 2 position
     saveOpaqueStmt.bind 3 safety
     run saveOpaqueStmt
   let saveDefinitionStmt ← sqlite.prepare "INSERT INTO definitions (module_name, position, is_unsafe, hints, is_noncomputable, has_equations) VALUES (?, ?, ?, ?, ?, ?)"
-  let saveDefinition modName position isUnsafe hints isNonComputable hasEquations := withTableName "definitions" do
+  let saveDefinition modName position isUnsafe hints isNonComputable hasEquations := withDbContext "write:insert:definitions" do
     saveDefinitionStmt.bind 1 modName
     saveDefinitionStmt.bind 2 position
     saveDefinitionStmt.bind 3 isUnsafe
@@ -629,51 +645,51 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveDefinitionStmt.bind 6 hasEquations
     run saveDefinitionStmt
   let saveDefinitionEquationStmt ← sqlite.prepare "INSERT INTO definition_equations (module_name, position, code, sequence) VALUES (?, ?, ?, ?)"
-  let saveDefinitionEquation modName position (code : RenderedCode) sequence := withTableName "definition_equations" do
+  let saveDefinitionEquation modName position (code : RenderedCode) sequence := withDbContext "write:insert:definition_equations" do
     saveDefinitionEquationStmt.bind 1 modName
     saveDefinitionEquationStmt.bind 2 position
     saveDefinitionEquationStmt.bind 3 code
     saveDefinitionEquationStmt.bind 4 sequence
     run saveDefinitionEquationStmt
   let saveInstanceStmt ← sqlite.prepare "INSERT INTO instances (module_name, position, class_name) VALUES (?, ?, ?)"
-  let saveInstance modName position className := withTableName "instances" do
+  let saveInstance modName position className := withDbContext "write:insert:instances" do
     saveInstanceStmt.bind 1 modName
     saveInstanceStmt.bind 2 position
     saveInstanceStmt.bind 3 className
     run saveInstanceStmt
   let saveInstanceArgStmt ← sqlite.prepare "INSERT INTO instance_args (module_name, position, sequence, type_name) VALUES (?, ?, ?, ?)"
-  let saveInstanceArg modName position sequence typeName := withTableName "instance_args" do
+  let saveInstanceArg modName position sequence typeName := withDbContext "write:insert:instance_args" do
     saveInstanceArgStmt.bind 1 modName
     saveInstanceArgStmt.bind 2 position
     saveInstanceArgStmt.bind 3 sequence
     saveInstanceArgStmt.bind 4 typeName
     run saveInstanceArgStmt
   let saveInductiveStmt ← sqlite.prepare "INSERT INTO inductives (module_name, position, is_unsafe) VALUES (?, ?, ?)"
-  let saveInductive modName position isUnsafe := withTableName "inductives" do
+  let saveInductive modName position isUnsafe := withDbContext "write:insert:inductives" do
     saveInductiveStmt.bind 1 modName
     saveInductiveStmt.bind 2 position
     saveInductiveStmt.bind 3 isUnsafe
     run saveInductiveStmt
   let saveConstructorStmt ← sqlite.prepare "INSERT INTO constructors (module_name, position, type_position) VALUES (?, ?, ?)"
-  let saveConstructor modName position typePosition := withTableName "constructors" do
+  let saveConstructor modName position typePosition := withDbContext "write:insert:constructors" do
     saveConstructorStmt.bind 1 modName
     saveConstructorStmt.bind 2 position
     saveConstructorStmt.bind 3 typePosition
     run saveConstructorStmt
   let saveClassInductiveStmt ← sqlite.prepare "INSERT INTO class_inductives (module_name, position, is_unsafe) VALUES (?, ?, ?)"
-  let saveClassInductive modName position isUnsafe := withTableName "class_inductives" do
+  let saveClassInductive modName position isUnsafe := withDbContext "write:insert:class_inductives" do
     saveClassInductiveStmt.bind 1 modName
     saveClassInductiveStmt.bind 2 position
     saveClassInductiveStmt.bind 3 isUnsafe
     run saveClassInductiveStmt
   let saveStructureStmt ← sqlite.prepare "INSERT INTO structures (module_name, position, is_class) VALUES (?, ?, ?)"
-  let saveStructure modName position isClass := withTableName "structures" do
+  let saveStructure modName position isClass := withDbContext "write:insert:structures" do
     saveStructureStmt.bind 1 modName
     saveStructureStmt.bind 2 position
     saveStructureStmt.bind 3 isClass
     run saveStructureStmt
   let saveStructureConstructorStmt ← sqlite.prepare "INSERT INTO structure_constructors (module_name, position, ctor_position, name, type) VALUES (?, ?, ?, ?, ?)"
-  let saveStructureConstructor modName position ctorPos info := withTableName "structure_constructors" do
+  let saveStructureConstructor modName position ctorPos info := withDbContext "write:insert:structure_constructors" do
     saveStructureConstructorStmt.bind 1 modName
     saveStructureConstructorStmt.bind 2 position
     saveStructureConstructorStmt.bind 3 ctorPos
@@ -686,7 +702,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     | none => pure ()
 
   let saveStructureParentStmt ← sqlite.prepare "INSERT INTO structure_parents (module_name, position, sequence, projection_fn, type) VALUES (?, ?, ?, ?, ?)"
-  let saveStructureParent modName position sequence projectionFn (type : RenderedCode) := withTableName "structure_parents" do
+  let saveStructureParent modName position sequence projectionFn (type : RenderedCode) := withDbContext "write:insert:structure_parents" do
     saveStructureParentStmt.bind 1 modName
     saveStructureParentStmt.bind 2 position
     saveStructureParentStmt.bind 3 sequence
@@ -695,7 +711,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     run saveStructureParentStmt
   -- Store projection function name directly; lookup happens at load time
   let saveStructureFieldStmt ← sqlite.prepare "INSERT INTO structure_fields (module_name, position, sequence, proj_name, type, is_direct) VALUES (?, ?, ?, ?, ?, ?)"
-  let saveStructureField modName position sequence projName (type : RenderedCode) isDirect := withTableName "structure_fields" do
+  let saveStructureField modName position sequence projName (type : RenderedCode) isDirect := withDbContext "write:insert:structure_fields" do
     saveStructureFieldStmt.bind 1 modName
     saveStructureFieldStmt.bind 2 position
     saveStructureFieldStmt.bind 3 sequence
@@ -704,7 +720,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveStructureFieldStmt.bind 6 isDirect
     run saveStructureFieldStmt
   let saveStructureFieldArgStmt ← sqlite.prepare "INSERT INTO structure_field_args (module_name, position, field_sequence, arg_sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?, ?)"
-  let saveStructureFieldArg modName position fieldSeq argSeq (binder : RenderedCode) isImplicit := withTableName "structure_field_args" do
+  let saveStructureFieldArg modName position fieldSeq argSeq (binder : RenderedCode) isImplicit := withDbContext "write:insert:structure_field_args" do
     saveStructureFieldArgStmt.bind 1 modName
     saveStructureFieldArgStmt.bind 2 position
     saveStructureFieldArgStmt.bind 3 fieldSeq
@@ -713,7 +729,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveStructureFieldArgStmt.bind 6 isImplicit
     run saveStructureFieldArgStmt
   let saveArgStmt ← sqlite.prepare "INSERT INTO declaration_args (module_name, position, sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?)"
-  let saveArg modName position sequence (binder : RenderedCode) isImplicit := withTableName "declaration_args" do
+  let saveArg modName position sequence (binder : RenderedCode) isImplicit := withDbContext "write:insert:declaration_args" do
     saveArgStmt.bind 1 modName
     saveArgStmt.bind 2 position
     saveArgStmt.bind 3 sequence
@@ -721,7 +737,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveArgStmt.bind 5 isImplicit
     run saveArgStmt
   let saveAttrStmt ← sqlite.prepare "INSERT INTO declaration_attrs (module_name, position, sequence, attr) VALUES (?, ?, ?, ?)"
-  let saveAttr modName position sequence attr := withTableName "declaration_attrs" do
+  let saveAttr modName position sequence attr := withDbContext "write:insert:declaration_attrs" do
     saveAttrStmt.bind 1 modName
     saveAttrStmt.bind 2 position
     saveAttrStmt.bind 3 sequence
@@ -729,7 +745,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     run saveAttrStmt
   -- For saving minimal info to name_info for name lookups only (not rendering)
   let saveNameOnlyStmt ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, 0, 0)"
-  let saveNameOnly modName position kind (name : Lean.Name) (type : RenderedCode) (declRange : Lean.DeclarationRange) := withTableName "name_info" do
+  let saveNameOnly modName position kind (name : Lean.Name) (type : RenderedCode) (declRange : Lean.DeclarationRange) := withDbContext "write:insert:name_info:nameonly" do
     saveNameOnlyStmt.bind 1 modName
     saveNameOnlyStmt.bind 2 position
     saveNameOnlyStmt.bind 3 kind
@@ -740,7 +756,7 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveDeclarationRange modName position declRange
   -- For saving internal names (like recursors) that link to their target declaration
   let saveInternalNameStmt ← sqlite.prepare "INSERT OR IGNORE INTO internal_names (name, target_module, target_position) VALUES (?, ?, ?)"
-  let saveInternalName (name : Lean.Name) (targetModule : String) (targetPosition : Int64) := withTableName "internal_names" do
+  let saveInternalName (name : Lean.Name) (targetModule : String) (targetPosition : Int64) := withDbContext "write:insert:internal_names" do
     saveInternalNameStmt.bind 1 name.toString
     saveInternalNameStmt.bind 2 targetModule
     saveInternalNameStmt.bind 3 targetPosition
@@ -778,91 +794,98 @@ end DB
 
 open DB
 
-def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (dbFile : String) (sourceUrl? : Option String) : IO Unit := do
+def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (dbFile : String)
+    (hashDir : System.FilePath) (sourceUrl? : Option String) : IO Unit := do
   let dbFile := buildDir / dbFile
   let db ← ensureDb dbFile
-  let ms1 ← IO.monoMsNow
-  db.sqlite.transaction (mode := .immediate) do
-    -- Collect structure field info to save in second pass (after all declarations are in name_info)
-    let mut pendingStructureFields : Array (String × Int64 × Process.StructureInfo) := #[]
-    for (modName, modInfo) in doc.moduleInfo do
-      let modName := modName.toString
-      db.deleteModule modName
-      db.saveModule modName sourceUrl?
+  IO.FS.createDirAll hashDir
+  for (modName, modInfo) in doc.moduleInfo do
+    let modNameStr := modName.toString
+    -- Hash input BEFORE transaction (no DB lock needed)
+    let inputHash := hash modInfo
+    -- Each module gets its own transaction to reduce lock contention
+    let _ ← withDbContext s!"transaction:immediate:{modNameStr}" <| db.sqlite.transaction (mode := .immediate) do
+      -- Collect structure field info to save in second pass (after all declarations are in name_info)
+      let mut pendingStructureFields : Array (Int64 × Process.StructureInfo) := #[]
+      db.deleteModule modNameStr
+      db.saveModule modNameStr sourceUrl?
       for imported in modInfo.imports do
-        db.saveImport modName imported
+        db.saveImport modNameStr imported
       let mut i : Int64 := 0
       for mem in modInfo.members do
         let pos := i
         i := i + 1
         match mem with
         | .modDoc doc =>
-          db.saveDeclarationRange modName pos doc.declarationRange
-          db.saveMarkdownDocstring modName pos doc.doc
+          db.saveDeclarationRange modNameStr pos doc.declarationRange
+          db.saveMarkdownDocstring modNameStr pos doc.doc
         | .docInfo info =>
           let baseInfo := info.toInfo
           -- Skip saving ctorInfo here - they're saved along with their parent inductive
           if !info.isCtorInfo then
-            db.saveInfo modName pos (infoKind info) baseInfo
-            db.saveDeclarationRange modName pos baseInfo.declarationRange
+            db.saveInfo modNameStr pos (infoKind info) baseInfo
+            db.saveDeclarationRange modNameStr pos baseInfo.declarationRange
           match info with
           | .axiomInfo info =>
-            db.saveAxiom modName pos info.isUnsafe
+            db.saveAxiom modNameStr pos info.isUnsafe
           | .theoremInfo _info => -- No extra info here
             pure ()
           | .opaqueInfo info =>
-            db.saveOpaque modName pos info.definitionSafety
+            db.saveOpaque modNameStr pos info.definitionSafety
           | .definitionInfo info =>
-            db.saveDefinition modName pos info.isUnsafe info.hints info.isNonComputable info.equations.isSome
+            db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable info.equations.isSome
             if let some eqns := info.equations then
               for h : j in 0...eqns.size do
-                db.saveDefinitionEquation modName pos eqns[j] j.toInt64
+                db.saveDefinitionEquation modNameStr pos eqns[j] j.toInt64
           | .instanceInfo info =>
             -- Save definition data (InstanceInfo extends DefinitionInfo)
-            db.saveDefinition modName pos info.isUnsafe info.hints info.isNonComputable info.equations.isSome
+            db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable info.equations.isSome
             if let some eqns := info.equations then
               for h : j in 0...eqns.size do
-                db.saveDefinitionEquation modName pos eqns[j] j.toInt64
+                db.saveDefinitionEquation modNameStr pos eqns[j] j.toInt64
             -- Save instance-specific data
-            db.saveInstance modName pos info.className.toString
+            db.saveInstance modNameStr pos info.className.toString
             for h : j in 0...info.typeNames.size do
-              db.saveInstanceArg modName pos j.toInt64 info.typeNames[j].toString
+              db.saveInstanceArg modNameStr pos j.toInt64 info.typeNames[j].toString
           | .inductiveInfo info =>
-            db.saveInductive modName pos info.isUnsafe
+            db.saveInductive modNameStr pos info.isUnsafe
             -- Save recursors (main + aux) as internal names linking to this inductive
-            saveRecursors doc.name2ModIdx db modName pos info.name
+            saveRecursors doc.name2ModIdx db modNameStr pos info.name
             for ctor in info.ctors do
               let cpos := i
               i := i + 1
-              db.saveInfo modName cpos "constructor" ctor
-              db.saveDeclarationRange modName cpos ctor.declarationRange
-              db.saveConstructor modName cpos pos
+              db.saveInfo modNameStr cpos "constructor" ctor
+              db.saveDeclarationRange modNameStr cpos ctor.declarationRange
+              db.saveConstructor modNameStr cpos pos
           | .structureInfo info =>
             -- First pass: save structure metadata (not fields)
-            i := (← (saveStructureMetadata false info db modName pos doc.name2ModIdx).run i).2
-            pendingStructureFields := pendingStructureFields.push (modName, pos, info)
+            i := (← (saveStructureMetadata false info db modNameStr pos doc.name2ModIdx).run i).2
+            pendingStructureFields := pendingStructureFields.push (pos, info)
           | .classInfo info =>
             -- First pass: save structure metadata (not fields)
-            i := (← (saveStructureMetadata true info db modName pos doc.name2ModIdx).run i).2
-            pendingStructureFields := pendingStructureFields.push (modName, pos, info)
+            i := (← (saveStructureMetadata true info db modNameStr pos doc.name2ModIdx).run i).2
+            pendingStructureFields := pendingStructureFields.push (pos, info)
           | .classInductiveInfo info =>
-            db.saveClassInductive modName pos info.isUnsafe
+            db.saveClassInductive modNameStr pos info.isUnsafe
             -- Save recursors (main + aux) as internal names linking to this class inductive
-            saveRecursors doc.name2ModIdx db modName pos info.name
+            saveRecursors doc.name2ModIdx db modNameStr pos info.name
             for ctor in info.ctors do
               let cpos := i
               i := i + 1
-              db.saveInfo modName cpos "constructor" ctor
-              db.saveDeclarationRange modName cpos ctor.declarationRange
-              db.saveConstructor modName cpos pos
+              db.saveInfo modNameStr cpos "constructor" ctor
+              db.saveDeclarationRange modNameStr cpos ctor.declarationRange
+              db.saveConstructor modNameStr cpos pos
           | .ctorInfo info =>
             -- Here we do nothing because they were inserted along with the inductive
             pure ()
-    -- Second pass: save structure fields (now that all projection functions are in name_info)
-    for (modName, pos, info) in pendingStructureFields do
-      saveStructureFields info db modName pos
-  let ms2 ← IO.monoMsNow
-  (← IO.FS.Handle.mk "db-timing" .append).write <| s!"{doc.moduleInfo.keysArray}\t{ms2 - ms1}ms\n".toUTF8
+      -- Second pass: save structure fields (now that all projection functions are in name_info)
+      for (pos, info) in pendingStructureFields do
+        saveStructureFields info db modNameStr pos
+      pure ()
+    -- Write hash file AFTER transaction commits successfully
+    let hashFile := hashDir / s!"{modNameStr}.dbhash"
+    let moduleHash : ModuleHash := { moduleName := modNameStr, hash := inputHash }
+    IO.FS.writeFile hashFile (Lean.toJson moduleHash).pretty
   pure ()
 
 where
@@ -958,7 +981,7 @@ def readVersoDocString (blob : ByteArray) : IO VersoDocString := do
   | .error e => throw <| IO.userError s!"Failed to deserialize VersoDocString: {e}"
 
 /-- Get all module names from the database. -/
-def getModuleNames (db : SQLite) : IO (Array Name) := withTableName "modules (B)" do
+def getModuleNames (db : SQLite) : IO (Array Name) := withDbContext "read:modules:names" do
   let stmt ← db.prepare "SELECT name FROM modules ORDER BY name"
   let mut names := #[]
   while (← stmt.step) do
@@ -967,7 +990,7 @@ def getModuleNames (db : SQLite) : IO (Array Name) := withTableName "modules (B)
   return names
 
 /-- Get all module source URLs from the database. -/
-def getModuleSourceUrls (db : SQLite) : IO (Std.HashMap Name String) := withTableName "modules (C)" do
+def getModuleSourceUrls (db : SQLite) : IO (Std.HashMap Name String) := withDbContext "read:modules:source_urls" do
   let stmt ← db.prepare "SELECT name, source_url FROM modules WHERE source_url IS NOT NULL"
   let mut urls : Std.HashMap Name String := {}
   while (← stmt.step) do
@@ -977,7 +1000,7 @@ def getModuleSourceUrls (db : SQLite) : IO (Std.HashMap Name String) := withTabl
   return urls
 
 /-- Get all module imports from the database. -/
-def getModuleImports (db : SQLite) (moduleName : Name) : IO (Array Name) := withTableName "module_imports" do
+def getModuleImports (db : SQLite) (moduleName : Name) : IO (Array Name) := withDbContext "read:module_imports" do
   let stmt ← db.prepare "SELECT imported FROM module_imports WHERE importer = ?"
   stmt.bind 1 moduleName.toString
   let mut imports := #[]
@@ -1012,7 +1035,7 @@ def buildName2ModIdx (db : SQLite) (moduleNames : Array Name) : IO (Std.HashMap 
   return result
 
 /-- Load declaration arguments from the database. -/
-def loadArgs (db : SQLite) (moduleName : String) (position : Int64) : IO (Array Process.Arg) := withTableName "declaration_args" do
+def loadArgs (db : SQLite) (moduleName : String) (position : Int64) : IO (Array Process.Arg) := withDbContext "read:declaration_args" do
   let stmt ← db.prepare "SELECT binder, is_implicit FROM declaration_args WHERE module_name = ? AND position = ? ORDER BY sequence"
   stmt.bind 1 moduleName
   stmt.bind 2 position
@@ -1025,7 +1048,7 @@ def loadArgs (db : SQLite) (moduleName : String) (position : Int64) : IO (Array 
   return args
 
 /-- Load declaration attributes from the database. -/
-def loadAttrs (db : SQLite) (moduleName : String) (position : Int64) : IO (Array String) := withTableName "declaration_attrs" do
+def loadAttrs (db : SQLite) (moduleName : String) (position : Int64) : IO (Array String) := withDbContext "read:declaration_attrs" do
   let stmt ← db.prepare "SELECT attr FROM declaration_attrs WHERE module_name = ? AND position = ? ORDER BY sequence"
   stmt.bind 1 moduleName
   stmt.bind 2 position
@@ -1036,7 +1059,7 @@ def loadAttrs (db : SQLite) (moduleName : String) (position : Int64) : IO (Array
   return attrs
 
 /-- Load a docstring from the database. -/
-def loadDocstring (db : SQLite) (moduleName : String) (position : Int64) : IO (Option (String ⊕ VersoDocString)) := withTableName "markdown_docstrings verso_docstrings" do
+def loadDocstring (db : SQLite) (moduleName : String) (position : Int64) : IO (Option (String ⊕ VersoDocString)) := withDbContext "read:docstrings" do
   -- Try markdown first
   let mdStmt ← db.prepare "SELECT text FROM markdown_docstrings WHERE module_name = ? AND position = ?"
   mdStmt.bind 1 moduleName
@@ -1055,7 +1078,7 @@ def loadDocstring (db : SQLite) (moduleName : String) (position : Int64) : IO (O
   return none
 
 /-- Load a declaration range from the database. -/
-def loadDeclarationRange (db : SQLite) (moduleName : String) (position : Int64) : IO (Option DeclarationRange) := withTableName "declaration_ranges" do
+def loadDeclarationRange (db : SQLite) (moduleName : String) (position : Int64) : IO (Option DeclarationRange) := withDbContext "read:declaration_ranges" do
   let stmt ← db.prepare "SELECT start_line, start_column, start_utf16, end_line, end_column, end_utf16 FROM declaration_ranges WHERE module_name = ? AND position = ?"
   stmt.bind 1 moduleName
   stmt.bind 2 position
@@ -1095,7 +1118,7 @@ def loadInfo (db : SQLite) (moduleName : String) (position : Int64) (name : Name
 
 /-- Load definition equations from the database.
     Takes hasEquations flag to distinguish `none` from `some #[]`. -/
-def loadEquations (db : SQLite) (moduleName : String) (position : Int64) (hasEquations : Bool) : IO (Option (Array RenderedCode)) := withTableName "definition_equations" do
+def loadEquations (db : SQLite) (moduleName : String) (position : Int64) (hasEquations : Bool) : IO (Option (Array RenderedCode)) := withDbContext "read:definition_equations" do
   if !hasEquations then return none
   let stmt ← db.prepare "SELECT code FROM definition_equations WHERE module_name = ? AND position = ? ORDER BY sequence"
   stmt.bind 1 moduleName
