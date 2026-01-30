@@ -98,16 +98,26 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
     | some dir => dir.as! String
     | none => ".lake/build/doc-from-db"  -- Different default for DB-generated docs
   let dbPath := p.positionalArg! "db" |>.as! String
+  let start ← IO.monoMsNow
   IO.println s!"Loading documentation from database: {dbPath}"
   let dbResult ← loadFromDb dbPath
   let result := dbResult.result
+  IO.println s!"Loading took {(← IO.monoMsNow) - start}ms"
   IO.println s!"Loaded {result.moduleNames.size} modules with {result.name2ModIdx.size} declarations"
   -- Add `references` pseudo-module to hierarchy since references.html is always generated
+  let start ← IO.monoMsNow
   let hierarchy := Hierarchy.fromArray (result.moduleNames.push `references)
+  IO.println s!"Hierarchy took {(← IO.monoMsNow) - start}ms"
+  let start ← IO.monoMsNow
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
+  IO.println s!"Context took {(← IO.monoMsNow) - start}ms"
+  let start ← IO.monoMsNow
   IO.println s!"Generating HTML to: {buildDir}"
   discard <| htmlOutputResults baseConfig result none (sourceLinker? := some (dbSourceLinker dbResult.sourceUrls))
+  IO.println s!"HTML took {(← IO.monoMsNow) - start}ms"
+  let start ← IO.monoMsNow
   htmlOutputIndex baseConfig
+  IO.println s!"HTML index took {(← IO.monoMsNow) - start}ms"
   IO.println "Done!"
   return 0
 
