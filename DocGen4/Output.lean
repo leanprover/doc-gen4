@@ -5,6 +5,7 @@ Authors: Henrik Böving
 -/
 import Lean
 import DocGen4.Process
+import DocGen4.DB
 import DocGen4.Output.Base
 import DocGen4.Output.Index
 import DocGen4.Output.Module
@@ -97,7 +98,9 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
   let config : SiteContext := {
     result := result
     sourceLinker := (sourceLinker?.getD SourceLinker.sourceLinker) sourceUrl?
-    refsMap := .ofList (baseConfig.refs.map fun x => (x.citekey, x)).toList
+    refsMap :=
+      Std.HashMap.emptyWithCapacity baseConfig.refs.size
+        |>.insertMany (baseConfig.refs.iter.map fun x => (x.citekey, x))
     declarationDecorator := declarationDecorator?.getD defaultDeclarationDecorator
   }
 
@@ -126,6 +129,73 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     -- The output paths need to be relative to the build directory, as they are stored in a build
     -- artifact.
     outputs := outputs.push relFilePath
+  return outputs
+
+/-- Generate HTML for all modules in parallel.
+    Each task loads its module from DB, renders HTML, and writes output files.
+    The shared index provides cross-module linking without loading all module data upfront. -/
+def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.FilePath)
+    (shared : SharedIndex) (sourceLinker? : Option SourceLinkerFn := none)
+    (declarationDecorator? : Option DeclarationDecoratorFn := none) : IO (Array System.FilePath) := do
+  FS.createDirAll <| basePath baseConfig.buildDir
+  FS.createDirAll <| declarationsBasePath baseConfig.buildDir
+
+  -- Spawn one task per module, each returning its output file path
+  let tasks ← shared.moduleNames.mapM fun modName => IO.asTask do
+    -- Each task opens its own DB connection (SQLite handles concurrent readers well)
+    let db ← openDbForReading dbPath
+    let module ← loadModule db modName
+
+    -- Build a minimal AnalyzerResult with just this module's info
+    let result : AnalyzerResult := {
+      name2ModIdx := shared.name2ModIdx
+      moduleNames := shared.moduleNames
+      moduleInfo := ({} : Std.HashMap Name Process.Module).insert modName module
+    }
+
+    let config : SiteContext := {
+      result := result
+      sourceLinker := (sourceLinker?.getD SourceLinker.sourceLinker) none
+      refsMap := Std.HashMap.emptyWithCapacity baseConfig.refs.size |>.insertMany (baseConfig.refs.iter.map fun x => (x.citekey, x))
+      declarationDecorator := declarationDecorator?.getD defaultDeclarationDecorator
+    }
+
+    -- path: 'basePath/module/components/till/last.html'
+    -- The last component is the file name, so we drop it from the depth to root.
+    let baseConfig' := { baseConfig with
+      depthToRoot := modName.components.dropLast.length
+      currentName := some modName
+    }
+
+    -- Render HTML
+    let (moduleHtml, cfg) := moduleToHtml module |>.run {} config baseConfig'
+    if not cfg.errors.isEmpty then
+      throw <| IO.userError s!"There are errors when generating HTML for '{modName}': {cfg.errors}"
+
+    -- Write HTML file
+    let relFilePath := basePathComponent / moduleNameToFile modName
+    let filePath := baseConfig.buildDir / relFilePath
+    if let .some d := filePath.parent then
+      FS.createDirAll d
+    FS.writeFile filePath moduleHtml.toString
+
+    -- Write backrefs JSON
+    FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json")
+      (toString (toJson cfg.backrefs))
+
+    -- Generate declaration data JSON for search
+    let (jsonDecls, _) := Module.toJson module |>.run {} config baseConfig'
+    FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"declaration-data-{module.name}.bmp")
+      jsonDecls.compress
+
+    return relFilePath
+
+  -- Wait for all tasks and collect output paths
+  let mut outputs := #[]
+  for task in tasks do
+    match ← IO.wait task with
+    | .ok path => outputs := outputs.push path
+    | .error e => throw e
   return outputs
 
 def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) : IO SiteBaseContext := do

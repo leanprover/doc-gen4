@@ -1434,4 +1434,17 @@ def loadFromDb (dbFile : System.FilePath) : IO LoadFromDbResult := do
   let moduleInfo ← loadAllModules db moduleNames
   return { result := { name2ModIdx, moduleNames, moduleInfo }, sourceUrls }
 
+/-- Shared index data needed for cross-module linking, without loading full module contents. -/
+structure SharedIndex where
+  moduleNames : Array Name
+  sourceUrls : Std.HashMap Name String
+  name2ModIdx : Std.HashMap Name ModuleIdx
+
+/-- Load just the shared index (fast) - only what's needed for cross-module linking. -/
+def loadSharedIndex (db : SQLite) : IO SharedIndex := do
+  let moduleNames ← getModuleNames db
+  let sourceUrls ← getModuleSourceUrls db
+  let name2ModIdx ← buildName2ModIdx db moduleNames
+  return { moduleNames, sourceUrls, name2ModIdx }
+
 end Reading
