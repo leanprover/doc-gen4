@@ -21,17 +21,11 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
-  let dbFile? := p.flag? "db" |>.map (·.as! String)
-  let hashDir := match p.flag? "hash-dir" with
-    | some dir => dir.as! String
-    | none => s!"{buildDir}/doc-hashes"
+  let dbFile := p.positionalArg! "db" |>.as! String
   let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
   let sourceUri := p.positionalArg! "sourceUri" |>.as! String
-  let (doc, hierarchy) ← load <| .analyzeConcreteModules relevantModules
-  let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  if let some dbFile := dbFile? then
-    updateModuleDb doc buildDir dbFile hashDir (some sourceUri)
-  discard <| htmlOutputResults baseConfig doc (some sourceUri)
+  let doc ← load <| .analyzeConcreteModules relevantModules
+  updateModuleDb doc buildDir dbFile (some sourceUri)
   return 0
 
 def runIndexCmd (p : Parsed) : IO UInt32 := do
@@ -47,19 +41,10 @@ def runGenCoreCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
-  let dbFile? := p.flag? "db" |>.map (·.as! String)
-  let hashDir := match p.flag? "hash-dir" with
-    | some dir => dir.as! String
-    | none => s!"{buildDir}/doc-hashes"
-  let manifestOutput? := (p.flag? "manifest").map (·.as! String)
+  let dbFile := p.positionalArg! "db" |>.as! String
   let module := p.positionalArg! "module" |>.as! String |> String.toName
-  let (doc, hierarchy) ← load <| .analyzePrefixModules module
-  let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  if let some dbFile := dbFile? then
-    updateModuleDb doc buildDir dbFile hashDir none
-  let outputs ← htmlOutputResults baseConfig doc none
-  if let .some manifestOutput := manifestOutput? then
-    IO.FS.writeFile manifestOutput (Lean.toJson outputs).compress
+  let doc ← load <| .analyzePrefixModules module
+  updateModuleDb doc buildDir dbFile none
   return 0
 
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
@@ -96,8 +81,9 @@ def dbSourceLinker (sourceUrls : Std.HashMap Name String) (_gitUrl? : Option Str
 def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
-    | none => ".lake/build/doc-from-db"  -- Different default for DB-generated docs
+    | none => ".lake/build"
   let dbPath := p.positionalArg! "db" |>.as! String
+  let manifestOutput? := (p.flag? "manifest").map (·.as! String)
 
   -- Phase 1: Load shared index (fast - just names and cross-references)
   let start ← IO.monoMsNow
@@ -117,12 +103,14 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   -- Phase 2: Parallel HTML generation (one task per module)
   let start ← IO.monoMsNow
   IO.println s!"Generating HTML in parallel to: {buildDir}"
-  discard <| htmlOutputResultsParallel baseConfig dbPath shared (sourceLinker? := some (dbSourceLinker shared.sourceUrls))
+  let outputs ← htmlOutputResultsParallel baseConfig dbPath shared (sourceLinker? := some (dbSourceLinker shared.sourceUrls))
   IO.println s!"HTML took {(← IO.monoMsNow) - start}ms"
   let start ← IO.monoMsNow
   htmlOutputIndex baseConfig
   IO.println s!"HTML index took {(← IO.monoMsNow) - start}ms"
   IO.println "Done!"
+  if let .some manifestOutput := manifestOutput? then
+    IO.FS.writeFile manifestOutput (Lean.toJson outputs).compress
   return 0
 
 def runBibPrepassCmd (p : Parsed) : IO UInt32 := do
@@ -146,15 +134,14 @@ def runBibPrepassCmd (p : Parsed) : IO UInt32 := do
 
 def singleCmd := `[Cli|
   single VIA runSingleCmd;
-  "Only generate the documentation for the module it was given, might contain broken links unless all documentation is generated."
+  "Populate the database with documentation for the specified module."
 
   FLAGS:
     b, build : String; "Build directory."
-    db : String; "Database"
-    "hash-dir" : String; "Directory for module hash files (default: <build>/doc-hashes)"
 
   ARGS:
-    module : String; "The module to generate the HTML for. Does not have to be part of topLevelModules."
+    module : String; "The module to document."
+    db : String; "Path to the SQLite database (relative to build dir)"
     sourceUri : String; "The sourceUri as computed by the Lake facet"
 ]
 
@@ -168,16 +155,14 @@ def indexCmd := `[Cli|
 
 def genCoreCmd := `[Cli|
   genCore VIA runGenCoreCmd;
-  "Generate documentation for the specified Lean core module as they are not lake projects."
+  "Populate the database with documentation for the specified Lean core module (Init, Std, Lake, Lean)."
 
   FLAGS:
     b, build : String; "Build directory."
-    db : String; "Database"
-    "hash-dir" : String; "Directory for module hash files (default: <build>/doc-hashes)"
-    m, manifest : String; "Manifest output, to list all the files generated."
 
   ARGS:
-    module : String; "The module to generate the HTML for."
+    module : String; "The core module prefix to document (e.g., Init, Lean)."
+    db : String; "Path to the SQLite database (relative to build dir)"
 ]
 
 def bibPrepassCmd := `[Cli|
@@ -203,10 +188,11 @@ def headerDataCmd := `[Cli|
 
 def fromDbCmd := `[Cli|
   fromDb VIA runFromDbCmd;
-  "Generate all HTML documentation from a SQLite database. Output goes to a separate directory for easy comparison with traditional generation."
+  "Generate all HTML documentation from a SQLite database."
 
   FLAGS:
-    b, build : String; "Output directory for generated docs (default: .lake/build/doc-from-db)"
+    b, build : String; "Build directory (default: .lake/build)"
+    m, manifest : String; "Manifest output file, listing all generated HTML files."
 
   ARGS:
     db : String; "Path to the SQLite database"

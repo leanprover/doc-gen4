@@ -204,13 +204,6 @@ instance : SQLite.QueryParam VersoDocString := .asBlob
 
 end
 
-/-- Hash of a module's input data, used for Lake trace integration.
-    Changes to module content cause changes to the hash file, triggering rebuilds of dependents. -/
-structure ModuleHash where
-  moduleName : String
-  hash : UInt64
-  deriving Lean.ToJson, Lean.FromJson, Inhabited
-
 def getDb (dbFile : System.FilePath) : IO SQLite := do
   -- SQLite atomically creates the DB file, and the schema and journal settings here are applied
   -- idempotently. This avoids DB creation race conditions.
@@ -795,14 +788,11 @@ end DB
 open DB
 
 def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (dbFile : String)
-    (hashDir : System.FilePath) (sourceUrl? : Option String) : IO Unit := do
+    (sourceUrl? : Option String) : IO Unit := do
   let dbFile := buildDir / dbFile
   let db ← ensureDb dbFile
-  IO.FS.createDirAll hashDir
   for (modName, modInfo) in doc.moduleInfo do
     let modNameStr := modName.toString
-    -- Hash input BEFORE transaction (no DB lock needed)
-    let inputHash := hash modInfo
     -- Each module gets its own transaction to reduce lock contention
     let _ ← withDbContext s!"transaction:immediate:{modNameStr}" <| db.sqlite.transaction (mode := .immediate) do
       -- Collect structure field info to save in second pass (after all declarations are in name_info)
@@ -882,10 +872,6 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
       for (pos, info) in pendingStructureFields do
         saveStructureFields info db modNameStr pos
       pure ()
-    -- Write hash file AFTER transaction commits successfully
-    let hashFile := hashDir / s!"{modNameStr}.dbhash"
-    let moduleHash : ModuleHash := { moduleName := modNameStr, hash := inputHash }
-    IO.FS.writeFile hashFile (Lean.toJson moduleHash).pretty
   pure ()
 
 where

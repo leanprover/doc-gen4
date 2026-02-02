@@ -84,52 +84,8 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   for (fileName, content) in findStatic do
     FS.writeFile (findBasePath config.buildDir / fileName) content
 
-def htmlOutputDeclarationDatas (buildDir : System.FilePath) (result : AnalyzerResult) : HtmlT IO Unit := do
-  for (_, mod) in result.moduleInfo.toArray do
-    let jsonDecls ← Module.toJson mod
-    FS.writeFile (declarationsBasePath buildDir / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
-
 /-- Custom source linker type: given an optional source URL and module name, returns a function from declaration range to URL -/
 abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → String
-
-def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String)
-    (sourceLinker? : Option SourceLinkerFn := none)
-    (declarationDecorator? : Option DeclarationDecoratorFn := none) : IO (Array System.FilePath) := do
-  let config : SiteContext := {
-    result := result
-    sourceLinker := (sourceLinker?.getD SourceLinker.sourceLinker) sourceUrl?
-    refsMap :=
-      Std.HashMap.emptyWithCapacity baseConfig.refs.size
-        |>.insertMany (baseConfig.refs.iter.map fun x => (x.citekey, x))
-    declarationDecorator := declarationDecorator?.getD defaultDeclarationDecorator
-  }
-
-  FS.createDirAll <| basePath baseConfig.buildDir
-  FS.createDirAll <| declarationsBasePath baseConfig.buildDir
-
-  discard <| htmlOutputDeclarationDatas baseConfig.buildDir result |>.run {} config baseConfig
-
-  let mut outputs := #[]
-  for (modName, module) in result.moduleInfo.toArray do
-    let relFilePath := basePathComponent / moduleNameToFile modName
-    let filePath := baseConfig.buildDir / relFilePath
-    -- path: 'basePath/module/components/till/last.html'
-    -- The last component is the file name, so we drop it from the depth to root.
-    let baseConfig := { baseConfig with
-      depthToRoot := modName.components.dropLast.length
-      currentName := some modName
-    }
-    let (moduleHtml, cfg) := moduleToHtml module |>.run {} config baseConfig
-    if not cfg.errors.isEmpty then
-      throw <| IO.userError s!"There are errors when generating '{filePath}': {cfg.errors}"
-    if let .some d := filePath.parent then
-      FS.createDirAll d
-    FS.writeFile filePath moduleHtml.toString
-    FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json") (toString (toJson cfg.backrefs))
-    -- The output paths need to be relative to the build directory, as they are stored in a build
-    -- artifact.
-    outputs := outputs.push relFilePath
-  return outputs
 
 /-- Generate HTML for all modules in parallel.
     Each task loads its module from DB, renders HTML, and writes output files.
@@ -252,16 +208,5 @@ def headerDataOutput (buildDir : System.FilePath) : IO Unit := do
   let declarationDir := basePath buildDir / "declarations"
   FS.createDirAll declarationDir
   FS.writeFile (declarationDir / "header-data.bmp") finalHeaderJson.compress
-
-/--
-The main entrypoint for outputting the documentation HTML based on an
-`AnalyzerResult`.
--/
-def htmlOutput (buildDir : System.FilePath) (result : AnalyzerResult) (hierarchy : Hierarchy)
-    (sourceUrl? : Option String) (sourceLinker? : Option SourceLinkerFn := none)
-    (declarationDecorator? : Option DeclarationDecoratorFn := none) : IO Unit := do
-  let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  discard <| htmlOutputResults baseConfig result sourceUrl? sourceLinker? declarationDecorator?
-  htmlOutputIndex baseConfig
 
 end DocGen4

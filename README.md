@@ -31,18 +31,14 @@ rev = "main"
 4. If your parent project has dependencies you want to run `lake update YourLibraryName` within
   `docbuild` whenever you update the dependencies of your parent project.
 
-After this setup step you can generate documentation for an entire library and all files imported
-by that library using the following command within `docbuild`:
+After this setup step you can generate documentation for all libraries in your package and its dependencies
+using the following command within `docbuild`:
 ```
-lake build YourLibraryName:docs
-```
-If you have multiple libraries you want to generate full documentation for:
-```
-lake build Test:docs YourLibraryName:docs
+lake build :docs
 ```
 
 Note that `doc-gen4` currently always generates documentation for `Lean`, `Init`, `Lake` and `Std`
-in addition to the provided targets.
+as dependencies of your package.
 
 The root of the built docs will be `docbuild/.lake/build/doc/index.html`.
 However, due to the "Same Origin Policy", the generated website will be partially broken if you just

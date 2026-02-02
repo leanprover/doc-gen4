@@ -114,7 +114,7 @@ def mkOptions : IO DocGenOptions := do
 Run the doc-gen analysis on all modules that are loaded into the `Environment`
 of this `MetaM` run and mentioned by the `AnalyzeTask`.
 -/
-def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
+def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
   let env ← getEnv
   let allModules := env.header.moduleNames
   let relevantModules :=
@@ -164,13 +164,11 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
   for (moduleName, module) in res.toArray do
     res := res.insert moduleName {module with members := module.members.qsort ModuleMember.order}
 
-  let hierarchy := Hierarchy.fromArray allModules
-  let analysis := {
+  return {
     name2ModIdx := env.const2ModIdx,
     moduleNames := allModules,
     moduleInfo := res,
   }
-  return (analysis, hierarchy)
 
 def filterDocInfo (ms : Array ModuleMember) : Array DocInfo :=
   ms.filterMap filter
