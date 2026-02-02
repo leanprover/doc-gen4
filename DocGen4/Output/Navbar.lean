@@ -57,7 +57,6 @@ The main entry point to rendering the navbar on the left hand side.
 def navbar : BaseHtmlM Html := do
   /-
   TODO: Add these in later
-  <div class="nav_link"><a href={s!"{← getRoot}tactics.html"}>tactics</a></div>
   <div class="nav_link"><a href={s!"{← getRoot}commands.html"}>commands</a></div>
   <div class="nav_link"><a href={s!"{← getRoot}hole_commands.html"}>hole commands</a></div>
   <div class="nav_link"><a href={s!"{← getRoot}attributes.html"}>attributes</a></div>
@@ -65,7 +64,8 @@ def navbar : BaseHtmlM Html := do
   -/
   let mut staticPages : Array Html := #[
     <div class="nav_link"><a href={s!"{← getRoot}"}>index</a></div>,
-    <div class="nav_link"><a href={s!"{← getRoot}foundational_types.html"}>foundational types</a></div>
+    <div class="nav_link"><a href={s!"{← getRoot}foundational_types.html"}>foundational types</a></div>,
+    <div class="nav_link"><a href={s!"{← getRoot}tactics.html"}>tactics</a></div>,
   ]
   let config ← read
   if not config.refs.isEmpty then
