@@ -34,7 +34,13 @@ cat >> lakefile.toml <<EOF
 [[require]]
 name = "doc-gen4"
 path = "$REPO_ROOT"
+
+[[require]]
+name = "plausible"
+git = "https://github.com/leanprover-community/plausible.git"
 EOF
+
+echo "rev = \"$TOOLCHAIN\"" >> lakefile.toml
 
 # Update doc-gen4 dependency
 MATHLIB_NO_CACHE_ON_UPDATE=1 lake update doc-gen4
