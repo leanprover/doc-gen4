@@ -224,7 +224,7 @@ module_facet docInfo (mod) : FilePath := do
             let srcUri ← uriJob.await
             proc {
               cmd := exeFile.toString
-              args := #["single", "--build", buildDir.toString, mod.name.toString, "doc/api-docs.db", srcUri]
+              args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
               env := ← getAugmentedEnv
             }
             IO.FS.createDirAll markerFile.parent.get!
@@ -241,7 +241,7 @@ def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
       buildFileUnlessUpToDate' markerFile do
         proc {
           cmd := exeFile.toString
-          args := #["genCore", "--build", buildDir.toString, component.toString, "doc/api-docs.db"]
+          args := #["genCore", "--build", buildDir.toString, component.toString, "api-docs.db"]
           env := ← getAugmentedEnv
         }
         IO.FS.createDirAll markerFile.parent.get!
@@ -276,7 +276,7 @@ package_facet docInfo (pkg) : FilePath := do
   let libs := pkg.leanLibs
   let libDocJobs := Job.collectArray <| ← libs.mapM (fetch <| ·.facet `docInfo)
   let coreJobs ← coreDocs.fetch
-  let dbPath := pkg.buildDir / "doc" / "api-docs.db"
+  let dbPath := pkg.buildDir / "api-docs.db"
   coreJobs.bindM fun _ => do
     libDocJobs.mapM fun _ =>
       return dbPath
@@ -310,7 +310,7 @@ package_facet docs (pkg) : Array FilePath := do
   let bibPrepassJob ← bibPrepass.fetch
   let buildDir := pkg.buildDir
   let basePath := buildDir / "doc"
-  let dbPath := buildDir / "doc" / "api-docs.db"
+  let dbPath := buildDir / "api-docs.db"
   let manifestFile := buildDir / "doc-manifest.json"
   let dataFile := basePath / "declarations" / "declaration-data.bmp"
   let staticFiles := #[
