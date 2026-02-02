@@ -1398,28 +1398,6 @@ def loadModule (db : SQLite) (moduleName : Name) : IO Process.Module := do
     else pos1 < pos2  -- Tiebreaker: use DB position
   return { name := moduleName, members := sortedMembers.map (·.2), imports }
 
-/-- Load all modules from the database. -/
-def loadAllModules (db : SQLite) (moduleNames : Array Name) : IO (Std.HashMap Name Process.Module) := do
-  let mut modules : Std.HashMap Name Process.Module := {}
-  for modName in moduleNames do
-    let module ← loadModule db modName
-    modules := modules.insert modName module
-  return modules
-
-/-- Result of loading from the database, including source URLs. -/
-structure LoadFromDbResult where
-  result : Process.AnalyzerResult
-  sourceUrls : Std.HashMap Name String
-
-/-- Load a complete AnalyzerResult from the database. -/
-def loadFromDb (dbFile : System.FilePath) : IO LoadFromDbResult := do
-  let db ← openDbForReading dbFile
-  let moduleNames ← getModuleNames db
-  let sourceUrls ← getModuleSourceUrls db
-  let name2ModIdx ← buildName2ModIdx db moduleNames
-  let moduleInfo ← loadAllModules db moduleNames
-  return { result := { name2ModIdx, moduleNames, moduleInfo }, sourceUrls }
-
 /-- Shared index data needed for cross-module linking, without loading full module contents. -/
 structure SharedIndex where
   moduleNames : Array Name
