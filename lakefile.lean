@@ -269,12 +269,14 @@ library_facet docInfo (lib) : Array FilePath := do
 
 /--
 A facet to collect docInfo dependencies for a package (no HTML generation).
-This populates the database with all module data and core docs.
+This populates the database with all module data and core docs for all packages
+in the workspace (including dependencies).
 Returns the database file path.
 -/
 package_facet docInfo (pkg) : FilePath := do
-  let libs := pkg.leanLibs
-  let libDocJobs := Job.collectArray <| ← libs.mapM (fetch <| ·.facet `docInfo)
+  let ws ← getWorkspace
+  let allLibs := ws.packages.flatMap (·.leanLibs)
+  let libDocJobs := Job.collectArray <| ← allLibs.mapM (fetch <| ·.facet `docInfo)
   let coreJobs ← coreDocs.fetch
   let dbPath := pkg.buildDir / "api-docs.db"
   coreJobs.bindM fun _ => do
