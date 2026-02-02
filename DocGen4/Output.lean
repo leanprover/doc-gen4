@@ -89,23 +89,23 @@ abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → 
 
 /-- Generate HTML for all modules in parallel.
     Each task loads its module from DB, renders HTML, and writes output files.
-    The shared index provides cross-module linking without loading all module data upfront. -/
+    The linking context provides cross-module linking without loading all module data upfront. -/
 def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.FilePath)
-    (shared : SharedIndex) (sourceLinker? : Option SourceLinkerFn := none)
+    (linkCtx : LinkingContext) (sourceLinker? : Option SourceLinkerFn := none)
     (declarationDecorator? : Option DeclarationDecoratorFn := none) : IO (Array System.FilePath) := do
   FS.createDirAll <| basePath baseConfig.buildDir
   FS.createDirAll <| declarationsBasePath baseConfig.buildDir
 
   -- Spawn one task per module, each returning its output file path
-  let tasks ← shared.moduleNames.mapM fun modName => IO.asTask do
+  let tasks ← linkCtx.moduleNames.mapM fun modName => IO.asTask do
     -- Each task opens its own DB connection (SQLite handles concurrent readers well)
     let db ← openDbForReading dbPath
     let module ← loadModule db modName
 
     -- Build a minimal AnalyzerResult with just this module's info
     let result : AnalyzerResult := {
-      name2ModIdx := shared.name2ModIdx
-      moduleNames := shared.moduleNames
+      name2ModIdx := linkCtx.name2ModIdx
+      moduleNames := linkCtx.moduleNames
       moduleInfo := ({} : Std.HashMap Name Process.Module).insert modName module
     }
 

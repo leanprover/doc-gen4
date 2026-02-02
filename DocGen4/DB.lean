@@ -1398,14 +1398,14 @@ def loadModule (db : SQLite) (moduleName : Name) : IO Process.Module := do
     else pos1 < pos2  -- Tiebreaker: use DB position
   return { name := moduleName, members := sortedMembers.map (·.2), imports }
 
-/-- Shared index data needed for cross-module linking, without loading full module contents. -/
-structure SharedIndex where
+/-- Context needed for cross-module linking, without loading full module contents. -/
+structure LinkingContext where
   moduleNames : Array Name
   sourceUrls : Std.HashMap Name String
   name2ModIdx : Std.HashMap Name ModuleIdx
 
-/-- Load just the shared index (fast) - only what's needed for cross-module linking. -/
-def loadSharedIndex (db : SQLite) : IO SharedIndex := do
+/-- Load the linking context from the database. -/
+def loadLinkingContext (db : SQLite) : IO LinkingContext := do
   let moduleNames ← getModuleNames db
   let sourceUrls ← getModuleSourceUrls db
   let name2ModIdx ← buildName2ModIdx db moduleNames

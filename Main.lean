@@ -70,16 +70,16 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let dbPath := p.positionalArg! "db" |>.as! String
   let manifestOutput? := (p.flag? "manifest").map (·.as! String)
 
-  -- Phase 1: Load shared index (fast - just names and cross-references)
+  -- Phase 1: Load linking context (fast - module names, source URLs, declaration locations)
   let start ← IO.monoMsNow
-  IO.println s!"Loading shared index from database: {dbPath}"
+  IO.println s!"Loading linking context from database: {dbPath}"
   let db ← openDbForReading dbPath
-  let shared ← loadSharedIndex db
-  IO.println s!"Index loaded in {(← IO.monoMsNow) - start}ms ({shared.name2ModIdx.size} declarations, {shared.moduleNames.size} modules)"
+  let linkCtx ← loadLinkingContext db
+  IO.println s!"Linking context loaded in {(← IO.monoMsNow) - start}ms ({linkCtx.name2ModIdx.size} declarations, {linkCtx.moduleNames.size} modules)"
 
   -- Add `references` pseudo-module to hierarchy since references.html is always generated
   let start ← IO.monoMsNow
-  let hierarchy := Hierarchy.fromArray (shared.moduleNames.push `references)
+  let hierarchy := Hierarchy.fromArray (linkCtx.moduleNames.push `references)
   IO.println s!"Hierarchy took {(← IO.monoMsNow) - start}ms"
   let start ← IO.monoMsNow
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
@@ -88,7 +88,7 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   -- Phase 2: Parallel HTML generation (one task per module)
   let start ← IO.monoMsNow
   IO.println s!"Generating HTML in parallel to: {buildDir}"
-  let outputs ← htmlOutputResultsParallel baseConfig dbPath shared (sourceLinker? := some (dbSourceLinker shared.sourceUrls))
+  let outputs ← htmlOutputResultsParallel baseConfig dbPath linkCtx (sourceLinker? := some (dbSourceLinker linkCtx.sourceUrls))
   IO.println s!"HTML took {(← IO.monoMsNow) - start}ms"
   let start ← IO.monoMsNow
   htmlOutputIndex baseConfig
