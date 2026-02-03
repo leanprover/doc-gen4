@@ -26,6 +26,9 @@ require Cli from git
 require leansqlite from git
   "https://github.com/david-christiansen/leansqlite" @ "main"
 
+require plausible from git
+  "https://github.com/leanprover-community/plausible" @ "v4.28.0-rc1"
+
 /--
 Obtains the subdirectory of the Lean package relative to the root of the enclosing git repository.
 -/
@@ -335,6 +338,7 @@ package_facet docs (pkg) : Array FilePath := do
     basePath / "foundational_types.html",
     basePath / "references.html",
     basePath / "references.bib",
+    basePath / "tactics.html",
     basePath / "find" / "index.html",
     basePath / "find" / "find.js"
   ]

@@ -15,6 +15,7 @@ import DocGen4.Output.References
 import DocGen4.Output.Bibtex
 import DocGen4.Output.SourceLinker
 import DocGen4.Output.Search
+import DocGen4.Output.Tactics
 import DocGen4.Output.ToJson
 import DocGen4.Output.FoundationalTypes
 
@@ -53,6 +54,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let navbarHtml := ReaderT.run navbar config |>.toString
   let searchHtml := ReaderT.run search config |>.toString
   let referencesHtml := ReaderT.run (references (← collectBackrefs config.buildDir)) config |>.toString
+  let tacticsHtml := ReaderT.run (tactics (← loadTacticsJSON config.buildDir)) config |>.toString
   let docGenStatic := #[
     ("style.css", styleCss),
     ("favicon.svg", faviconSvg),
@@ -71,7 +73,8 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
     ("foundational_types.html", foundationalTypesHtml),
     ("404.html", notFoundHtml),
     ("navbar.html", navbarHtml),
-    ("references.html", referencesHtml)
+    ("references.html", referencesHtml),
+    ("tactics.html", tacticsHtml),
   ]
   for (fileName, content) in docGenStatic do
     FS.writeFile (basePath config.buildDir / fileName) content
@@ -118,13 +121,12 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
 
     -- path: 'basePath/module/components/till/last.html'
     -- The last component is the file name, so we drop it from the depth to root.
-    let baseConfig' := { baseConfig with
+    let baseConfig := { baseConfig with
       depthToRoot := modName.components.dropLast.length
       currentName := some modName
     }
-
-    -- Render HTML
-    let (moduleHtml, cfg) := moduleToHtml module |>.run {} config baseConfig'
+    let (moduleHtml, cfg) := moduleToHtml module |>.run {} config baseConfig
+    let (tactics, cfg) := module.tactics.mapM TacticInfo.docStringToHtml |>.run cfg config baseConfig
     if not cfg.errors.isEmpty then
       throw <| IO.userError s!"There are errors when generating HTML for '{modName}': {cfg.errors}"
 
@@ -139,8 +141,10 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
     FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json")
       (toString (toJson cfg.backrefs))
 
+    saveTacticsJSON (declarationsBasePath baseConfig.buildDir / s!"tactics-{module.name}.json") tactics
+
     -- Generate declaration data JSON for search
-    let (jsonDecls, _) := Module.toJson module |>.run {} config baseConfig'
+    let (jsonDecls, _) := Module.toJson module |>.run {} config baseConfig
     FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"declaration-data-{module.name}.bmp")
       jsonDecls.compress
 
@@ -154,7 +158,8 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
     | .error e => throw e
   return outputs
 
-def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) : IO SiteBaseContext := do
+def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) :
+    IO SiteBaseContext := do
   let contents ← FS.readFile (declarationsBasePath buildDir / "references.json") <|> (pure "[]")
   match Json.parse contents with
   | .error err =>

@@ -462,6 +462,23 @@ CREATE TABLE IF NOT EXISTS declaration_attrs (
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS tactics (
+  module_name TEXT NOT NULL,
+  internal_name TEXT NOT NULL,
+  user_name TEXT NOT NULL,
+  doc_string TEXT NOT NULL,
+  PRIMARY KEY (module_name, internal_name),
+  FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tactic_tags (
+  module_name TEXT NOT NULL,
+  internal_name TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  PRIMARY KEY (module_name, internal_name, tag),
+  FOREIGN KEY (module_name, internal_name) REFERENCES tactics(module_name, internal_name) ON DELETE CASCADE
+);
 "#
 
 def withDbContext (context : String) (act : IO α) : IO α := do
@@ -502,6 +519,8 @@ structure DB where
   saveAttr (modName : String) (position : Int64) (sequence : Int64) (attr : String) : IO Unit
   /-- Save an internal name (like a recursor) that should link to its target declaration -/
   saveInternalName (name : Lean.Name) (targetModule : String) (targetPosition : Int64) : IO Unit
+  /-- Save a tactic defined in this module -/
+  saveTactic (modName : String) (tactic : Process.TacticInfo Process.MarkdownDocstring) : IO Unit
 
 def DB.saveDocstring (db : DB) (modName : String) (position : Int64) (text : String ⊕ Lean.VersoDocString) : IO Unit :=
   match text with
@@ -754,6 +773,19 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveInternalNameStmt.bind 2 targetModule
     saveInternalNameStmt.bind 3 targetPosition
     run saveInternalNameStmt
+  let saveTacticStmt ← sqlite.prepare "INSERT INTO tactics (module_name, internal_name, user_name, doc_string) VALUES (?, ?, ?, ?)"
+  let saveTacticTagStmt ← sqlite.prepare "INSERT INTO tactic_tags (module_name, internal_name, tag) VALUES (?, ?, ?)"
+  let saveTactic modName (tactic : Process.TacticInfo Process.MarkdownDocstring) := withDbContext "write:insert:tactics" do
+    saveTacticStmt.bind 1 modName
+    saveTacticStmt.bind 2 tactic.internalName.toString
+    saveTacticStmt.bind 3 tactic.userName
+    saveTacticStmt.bind 4 tactic.docString
+    run saveTacticStmt
+    for tag in tactic.tags do
+      saveTacticTagStmt.bind 1 modName
+      saveTacticTagStmt.bind 2 tactic.internalName.toString
+      saveTacticTagStmt.bind 3 tag.toString
+      run saveTacticTagStmt
   pure {
     sqlite,
     deleteModule,
@@ -780,7 +812,8 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveArg,
     saveAttr,
     saveNameOnly,
-    saveInternalName
+    saveInternalName,
+    saveTactic
   }
 
 end DB
@@ -871,6 +904,9 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
       -- Second pass: save structure fields (now that all projection functions are in name_info)
       for (pos, info) in pendingStructureFields do
         saveStructureFields info db modNameStr pos
+      -- Save tactics defined in this module
+      for tactic in modInfo.tactics do
+        db.saveTactic modNameStr tactic
       pure ()
   pure ()
 
@@ -1396,7 +1432,29 @@ def loadModule (db : SQLite) (moduleName : Name) : IO Process.Module := do
     if Position.lt r1 r2 then true
     else if Position.lt r2 r1 then false
     else pos1 < pos2  -- Tiebreaker: use DB position
-  return { name := moduleName, members := sortedMembers.map (·.2), imports }
+  -- Load tactics defined in this module
+  let tacStmt ← db.prepare "
+    SELECT internal_name, user_name, doc_string
+    FROM tactics
+    WHERE module_name = ?"
+  tacStmt.bind 1 modNameStr
+  let tagStmt ← db.prepare "
+    SELECT tag FROM tactic_tags
+    WHERE module_name = ? AND internal_name = ?"
+  let mut tactics : Array (Process.TacticInfo Process.MarkdownDocstring) := #[]
+  while (← tacStmt.step) do
+    let internalName := (← tacStmt.columnText 0).toName
+    let userName ← tacStmt.columnText 1
+    let docString ← tacStmt.columnText 2
+    -- Load tags for this tactic
+    tagStmt.bind 1 modNameStr
+    tagStmt.bind 2 internalName.toString
+    let mut tags : Array Name := #[]
+    while (← tagStmt.step) do
+      tags := tags.push (← tagStmt.columnText 0).toName
+    tagStmt.reset
+    tactics := tactics.push { internalName, userName, tags, docString, definingModule := moduleName }
+  return { name := moduleName, members := sortedMembers.map (·.2), imports, tactics }
 
 /-- Context needed for cross-module linking, without loading full module contents. -/
 structure LinkingContext where
