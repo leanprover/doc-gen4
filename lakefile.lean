@@ -307,39 +307,44 @@ library_facet docsHeader (lib) : FilePath := do
       return dataFile
 
 
-/-- Generate HTML for this module and its transitive imports. -/
-module_facet docs (mod) : Unit := do
+/--
+Generate HTML documentation for the given root modules.
+Fetches docInfo for all roots, ensures core docs are built, then runs a single `fromDb` process.
+-/
+def generateHtmlDocs (rootMods : Array Module) (description : String) : FetchM (Job Unit) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
-  let docInfoJob ← fetch <| mod.facet `docInfo
-
+  let coreJob ← coreDocs.fetch
+  let docInfoJobs := Job.collectArray <| ← rootMods.mapM (fetch <| ·.facet `docInfo)
   let buildDir := (← getRootPackage).buildDir
   let dbPath := buildDir / "api-docs.db"
+  let rootNames := rootMods.map (·.name)
+  coreJob.bindM fun _ => do
+    docInfoJobs.bindM fun _ => do
+      bibPrepassJob.bindM fun _ => do
+        exeJob.mapM fun exeFile => do
+          logInfo description
+          proc {
+            cmd := exeFile.toString
+            args := #["fromDb", "--build", buildDir.toString, dbPath.toString] ++ rootNames.map (·.toString)
+            env := ← getAugmentedEnv
+          }
 
-  bibPrepassJob.bindM fun _ => do
-    exeJob.bindM fun exeFile => do
-      docInfoJob.mapM fun _ => do
-        logInfo s!"Generating documentation for {mod.name} and dependencies"
-        proc {
-          cmd := exeFile.toString
-          args := #["fromDb", "--build", buildDir.toString, dbPath.toString, mod.name.toString]
-          env := ← getAugmentedEnv
-        }
+/-- Generate HTML for this module and its transitive imports. -/
+module_facet docs (mod) : Unit := do
+  generateHtmlDocs #[mod] s!"Generating documentation for {mod.name} and dependencies"
 
 /-- Generate HTML for all modules in this library. -/
 library_facet docs (lib) : Unit := do
-  let coreJob ← coreDocs.fetch
-  let mods ← (← lib.modules.fetch).await
-  let jobs ← mods.mapM fun mod => fetch <| mod.facet `docs
-  coreJob.bindM fun _ => do
-    Job.collectArray jobs |>.mapM fun _ => pure ()
+  let rootMods := lib.rootModules
+  generateHtmlDocs rootMods s!"Generating documentation for {lib.name} ({rootMods.size} root modules)"
 
 /--
-Generates documentation for the package's default library targets. Builds the `docs` facet of each
-library, which in turn generates HTML for each module.
+Generates documentation for the package's default library targets. Runs a single HTML generation
+process for all root modules across all default libraries.
 -/
 package_facet docs (pkg) : Unit := do
   let defaultTargets := pkg.defaultTargets
   let libs := pkg.leanLibs.filter fun lib => defaultTargets.contains lib.name
-  let jobs ← libs.mapM fun lib => fetch <| lib.facet `docs
-  Job.collectArray jobs |>.mapM fun _ => pure ()
+  let rootMods := libs.flatMap (·.rootModules)
+  generateHtmlDocs rootMods s!"Generating documentation for {pkg.baseName} ({rootMods.size} root modules)"
