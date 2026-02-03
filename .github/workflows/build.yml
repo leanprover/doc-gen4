@@ -23,13 +23,13 @@ jobs:
         run: |
           export LEAN_ABORT_ON_PANIC=1
           # to ensure that the `--query` test below has a baseline to compare against.
-          rm -rf .lake/build/doc
-          lake build :docs
-
+          rm -rf .lake/build/docs
+          lake build DocGen4:docs
+        
       - name: Check `--query` output
         shell: bash  # enables pipefail
         run: |
           export LEAN_ABORT_ON_PANIC=1
-          lake query :docs | sort > expected.txt
+          lake query DocGen4:docs | sort > expected.txt
           find "$(pwd)/.lake/build/doc" -type f ! -name '*.trace' ! -name '*.hash' | sort > actual.txt
           diff actual.txt expected.txt
