@@ -4,6 +4,43 @@ import SQLite
 
 namespace DocGen4.DB
 
+open Lean in
+/-- Extract a deterministic string representation of an inductive type for hashing.
+    Includes constructor names and their types. -/
+private def inductiveRepr (env : Environment) (name : Name) : String := Id.run do
+  let some (.inductInfo info) := env.find? name | return s!"not found: {name}"
+  let mut s := s!"inductive {name} : {info.type}\n"
+  for ctor in info.ctors do
+    let some (.ctorInfo ctorInfo) := env.find? ctor | continue
+    let ctorName := ctor.replacePrefix name .anonymous
+    s := s ++ s!"  | {ctorName} : {ctorInfo.type}\n"
+  return s
+
+namespace Internals
+open Lean Elab Term in
+/-- String representation of inductive type definitions, computed at compile time. -/
+scoped elab "inductiveRepr![" types:ident,* "]" : term => do
+  let env ← getEnv
+  let mut reprs : Array String := #[]
+  for type in types.getElems do
+    let name ← resolveGlobalConstNoOverload type
+    reprs := reprs.push (inductiveRepr env name)
+  return .lit (.strVal (String.intercalate "\n" reprs.toList))
+end Internals
+
+open Internals in
+open Lean.Widget in
+/--
+The datatypes that are serialized to the database. If they change, then the database should be
+rebuilt.
+-/
+def serializedCodeTypeDefs : String :=
+  inductiveRepr![
+    SortFormer,
+    RenderedCode.Tag,
+    TaggedText
+  ]
+
 section
 open Lean
 open SQLite.Blob
@@ -216,6 +253,34 @@ def getDb (dbFile : System.FilePath) : IO SQLite := do
   catch
   | e =>
     throw <| .userError s!"Exception while creating schema: {e}"
+  -- Check schema version via DDL hash and type definition hash
+  let ddlHash := toString ddl.hash
+  let typeHash := toString serializedCodeTypeDefs.hash
+  let stmt ← db.prepare "SELECT key, value FROM schema_meta"
+  let mut storedDdlHash : Option String := none
+  let mut storedTypeHash : Option String := none
+  while ← stmt.step do
+    let key ← stmt.columnText 0
+    let value ← stmt.columnText 1
+    if key == "ddl_hash" then storedDdlHash := some value
+    if key == "type_hash" then storedTypeHash := some value
+  match storedDdlHash, storedTypeHash with
+  | none, none =>
+    -- New database, store the hashes
+    db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('ddl_hash', '{ddlHash}')"
+    db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('type_hash', '{typeHash}')"
+  | some stored, _ =>
+    if stored != ddlHash then
+      throw <| .userError s!"Database schema is outdated (DDL hash mismatch). Run `lake clean` or delete '{dbFile}' and rebuild."
+    match storedTypeHash with
+    | none =>
+      -- Older DB without type hash, add it
+      db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('type_hash', '{typeHash}')"
+    | some storedType =>
+      if storedType != typeHash then
+        throw <| .userError s!"Database schema is outdated (serialized type definitions changed). Run `lake clean` or delete '{dbFile}' and rebuild."
+  | none, some _ => -- Shouldn't happen, but handle gracefully
+    db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('ddl_hash', '{ddlHash}')"
   return db
 where
   ddl :=
@@ -478,6 +543,11 @@ CREATE TABLE IF NOT EXISTS tactic_tags (
   tag TEXT NOT NULL,
   PRIMARY KEY (module_name, internal_name, tag),
   FOREIGN KEY (module_name, internal_name) REFERENCES tactics(module_name, internal_name) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS schema_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
 );
 "#
 
