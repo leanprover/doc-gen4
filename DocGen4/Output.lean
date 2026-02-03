@@ -115,11 +115,11 @@ def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (
     let filePath := baseConfig.buildDir / relFilePath
     -- path: 'basePath/module/components/till/last.html'
     -- The last component is the file name, so we drop it from the depth to root.
-    let baseConfig := { baseConfig with
+    let moduleConfig := { baseConfig with
       depthToRoot := modName.components.dropLast.length
       currentName := some modName
     }
-    let (moduleHtml, cfg) := moduleToHtml module |>.run {} config baseConfig
+    let (moduleHtml, cfg) := moduleToHtml module |>.run {} config moduleConfig
     let (tactics, cfg) := module.tactics.mapM TacticInfo.docStringToHtml |>.run cfg config baseConfig
     if not cfg.errors.isEmpty then
       throw <| IO.userError s!"There are errors when generating '{filePath}': {cfg.errors}"
