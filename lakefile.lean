@@ -203,37 +203,6 @@ target bibPrepass : FilePath := do
       }
     return outputFile
 
-/--
-Places the module's documentation content into the package's documentation database.
-
-Returns a marker file that indicates the database has been populated for this module.
-The marker file participates in Lake's dependency tracking, allowing for incremental updates.
--/
-module_facet docInfo (mod) : FilePath := do
-  let exeJob ← «doc-gen4».fetch
-  let bibPrepassJob ← bibPrepass.fetch
-  let modJob ← mod.leanArts.fetch
-  -- Build all documentation for imported modules
-  let imports ← (← mod.imports.fetch).await
-  let depDocJobs := Job.mixArray <| ← imports.mapM fun mod => fetch <| mod.facet `docInfo
-  let buildDir := (← getRootPackage).buildDir
-  let markerFile := buildDir / "doc-data" / s!"{mod.name}.doc"
-  depDocJobs.bindM fun _ => do
-    bibPrepassJob.bindM fun _ => do
-      exeJob.bindM fun exeFile => do
-        modJob.mapM fun _ => do
-          buildFileUnlessUpToDate' markerFile do
-            let uriJob ← fetch <| mod.facet `srcUri
-            let srcUri ← uriJob.await
-            proc {
-              cmd := exeFile.toString
-              args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
-              env := ← getAugmentedEnv
-            }
-            IO.FS.createDirAll markerFile.parent.get!
-            IO.FS.writeFile markerFile ""
-          return markerFile
-
 def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
@@ -260,6 +229,39 @@ target coreDocs : Array FilePath := do
   let coreComponents := #[`Init, `Std, `Lake, `Lean]
   return ← (Job.collectArray <| ← coreComponents.mapM coreTarget).mapM fun deps =>
     return deps
+
+/--
+Places the module's documentation content into the package's documentation database.
+
+Returns a marker file that indicates the database has been populated for this module.
+The marker file participates in Lake's dependency tracking, allowing for incremental updates.
+-/
+module_facet docInfo (mod) : FilePath := do
+  let exeJob ← «doc-gen4».fetch
+  let bibPrepassJob ← bibPrepass.fetch
+  let coreJob ← coreDocs.fetch
+  let modJob ← mod.leanArts.fetch
+  -- Build all documentation for imported modules
+  let imports ← (← mod.imports.fetch).await
+  let depDocJobs := Job.mixArray <| ← imports.mapM fun mod => fetch <| mod.facet `docInfo
+  let buildDir := (← getRootPackage).buildDir
+  let markerFile := buildDir / "doc-data" / s!"{mod.name}.doc"
+  coreJob.bindM fun _ => do
+    depDocJobs.bindM fun _ => do
+      bibPrepassJob.bindM fun _ => do
+        exeJob.bindM fun exeFile => do
+          modJob.mapM fun _ => do
+            buildFileUnlessUpToDate' markerFile do
+              let uriJob ← fetch <| mod.facet `srcUri
+              let srcUri ← uriJob.await
+              proc {
+                cmd := exeFile.toString
+                args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
+                env := ← getAugmentedEnv
+              }
+              IO.FS.createDirAll markerFile.parent.get!
+              IO.FS.writeFile markerFile ""
+            return markerFile
 
 /--
 Populates the database with information for all modules in a library.
