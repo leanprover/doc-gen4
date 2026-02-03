@@ -1539,4 +1539,27 @@ def loadLinkingContext (db : SQLite) : IO LinkingContext := do
   let name2ModIdx ← buildName2ModIdx db moduleNames
   return { moduleNames, sourceUrls, name2ModIdx }
 
+/-- Get transitive closure of imports for given modules using recursive CTE. -/
+def getTransitiveImports (db : SQLite) (modules : Array Name) : IO (Array Name) := withDbContext "read:transitive_imports" do
+  if modules.isEmpty then return #[]
+  -- Build the VALUES clause for starting modules
+  let placeholders := ", ".intercalate (modules.toList.map fun _ => "(?)")
+  let sql := s!"
+    WITH RECURSIVE transitive_imports(name) AS (
+      VALUES {placeholders}
+      UNION
+      SELECT mi.imported FROM module_imports mi
+      JOIN transitive_imports ti ON mi.importer = ti.name
+    )
+    SELECT DISTINCT name FROM transitive_imports"
+  let stmt ← db.prepare sql
+  -- Bind all module names
+  for h : i in [0:modules.size] do
+    stmt.bind (i.toInt32 + 1) modules[i].toString
+  let mut result := #[]
+  while (← stmt.step) do
+    let name := (← stmt.columnText 0).toName
+    result := result.push name
+  return result
+
 end Reading

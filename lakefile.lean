@@ -304,73 +304,40 @@ library_facet docsHeader (lib) : FilePath := do
         }
       return dataFile
 
-/--
-Generates all documentation from the SQLite database for the package. This facet depends on the
-package facet `docInfo` to ensure the database is populated, then generates HTML from the database.
--/
-package_facet docs (pkg) : Array FilePath := do
-  -- Depend on docInfo to ensure DB is populated
-  let docInfoJob ← fetch <| pkg.facet `docInfo
+
+/-- Generate HTML for this module and its transitive imports. -/
+module_facet docs (mod) : Unit := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
-  let buildDir := pkg.buildDir
-  let basePath := buildDir / "doc"
+  let docInfoJob ← fetch <| mod.facet `docInfo
+
+  let buildDir := (← getRootPackage).buildDir
   let dbPath := buildDir / "api-docs.db"
-  let manifestFile := buildDir / "doc-manifest.json"
-  let dataFile := basePath / "declarations" / "declaration-data.bmp"
-  let staticFiles := #[
-    basePath / "style.css",
-    basePath / "favicon.svg",
-    basePath / "declaration-data.js",
-    basePath / "color-scheme.js",
-    basePath / "nav.js",
-    basePath / "jump-src.js",
-    basePath / "expand-nav.js",
-    basePath / "how-about.js",
-    basePath / "search.js",
-    basePath / "mathjax-config.js",
-    basePath / "instances.js",
-    basePath / "importedBy.js",
-    basePath / "index.html",
-    basePath / "404.html",
-    basePath / "navbar.html",
-    basePath / "search.html",
-    basePath / "foundational_types.html",
-    basePath / "references.html",
-    basePath / "references.bib",
-    basePath / "tactics.html",
-    basePath / "find" / "index.html",
-    basePath / "find" / "find.js"
-  ]
+
   bibPrepassJob.bindM fun _ => do
     exeJob.bindM fun exeFile => do
       docInfoJob.mapM fun _ => do
-        buildFileUnlessUpToDate' dataFile do
-          logInfo "Generating documentation from database"
-          proc {
-            cmd := exeFile.toString
-            args := #["fromDb", "--build", buildDir.toString, "--manifest", manifestFile.toString, dbPath.toString]
-            env := ← getAugmentedEnv
-          }
-        -- Read manifest and return file list
-        let traces ← staticFiles.mapM computeTrace
-        addTrace <| mixTraceArray traces
-        match Lean.Json.parse <| ← IO.FS.readFile manifestFile with
-        | .error _ => return staticFiles
-        | .ok manifestData =>
-          match Lean.fromJson? manifestData with
-          | .error _ => return staticFiles
-          | .ok (deps : Array System.FilePath) =>
-            return (#[dataFile] ++ staticFiles ++ deps.map (buildDir / ·))
+        logInfo s!"Generating documentation for {mod.name} and dependencies"
+        proc {
+          cmd := exeFile.toString
+          args := #["fromDb", "--build", buildDir.toString, dbPath.toString, mod.name.toString]
+          env := ← getAugmentedEnv
+        }
 
-/-- Helper facet that informs users to build docs at package level. -/
-module_facet docs (_mod) : Unit := Job.async do
-  logInfo "To build documentation, run: lake build :docs"
-  logInfo "This builds docs for the entire package at once."
-  return ()
+/-- Generate HTML for all modules in this library. -/
+library_facet docs (lib) : Unit := do
+  let coreJob ← coreDocs.fetch
+  let mods ← (← lib.modules.fetch).await
+  let jobs ← mods.mapM fun mod => fetch <| mod.facet `docs
+  coreJob.bindM fun _ => do
+    Job.collectArray jobs |>.mapM fun _ => pure ()
 
-/-- Helper facet that informs users to build docs at package level. -/
-library_facet docs (_lib) : Unit := Job.async do
-  logInfo "To build documentation, run: lake build :docs"
-  logInfo "This builds docs for the entire package at once."
-  return ()
+/--
+Generates documentation for the package's default library targets. Builds the `docs` facet of each
+library, which in turn generates HTML for each module.
+-/
+package_facet docs (pkg) : Unit := do
+  let defaultTargets := pkg.defaultTargets
+  let libs := pkg.leanLibs.filter fun lib => defaultTargets.contains lib.name
+  let jobs ← libs.mapM fun lib => fetch <| lib.facet `docs
+  Job.collectArray jobs |>.mapM fun _ => pure ()

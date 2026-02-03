@@ -34,13 +34,7 @@ cat >> lakefile.toml <<EOF
 [[require]]
 name = "doc-gen4"
 path = "$REPO_ROOT"
-
-[[require]]
-name = "plausible"
-git = "https://github.com/leanprover-community/plausible.git"
 EOF
-
-echo "rev = \"$TOOLCHAIN\"" >> lakefile.toml
 
 # Update doc-gen4 dependency
 MATHLIB_NO_CACHE_ON_UPDATE=1 lake update doc-gen4
@@ -54,4 +48,4 @@ popd
 
 # Benchmark documentation generation
 env DOCGEN_SRC="file" "$REPO_ROOT/$BENCH/measure.py" -t mathlib-docs -m instructions -m maxrss -m task-clock -m wall-clock -- \
-  lake --dir "$TMPDIR/mathproject" build :docs
+  lake --dir "$TMPDIR/mathproject" build Mathlib:docs

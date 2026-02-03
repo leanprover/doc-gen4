@@ -92,15 +92,18 @@ abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → 
 
 /-- Generate HTML for all modules in parallel.
     Each task loads its module from DB, renders HTML, and writes output files.
-    The linking context provides cross-module linking without loading all module data upfront. -/
+    The linking context provides cross-module linking without loading all module data upfront.
+    When `targetModules` is provided, only those modules are rendered (but linking uses all modules). -/
 def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.FilePath)
-    (linkCtx : LinkingContext) (sourceLinker? : Option SourceLinkerFn := none)
+    (linkCtx : LinkingContext)
+    (targetModules : Array Name := linkCtx.moduleNames)
+    (sourceLinker? : Option SourceLinkerFn := none)
     (declarationDecorator? : Option DeclarationDecoratorFn := none) : IO (Array System.FilePath) := do
   FS.createDirAll <| basePath baseConfig.buildDir
   FS.createDirAll <| declarationsBasePath baseConfig.buildDir
 
   -- Spawn one task per module, each returning its output file path
-  let tasks ← linkCtx.moduleNames.mapM fun modName => IO.asTask do
+  let tasks ← targetModules.mapM fun modName => IO.asTask do
     -- Each task opens its own DB connection (SQLite handles concurrent readers well)
     let db ← openDbForReading dbPath
     let module ← loadModule db modName
@@ -213,5 +216,83 @@ def headerDataOutput (buildDir : System.FilePath) : IO Unit := do
   let declarationDir := basePath buildDir / "declarations"
   FS.createDirAll declarationDir
   FS.writeFile (declarationDir / "header-data.bmp") finalHeaderJson.compress
+
+/-- Convert HTML file path to module name: doc/A/B/C.html -> `A.B.C -/
+def htmlPathToModuleName (docDir : System.FilePath) (htmlPath : System.FilePath) : Option Name :=
+  -- Get relative path from doc directory
+  let docDirStr := docDir.toString
+  let htmlPathStr := htmlPath.toString
+  -- Strip the doc directory prefix (handle both with and without trailing separator)
+  let relPath? :=
+    if htmlPathStr.startsWith (docDirStr ++ "/") then
+      some (htmlPathStr.drop (docDirStr.length + 1))
+    else if htmlPathStr.startsWith docDirStr then
+      some (htmlPathStr.drop docDirStr.length)
+    else
+      none
+  relPath?.bind fun relPath =>
+    -- Remove .html extension
+    if relPath.endsWith ".html" then
+      let withoutExt := relPath.dropEnd 5
+      -- Convert path separators to dots
+      let name := withoutExt.replace "/" "." |>.replace "\\" "."
+      some name.toName
+    else
+      none
+
+/-- Scan for existing module HTML files under docDir -/
+partial def scanModuleHtmlFiles (docDir : System.FilePath) : IO (Array Name) := do
+  -- Files/directories to skip (not module HTML files)
+  let skipFiles := ["index.html", "404.html", "navbar.html", "search.html",
+                    "foundational_types.html", "references.html", "tactics.html"]
+  let skipDirs := ["find", "declarations", "src"]
+
+  let rec scanDir (dir : System.FilePath) : IO (Array Name) := do
+    let mut result := #[]
+    if !(← dir.pathExists) then return result
+    for entry in ← System.FilePath.readDir dir do
+      let entryPath := entry.root / entry.fileName
+      if ← entryPath.isDir then
+        -- Skip special directories
+        if skipDirs.contains entry.fileName then continue
+        result := result ++ (← scanDir entryPath)
+      else if entry.fileName.endsWith ".html" then
+        -- Skip special files
+        if skipFiles.contains entry.fileName then continue
+        -- Convert file path to module name
+        if let some modName := htmlPathToModuleName docDir entryPath then
+          result := result.push modName
+    return result
+
+  scanDir docDir
+
+/-- Rebuild navbar.html by scanning existing HTML files on disk.
+    This enables incremental builds where subsequent builds include modules from previous builds. -/
+def updateNavbarFromDisk (buildDir : System.FilePath) : IO Unit := do
+  let docDir := basePath buildDir
+  -- Scan for all existing module HTML files
+  let existingModules ← scanModuleHtmlFiles docDir
+  -- Add `references` pseudo-module for navbar
+  let allModules := existingModules.push `references
+  -- Build hierarchy from all found modules
+  let hierarchy := Hierarchy.fromArray allModules
+  -- Load references for base context
+  let contents ← FS.readFile (declarationsBasePath buildDir / "references.json") <|> (pure "[]")
+  let refs : Array BibItem ← match Json.parse contents with
+    | .error _ => pure #[]
+    | .ok jsonContent =>
+      match fromJson? jsonContent with
+      | .error _ => pure #[]
+      | .ok refs => pure refs
+  let baseConfig : SiteBaseContext := {
+    buildDir := buildDir
+    depthToRoot := 0
+    currentName := none
+    hierarchy := hierarchy
+    refs := refs
+  }
+  -- Regenerate navbar
+  let navbarHtml := ReaderT.run navbar baseConfig |>.toString
+  FS.writeFile (docDir / "navbar.html") navbarHtml
 
 end DocGen4

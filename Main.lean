@@ -69,6 +69,7 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
     | none => ".lake/build"
   let dbPath := p.positionalArg! "db" |>.as! String
   let manifestOutput? := (p.flag? "manifest").map (·.as! String)
+  let moduleRoots := (p.variableArgsAs! String).map String.toName
 
   -- Phase 1: Load linking context (fast - module names, source URLs, declaration locations)
   let start ← IO.monoMsNow
@@ -77,9 +78,21 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let linkCtx ← loadLinkingContext db
   IO.println s!"Linking context loaded in {(← IO.monoMsNow) - start}ms ({linkCtx.name2ModIdx.size} declarations, {linkCtx.moduleNames.size} modules)"
 
+  -- Determine which modules to generate HTML for
+  let targetModules ←
+    if moduleRoots.isEmpty then
+      -- No roots specified: generate for all modules (existing behavior)
+      pure linkCtx.moduleNames
+    else
+      -- Roots specified: compute transitive closure
+      let start ← IO.monoMsNow
+      let transitiveModules ← getTransitiveImports db moduleRoots
+      IO.println s!"Computed transitive closure of {moduleRoots.size} roots: {transitiveModules.size} modules in {(← IO.monoMsNow) - start}ms"
+      pure transitiveModules
+
   -- Add `references` pseudo-module to hierarchy since references.html is always generated
   let start ← IO.monoMsNow
-  let hierarchy := Hierarchy.fromArray (linkCtx.moduleNames.push `references)
+  let hierarchy := Hierarchy.fromArray (targetModules.push `references)
   IO.println s!"Hierarchy took {(← IO.monoMsNow) - start}ms"
   let start ← IO.monoMsNow
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
@@ -88,11 +101,19 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   -- Phase 2: Parallel HTML generation (one task per module)
   let start ← IO.monoMsNow
   IO.println s!"Generating HTML in parallel to: {buildDir}"
-  let outputs ← htmlOutputResultsParallel baseConfig dbPath linkCtx (sourceLinker? := some (dbSourceLinker linkCtx.sourceUrls))
+  let outputs ← htmlOutputResultsParallel baseConfig dbPath linkCtx targetModules (sourceLinker? := some (dbSourceLinker linkCtx.sourceUrls))
   IO.println s!"HTML took {(← IO.monoMsNow) - start}ms"
+
+  -- When module roots are specified, update navbar from disk (includes modules from previous builds)
+  -- Otherwise, generate full index for complete build
   let start ← IO.monoMsNow
-  htmlOutputIndex baseConfig
-  IO.println s!"HTML index took {(← IO.monoMsNow) - start}ms"
+  if moduleRoots.isEmpty then
+    htmlOutputIndex baseConfig
+    IO.println s!"HTML index took {(← IO.monoMsNow) - start}ms"
+  else
+    updateNavbarFromDisk buildDir
+    IO.println s!"Navbar update took {(← IO.monoMsNow) - start}ms"
+
   IO.println "Done!"
   if let .some manifestOutput := manifestOutput? then
     IO.FS.writeFile manifestOutput (Lean.toJson outputs).compress
@@ -165,7 +186,7 @@ def headerDataCmd := `[Cli|
 
 def fromDbCmd := `[Cli|
   fromDb VIA runFromDbCmd;
-  "Generate all HTML documentation from a SQLite database."
+  "Generate HTML documentation from a SQLite database."
 
   FLAGS:
     b, build : String; "Build directory (default: .lake/build)"
@@ -173,6 +194,7 @@ def fromDbCmd := `[Cli|
 
   ARGS:
     db : String; "Path to the SQLite database"
+    ...modules : String; "Optional: Module roots to generate docs for (computes transitive closure)"
 ]
 
 def docGenCmd : Cmd := `[Cli|
