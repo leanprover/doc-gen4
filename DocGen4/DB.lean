@@ -418,7 +418,6 @@ CREATE TABLE IF NOT EXISTS definitions (
   is_unsafe INTEGER NOT NULL,
   hints TEXT NOT NULL,
   is_noncomputable INTEGER NOT NULL,
-  has_equations INTEGER NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
 );
@@ -431,15 +430,6 @@ CREATE TABLE IF NOT EXISTS definition_equations (
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
 );
-
--- Trigger to ensure has_equations is true when equations are inserted
-CREATE TRIGGER IF NOT EXISTS ensure_has_equations_on_insert
-AFTER INSERT ON definition_equations
-BEGIN
-  UPDATE definitions
-  SET has_equations = 1
-  WHERE module_name = NEW.module_name AND position = NEW.position AND has_equations = 0;
-END;
 
 CREATE TABLE IF NOT EXISTS instances (
   module_name TEXT NOT NULL,
@@ -572,7 +562,7 @@ structure DB where
   saveInfo (modName : String) (position : Int64) (kind : String) (info : Process.Info) : IO Unit
   saveAxiom (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
   saveOpaque (modName : String) (position : Int64) (safety : Lean.DefinitionSafety) : IO Unit
-  saveDefinition (modName : String) (position : Int64) (isUnsafe : Bool) (hints : Lean.ReducibilityHints) (isNonComputable : Bool) (hasEquations : Bool) : IO Unit
+  saveDefinition (modName : String) (position : Int64) (isUnsafe : Bool) (hints : Lean.ReducibilityHints) (isNonComputable : Bool) : IO Unit
   saveDefinitionEquation (modName : String) (position : Int64) (code : RenderedCode) (sequence : Int64) : IO Unit
   saveInstance (modName : String) (position : Int64) (className : String) : IO Unit
   saveInstanceArg (modName : String) (position : Int64) (sequence : Int64) (typeName : String) : IO Unit
@@ -718,14 +708,13 @@ def ensureDb (dbFile : System.FilePath) : IO DB := do
     saveOpaqueStmt.bind 2 position
     saveOpaqueStmt.bind 3 safety
     run saveOpaqueStmt
-  let saveDefinitionStmt ← sqlite.prepare "INSERT INTO definitions (module_name, position, is_unsafe, hints, is_noncomputable, has_equations) VALUES (?, ?, ?, ?, ?, ?)"
-  let saveDefinition modName position isUnsafe hints isNonComputable hasEquations := withDbContext "write:insert:definitions" do
+  let saveDefinitionStmt ← sqlite.prepare "INSERT INTO definitions (module_name, position, is_unsafe, hints, is_noncomputable) VALUES (?, ?, ?, ?, ?)"
+  let saveDefinition modName position isUnsafe hints isNonComputable := withDbContext "write:insert:definitions" do
     saveDefinitionStmt.bind 1 modName
     saveDefinitionStmt.bind 2 position
     saveDefinitionStmt.bind 3 isUnsafe
     saveDefinitionStmt.bind 4 hints
     saveDefinitionStmt.bind 5 isNonComputable
-    saveDefinitionStmt.bind 6 hasEquations
     run saveDefinitionStmt
   let saveDefinitionEquationStmt ← sqlite.prepare "INSERT INTO definition_equations (module_name, position, code, sequence) VALUES (?, ?, ?, ?)"
   let saveDefinitionEquation modName position (code : RenderedCode) sequence := withDbContext "write:insert:definition_equations" do
@@ -927,13 +916,13 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
           | .opaqueInfo info =>
             db.saveOpaque modNameStr pos info.definitionSafety
           | .definitionInfo info =>
-            db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable info.equations.isSome
+            db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable
             if let some eqns := info.equations then
               for h : j in 0...eqns.size do
                 db.saveDefinitionEquation modNameStr pos eqns[j] j.toInt64
           | .instanceInfo info =>
             -- Save definition data (InstanceInfo extends DefinitionInfo)
-            db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable info.equations.isSome
+            db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable
             if let some eqns := info.equations then
               for h : j in 0...eqns.size do
                 db.saveDefinitionEquation modNameStr pos eqns[j] j.toInt64
@@ -1210,17 +1199,15 @@ def loadInfo (db : SQLite) (moduleName : String) (position : Int64) (name : Name
   }
 
 /-- Load definition equations from the database.
-    Takes hasEquations flag to distinguish `none` from `some #[]`. -/
-def loadEquations (db : SQLite) (moduleName : String) (position : Int64) (hasEquations : Bool) : IO (Option (Array RenderedCode)) := withDbContext "read:definition_equations" do
-  if !hasEquations then return none
+    Returns `none` if no equations exist, `some eqns` otherwise. -/
+def loadEquations (db : SQLite) (moduleName : String) (position : Int64) : IO (Option (Array RenderedCode)) := withDbContext "read:definition_equations" do
   let stmt ← db.prepare "SELECT code FROM definition_equations WHERE module_name = ? AND position = ? ORDER BY sequence"
   stmt.bind 1 moduleName
   stmt.bind 2 position
-  let mut eqns := #[]
+  if !(← stmt.step) then return none
+  let mut eqns := #[← readRenderedCode (← stmt.columnBlob 0)]
   while (← stmt.step) do
-    let blob ← stmt.columnBlob 0
-    let code ← readRenderedCode blob
-    eqns := eqns.push code
+    eqns := eqns.push (← readRenderedCode (← stmt.columnBlob 0))
   return some eqns
 
 /-- Load instance type names from the database. -/
@@ -1375,19 +1362,18 @@ def loadDocInfo (db : SQLite) (moduleName : String) (position : Int64) (kind : S
       return some <| .opaqueInfo { toInfo := info, definitionSafety := safety }
     return none
   | "definition" =>
-    let stmt ← db.prepare "SELECT is_unsafe, hints, is_noncomputable, has_equations FROM definitions WHERE module_name = ? AND position = ?"
+    let stmt ← db.prepare "SELECT is_unsafe, hints, is_noncomputable FROM definitions WHERE module_name = ? AND position = ?"
     stmt.bind 1 moduleName
     stmt.bind 2 position
     if (← stmt.step) then
       let isUnsafe := (← stmt.columnInt64 0) != 0
       let hintsStr ← stmt.columnText 1
       let isNonComputable := (← stmt.columnInt64 2) != 0
-      let hasEquations := (← stmt.columnInt64 3) != 0
       let hints : ReducibilityHints := match hintsStr with
         | "opaque" => .opaque
         | "abbrev" => .abbrev
         | s => .regular (s.toNat?.getD 0 |>.toUInt32)
-      let equations ← loadEquations db moduleName position hasEquations
+      let equations ← loadEquations db moduleName position
       return some <| .definitionInfo { toInfo := info, isUnsafe, hints, equations, isNonComputable }
     return none
   | "instance" =>
@@ -1396,19 +1382,18 @@ def loadDocInfo (db : SQLite) (moduleName : String) (position : Int64) (kind : S
     instStmt.bind 2 position
     if (← instStmt.step) then
       let className := (← instStmt.columnText 0).toName
-      let defStmt ← db.prepare "SELECT is_unsafe, hints, is_noncomputable, has_equations FROM definitions WHERE module_name = ? AND position = ?"
+      let defStmt ← db.prepare "SELECT is_unsafe, hints, is_noncomputable FROM definitions WHERE module_name = ? AND position = ?"
       defStmt.bind 1 moduleName
       defStmt.bind 2 position
       if (← defStmt.step) then
         let isUnsafe := (← defStmt.columnInt64 0) != 0
         let hintsStr ← defStmt.columnText 1
         let isNonComputable := (← defStmt.columnInt64 2) != 0
-        let hasEquations := (← defStmt.columnInt64 3) != 0
         let hints : ReducibilityHints := match hintsStr with
           | "opaque" => .opaque
           | "abbrev" => .abbrev
           | s => .regular (s.toNat?.getD 0 |>.toUInt32)
-        let equations ← loadEquations db moduleName position hasEquations
+        let equations ← loadEquations db moduleName position
         let typeNames ← loadInstanceArgs db moduleName position
         return some <| .instanceInfo { toInfo := info, isUnsafe, hints, equations, isNonComputable, className, typeNames }
     return none
