@@ -18,12 +18,8 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   let dbFile := p.positionalArg! "db" |>.as! String
   let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
   let sourceUri := p.positionalArg! "sourceUri" |>.as! String
-  let t0 ← IO.monoMsNow
   let doc ← load <| .analyzeConcreteModules relevantModules
-  let t1 ← IO.monoMsNow
   updateModuleDb doc buildDir dbFile (some sourceUri)
-  let t2 ← IO.monoMsNow
-  IO.eprintln s!"[timing] {relevantModules[0]!}: load={t1-t0}ms db={t2-t1}ms total={t2-t0}ms"
   return 0
 
 def runGenCoreCmd (p : Parsed) : IO UInt32 := do
