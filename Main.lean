@@ -71,50 +71,29 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let manifestOutput? := (p.flag? "manifest").map (·.as! String)
   let moduleRoots := (p.variableArgsAs! String).map String.toName
 
-  -- Phase 1: Load linking context (fast - module names, source URLs, declaration locations)
-  let start ← IO.monoMsNow
-  IO.println s!"Loading linking context from database: {dbPath}"
+  -- Load linking context (module names, source URLs, declaration locations)
   let db ← openDbForReading dbPath
   let linkCtx ← loadLinkingContext db
-  IO.println s!"Linking context loaded in {(← IO.monoMsNow) - start}ms ({linkCtx.name2ModIdx.size} declarations, {linkCtx.moduleNames.size} modules)"
 
   -- Determine which modules to generate HTML for
   let targetModules ←
     if moduleRoots.isEmpty then
-      -- No roots specified: generate for all modules (existing behavior)
       pure linkCtx.moduleNames
     else
-      -- Roots specified: compute transitive closure
-      let start ← IO.monoMsNow
-      let transitiveModules ← getTransitiveImports db moduleRoots
-      IO.println s!"Computed transitive closure of {moduleRoots.size} roots: {transitiveModules.size} modules in {(← IO.monoMsNow) - start}ms"
-      pure transitiveModules
+      getTransitiveImports db moduleRoots
 
   -- Add `references` pseudo-module to hierarchy since references.html is always generated
-  let start ← IO.monoMsNow
   let hierarchy := Hierarchy.fromArray (targetModules.push `references)
-  IO.println s!"Hierarchy took {(← IO.monoMsNow) - start}ms"
-  let start ← IO.monoMsNow
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  IO.println s!"Context took {(← IO.monoMsNow) - start}ms"
 
-  -- Phase 2: Parallel HTML generation (one task per module)
-  let start ← IO.monoMsNow
-  IO.println s!"Generating HTML in parallel to: {buildDir}"
+  -- Parallel HTML generation
   let outputs ← htmlOutputResultsParallel baseConfig dbPath linkCtx targetModules (sourceLinker? := some (dbSourceLinker linkCtx.sourceUrls))
-  IO.println s!"HTML took {(← IO.monoMsNow) - start}ms"
 
   -- Generate the search index (declaration-data.bmp)
-  let start ← IO.monoMsNow
   htmlOutputIndex baseConfig
-  IO.println s!"HTML index took {(← IO.monoMsNow) - start}ms"
 
   -- Update navbar to include all modules on disk
-  let start ← IO.monoMsNow
   updateNavbarFromDisk buildDir
-  IO.println s!"Navbar update took {(← IO.monoMsNow) - start}ms"
-
-  IO.println "Done!"
   if let .some manifestOutput := manifestOutput? then
     IO.FS.writeFile manifestOutput (Lean.toJson outputs).compress
   return 0
