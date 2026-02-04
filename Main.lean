@@ -104,15 +104,15 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let outputs ← htmlOutputResultsParallel baseConfig dbPath linkCtx targetModules (sourceLinker? := some (dbSourceLinker linkCtx.sourceUrls))
   IO.println s!"HTML took {(← IO.monoMsNow) - start}ms"
 
-  -- When module roots are specified, update navbar from disk (includes modules from previous builds)
-  -- Otherwise, generate full index for complete build
+  -- Generate the search index (declaration-data.bmp)
   let start ← IO.monoMsNow
-  if moduleRoots.isEmpty then
-    htmlOutputIndex baseConfig
-    IO.println s!"HTML index took {(← IO.monoMsNow) - start}ms"
-  else
-    updateNavbarFromDisk buildDir
-    IO.println s!"Navbar update took {(← IO.monoMsNow) - start}ms"
+  htmlOutputIndex baseConfig
+  IO.println s!"HTML index took {(← IO.monoMsNow) - start}ms"
+
+  -- Update navbar to include all modules on disk
+  let start ← IO.monoMsNow
+  updateNavbarFromDisk buildDir
+  IO.println s!"Navbar update took {(← IO.monoMsNow) - start}ms"
 
   IO.println "Done!"
   if let .some manifestOutput := manifestOutput? then
