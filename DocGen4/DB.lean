@@ -1,8 +1,53 @@
 import DocGen4.Process
 import DocGen4.RenderedCode
 import SQLite
+import Std.Data.Iterators
 
 namespace DocGen4.DB
+
+section
+
+open Std Iterators
+
+structure ChunkArray α where
+  array : Array α
+  chunkSize : Nat
+  curr : Nat
+  chunkSize_gt_zero : chunkSize > 0 := by grind
+  curr_valid : curr ≤ array.size := by grind
+
+def chunkedM {m : Type u → Type v} (xs : Array α) (n : Nat) (ok : n > 0 := by grind) :=
+  IterM.mk (ChunkArray.mk xs n 0) m (Array α)
+
+def chunked (xs : Array α) (n : Nat) (ok : n > 0 := by grind) :=
+  IterM.mk (ChunkArray.mk xs n 0) Id (Array α)
+
+def ChunkArray.PlausibleStep (it : IterM (α := ChunkArray α) m (Array α)) :
+    (step : IterStep (IterM (α := ChunkArray α) m (Array α)) (Array α)) → Prop
+  | .yield it' v  =>
+    it.internalState.curr < it.internalState.array.size ∧
+    it.internalState.array = it'.internalState.array ∧
+    it.internalState.chunkSize = it'.internalState.chunkSize ∧
+    it.internalState.curr < it'.internalState.curr ∧
+    v.size ≤ it.internalState.chunkSize
+  | .done => it.internalState.curr = it.internalState.array.size
+  | .skip .. => False
+
+instance [Pure m] : Iterator (ChunkArray α) m (Array α) where
+  IsPlausibleStep := ChunkArray.PlausibleStep
+  step it :=
+    let { internalState := { array, chunkSize, chunkSize_gt_zero, curr, curr_valid } } := it
+    if h : curr = array.size then
+      pure <| .deflate <| .done h
+    else
+      let curr' := curr + chunkSize
+      let curr'' := if curr' > array.size then array.size else curr'
+      let it' : IterM (α := ChunkArray α) _ _ := ⟨{ array, chunkSize, curr := curr'' }⟩
+      pure <| .deflate <| .yield it' (array.extract curr curr'') (by grind [ChunkArray.PlausibleStep])
+
+instance [Pure m] [Monad n] : IteratorLoop (ChunkArray α) (β := Array α) m n := IteratorLoop.defaultImplementation
+
+end
 
 open Lean in
 /-- Extract a deterministic string representation of an inductive type for hashing.
@@ -884,90 +929,95 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
     (sourceUrl? : Option String) : IO Unit := do
   let dbFile := buildDir / dbFile
   let db ← ensureDb dbFile
-  for (modName, modInfo) in doc.moduleInfo do
-    let modNameStr := modName.toString
+  for batch in chunked doc.moduleInfo.toArray 100 do
     -- Each module gets its own transaction to reduce lock contention
-    let _ ← withDbContext s!"transaction:immediate:{modNameStr}" <| db.sqlite.transaction (mode := .immediate) do
-      -- Collect structure field info to save in second pass (after all declarations are in name_info)
-      let mut pendingStructureFields : Array (Int64 × Process.StructureInfo) := #[]
-      db.deleteModule modNameStr
-      db.saveModule modNameStr sourceUrl?
-      for imported in modInfo.imports do
-        db.saveImport modNameStr imported
-      let mut i : Int64 := 0
-      for mem in modInfo.members do
-        let pos := i
-        i := i + 1
-        match mem with
-        | .modDoc doc =>
-          db.saveDeclarationRange modNameStr pos doc.declarationRange
-          db.saveMarkdownDocstring modNameStr pos doc.doc
-        | .docInfo info =>
-          let baseInfo := info.toInfo
-          -- Skip saving ctorInfo here - they're saved along with their parent inductive
-          if !info.isCtorInfo then
-            db.saveInfo modNameStr pos (infoKind info) baseInfo
-            db.saveDeclarationRange modNameStr pos baseInfo.declarationRange
-          match info with
-          | .axiomInfo info =>
-            db.saveAxiom modNameStr pos info.isUnsafe
-          | .theoremInfo _info => -- No extra info here
-            pure ()
-          | .opaqueInfo info =>
-            db.saveOpaque modNameStr pos info.definitionSafety
-          | .definitionInfo info =>
-            db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable
-            if let some eqns := info.equations then
-              for h : j in 0...eqns.size do
-                db.saveDefinitionEquation modNameStr pos eqns[j] j.toInt64
-          | .instanceInfo info =>
-            -- Save definition data (InstanceInfo extends DefinitionInfo)
-            db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable
-            if let some eqns := info.equations then
-              for h : j in 0...eqns.size do
-                db.saveDefinitionEquation modNameStr pos eqns[j] j.toInt64
-            -- Save instance-specific data
-            db.saveInstance modNameStr pos info.className.toString
-            for h : j in 0...info.typeNames.size do
-              db.saveInstanceArg modNameStr pos j.toInt64 info.typeNames[j].toString
-          | .inductiveInfo info =>
-            db.saveInductive modNameStr pos info.isUnsafe
-            -- Save recursors (main + aux) as internal names linking to this inductive
-            saveRecursors doc.name2ModIdx db modNameStr pos info.name
-            for ctor in info.ctors do
-              let cpos := i
-              i := i + 1
-              db.saveInfo modNameStr cpos "constructor" ctor
-              db.saveDeclarationRange modNameStr cpos ctor.declarationRange
-              db.saveConstructor modNameStr cpos pos
-          | .structureInfo info =>
-            -- First pass: save structure metadata (not fields)
-            i := (← (saveStructureMetadata false info db modNameStr pos doc.name2ModIdx).run i).2
-            pendingStructureFields := pendingStructureFields.push (pos, info)
-          | .classInfo info =>
-            -- First pass: save structure metadata (not fields)
-            i := (← (saveStructureMetadata true info db modNameStr pos doc.name2ModIdx).run i).2
-            pendingStructureFields := pendingStructureFields.push (pos, info)
-          | .classInductiveInfo info =>
-            db.saveClassInductive modNameStr pos info.isUnsafe
-            -- Save recursors (main + aux) as internal names linking to this class inductive
-            saveRecursors doc.name2ModIdx db modNameStr pos info.name
-            for ctor in info.ctors do
-              let cpos := i
-              i := i + 1
-              db.saveInfo modNameStr cpos "constructor" ctor
-              db.saveDeclarationRange modNameStr cpos ctor.declarationRange
-              db.saveConstructor modNameStr cpos pos
-          | .ctorInfo info =>
-            -- Here we do nothing because they were inserted along with the inductive
-            pure ()
-      -- Second pass: save structure fields (now that all projection functions are in name_info)
-      for (pos, info) in pendingStructureFields do
-        saveStructureFields info db modNameStr pos
-      -- Save tactics defined in this module
-      for tactic in modInfo.tactics do
-        db.saveTactic modNameStr tactic
-      pure ()
+    let ctxStr :=
+      if h : batch.size = 1 then batch[0].1.toString
+      else if h : batch.size = 0 then "none"
+      else s!"{batch[0].1}-{batch[batch.size-1].1}"
+    let _ ← withDbContext s!"transaction:immediate:{ctxStr}" <| db.sqlite.transaction (mode := .immediate) do
+      for (modName, modInfo) in doc.moduleInfo do
+        let modNameStr := modName.toString
+        -- Collect structure field info to save in second pass (after all declarations are in name_info)
+        let mut pendingStructureFields : Array (Int64 × Process.StructureInfo) := #[]
+        db.deleteModule modNameStr
+        db.saveModule modNameStr sourceUrl?
+        for imported in modInfo.imports do
+          db.saveImport modNameStr imported
+        let mut i : Int64 := 0
+        for mem in modInfo.members do
+          let pos := i
+          i := i + 1
+          match mem with
+          | .modDoc doc =>
+            db.saveDeclarationRange modNameStr pos doc.declarationRange
+            db.saveMarkdownDocstring modNameStr pos doc.doc
+          | .docInfo info =>
+            let baseInfo := info.toInfo
+            -- Skip saving ctorInfo here - they're saved along with their parent inductive
+            if !info.isCtorInfo then
+              db.saveInfo modNameStr pos (infoKind info) baseInfo
+              db.saveDeclarationRange modNameStr pos baseInfo.declarationRange
+            match info with
+            | .axiomInfo info =>
+              db.saveAxiom modNameStr pos info.isUnsafe
+            | .theoremInfo _info => -- No extra info here
+              pure ()
+            | .opaqueInfo info =>
+              db.saveOpaque modNameStr pos info.definitionSafety
+            | .definitionInfo info =>
+              db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable
+              if let some eqns := info.equations then
+                for h : j in 0...eqns.size do
+                  db.saveDefinitionEquation modNameStr pos eqns[j] j.toInt64
+            | .instanceInfo info =>
+              -- Save definition data (InstanceInfo extends DefinitionInfo)
+              db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable
+              if let some eqns := info.equations then
+                for h : j in 0...eqns.size do
+                  db.saveDefinitionEquation modNameStr pos eqns[j] j.toInt64
+              -- Save instance-specific data
+              db.saveInstance modNameStr pos info.className.toString
+              for h : j in 0...info.typeNames.size do
+                db.saveInstanceArg modNameStr pos j.toInt64 info.typeNames[j].toString
+            | .inductiveInfo info =>
+              db.saveInductive modNameStr pos info.isUnsafe
+              -- Save recursors (main + aux) as internal names linking to this inductive
+              saveRecursors doc.name2ModIdx db modNameStr pos info.name
+              for ctor in info.ctors do
+                let cpos := i
+                i := i + 1
+                db.saveInfo modNameStr cpos "constructor" ctor
+                db.saveDeclarationRange modNameStr cpos ctor.declarationRange
+                db.saveConstructor modNameStr cpos pos
+            | .structureInfo info =>
+              -- First pass: save structure metadata (not fields)
+              i := (← (saveStructureMetadata false info db modNameStr pos doc.name2ModIdx).run i).2
+              pendingStructureFields := pendingStructureFields.push (pos, info)
+            | .classInfo info =>
+              -- First pass: save structure metadata (not fields)
+              i := (← (saveStructureMetadata true info db modNameStr pos doc.name2ModIdx).run i).2
+              pendingStructureFields := pendingStructureFields.push (pos, info)
+            | .classInductiveInfo info =>
+              db.saveClassInductive modNameStr pos info.isUnsafe
+              -- Save recursors (main + aux) as internal names linking to this class inductive
+              saveRecursors doc.name2ModIdx db modNameStr pos info.name
+              for ctor in info.ctors do
+                let cpos := i
+                i := i + 1
+                db.saveInfo modNameStr cpos "constructor" ctor
+                db.saveDeclarationRange modNameStr cpos ctor.declarationRange
+                db.saveConstructor modNameStr cpos pos
+            | .ctorInfo info =>
+              -- Here we do nothing because they were inserted along with the inductive
+              pure ()
+        -- Second pass: save structure fields (now that all projection functions are in name_info)
+        for (pos, info) in pendingStructureFields do
+          saveStructureFields info db modNameStr pos
+        -- Save tactics defined in this module
+        for tactic in modInfo.tactics do
+          db.saveTactic modNameStr tactic
+        pure ()
   pure ()
 
 where
