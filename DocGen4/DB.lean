@@ -247,6 +247,7 @@ def getDb (dbFile : System.FilePath) : IO SQLite := do
   let db ← SQLite.openWith dbFile .readWriteCreate
   db.exec "PRAGMA busy_timeout = 86400000"  -- 24 hours - effectively no timeout for parallel builds
   db.exec "PRAGMA journal_mode = WAL"
+  db.exec "PRAGMA synchronous = OFF"
   db.exec "PRAGMA foreign_keys = ON"
   try
     db.transaction (db.exec ddl)
