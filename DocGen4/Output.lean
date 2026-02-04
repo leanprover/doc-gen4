@@ -18,6 +18,7 @@ import DocGen4.Output.Search
 import DocGen4.Output.Tactics
 import DocGen4.Output.ToJson
 import DocGen4.Output.FoundationalTypes
+import DocGen4.Helpers
 
 namespace DocGen4
 
@@ -102,8 +103,8 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
   FS.createDirAll <| basePath baseConfig.buildDir
   FS.createDirAll <| declarationsBasePath baseConfig.buildDir
 
-  -- Spawn one task per module, each returning its output file path
-  let tasks ← targetModules.mapM fun modName => IO.asTask do
+  -- Spawn one task per 100 modules, each returning its output file path
+  let tasks ← (chunksOf targetModules 100).flatMapM fun mods => mods.mapM fun modName => IO.asTask do
     -- Each task opens its own DB connection (SQLite handles concurrent readers well)
     let db ← openDbForReading dbPath
     let module ← loadModule db modName
