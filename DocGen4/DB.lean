@@ -291,7 +291,7 @@ PRAGMA journal_mode = WAL;
 CREATE TABLE IF NOT EXISTS modules (
   name TEXT PRIMARY KEY,
   source_url TEXT
-);
+) WITHOUT ROWID;
 
 -- Direct imports
 CREATE TABLE IF NOT EXISTS module_imports (
@@ -302,7 +302,7 @@ CREATE TABLE IF NOT EXISTS module_imports (
   -- There's no
   -- FOREIGN KEY (imported) REFERENCES modules(name)
   -- because docs are built incrementally.
-);
+) WITHOUT ROWID;
 
 -- Index for reverse queries: "what imports this module?"
 CREATE INDEX IF NOT EXISTS idx_module_imports_imported ON module_imports(imported);
@@ -313,7 +313,7 @@ CREATE TABLE IF NOT EXISTS module_items (
   item_type TEXT NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS declaration_ranges (
   module_name TEXT NOT NULL,
@@ -326,7 +326,7 @@ CREATE TABLE IF NOT EXISTS declaration_ranges (
   end_utf16 INTEGER NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS markdown_docstrings (
   module_name TEXT NOT NULL,
@@ -334,7 +334,7 @@ CREATE TABLE IF NOT EXISTS markdown_docstrings (
   text TEXT NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS verso_docstrings (
   module_name TEXT NOT NULL,
@@ -342,7 +342,7 @@ CREATE TABLE IF NOT EXISTS verso_docstrings (
   content BLOB NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS name_info (
   module_name TEXT NOT NULL,
@@ -354,7 +354,7 @@ CREATE TABLE IF NOT EXISTS name_info (
   render INTEGER NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS axioms (
   module_name TEXT NOT NULL,
@@ -362,7 +362,7 @@ CREATE TABLE IF NOT EXISTS axioms (
   is_unsafe INTEGER NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 -- Internal names (like recursors) that aren't rendered but should link to a rendered declaration
 CREATE TABLE IF NOT EXISTS internal_names (
@@ -370,7 +370,7 @@ CREATE TABLE IF NOT EXISTS internal_names (
   target_module TEXT NOT NULL,
   target_position INTEGER NOT NULL,
   FOREIGN KEY (target_module, target_position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 -- Index for CASCADE deletes: when name_info rows are deleted, find matching internal_names
 CREATE INDEX IF NOT EXISTS idx_internal_names_target ON internal_names(target_module, target_position);
@@ -382,7 +382,7 @@ CREATE TABLE IF NOT EXISTS constructors (
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
   FOREIGN KEY (module_name, type_position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 -- Index for CASCADE deletes on the second FK (type_position)
 CREATE INDEX IF NOT EXISTS idx_constructors_type_pos ON constructors(module_name, type_position);
@@ -393,7 +393,7 @@ CREATE TABLE IF NOT EXISTS inductives (
   is_unsafe INTEGER NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS class_inductives (
   module_name TEXT NOT NULL,
@@ -401,7 +401,7 @@ CREATE TABLE IF NOT EXISTS class_inductives (
   is_unsafe INTEGER NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS opaques (
   module_name TEXT NOT NULL,
@@ -409,7 +409,7 @@ CREATE TABLE IF NOT EXISTS opaques (
   safety TEXT NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS definitions (
   module_name TEXT NOT NULL,
@@ -420,7 +420,7 @@ CREATE TABLE IF NOT EXISTS definitions (
   has_equations INTEGER NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS definition_equations (
   module_name TEXT NOT NULL,
@@ -429,7 +429,7 @@ CREATE TABLE IF NOT EXISTS definition_equations (
   sequence INTEGER NOT NULL,
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 -- Trigger to ensure has_equations is true when equations are inserted
 CREATE TRIGGER IF NOT EXISTS ensure_has_equations_on_insert
@@ -446,7 +446,7 @@ CREATE TABLE IF NOT EXISTS instances (
   class_name TEXT NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS instance_args (
   module_name TEXT NOT NULL,
@@ -455,7 +455,7 @@ CREATE TABLE IF NOT EXISTS instance_args (
   type_name TEXT NOT NULL,
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES instances(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS structures (
   module_name TEXT NOT NULL,
@@ -463,7 +463,7 @@ CREATE TABLE IF NOT EXISTS structures (
   is_class INTEGER NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS structure_parents (
   module_name TEXT NOT NULL,
@@ -473,7 +473,7 @@ CREATE TABLE IF NOT EXISTS structure_parents (
   type TEXT NOT NULL,
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES structures(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS structure_constructors (
   module_name TEXT NOT NULL,
@@ -483,7 +483,7 @@ CREATE TABLE IF NOT EXISTS structure_constructors (
   type BLOB NOT NULL,
   PRIMARY KEY (module_name, position),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS structure_fields (
   module_name TEXT NOT NULL,
@@ -496,7 +496,7 @@ CREATE TABLE IF NOT EXISTS structure_fields (
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
   -- Note: No FK on proj_name because the projection function may be in a different module
   -- (for inherited fields) that hasn't been processed yet. The JOIN at load time handles this.
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS structure_field_args (
   module_name TEXT NOT NULL,
@@ -507,7 +507,7 @@ CREATE TABLE IF NOT EXISTS structure_field_args (
   is_implicit INTEGER NOT NULL,
   PRIMARY KEY (module_name, position, field_sequence, arg_sequence),
   FOREIGN KEY (module_name, position, field_sequence) REFERENCES structure_fields(module_name, position, sequence) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS declaration_args (
   module_name TEXT NOT NULL,
@@ -517,7 +517,7 @@ CREATE TABLE IF NOT EXISTS declaration_args (
   is_implicit INTEGER NOT NULL,
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS declaration_attrs (
   module_name TEXT NOT NULL,
@@ -526,7 +526,7 @@ CREATE TABLE IF NOT EXISTS declaration_attrs (
   attr TEXT NOT NULL,
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS tactics (
   module_name TEXT NOT NULL,
@@ -535,7 +535,7 @@ CREATE TABLE IF NOT EXISTS tactics (
   doc_string TEXT NOT NULL,
   PRIMARY KEY (module_name, internal_name),
   FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS tactic_tags (
   module_name TEXT NOT NULL,
@@ -543,12 +543,12 @@ CREATE TABLE IF NOT EXISTS tactic_tags (
   tag TEXT NOT NULL,
   PRIMARY KEY (module_name, internal_name, tag),
   FOREIGN KEY (module_name, internal_name) REFERENCES tactics(module_name, internal_name) ON DELETE CASCADE
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS schema_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
-);
+) WITHOUT ROWID;
 "#
 
 def withDbContext (context : String) (act : IO α) : IO α := do
