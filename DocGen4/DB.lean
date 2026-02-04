@@ -17,23 +17,24 @@ structure ChunkArray α where
   curr_valid : curr ≤ array.size := by grind
 
 def chunkedM {m : Type u → Type v} (xs : Array α) (n : Nat) (ok : n > 0 := by grind) :=
-  IterM.mk (ChunkArray.mk xs n 0) m (Array α)
+  IterM.mk (ChunkArray.mk xs n 0) m (Subarray α)
 
 def chunked (xs : Array α) (n : Nat) (ok : n > 0 := by grind) :=
-  IterM.mk (ChunkArray.mk xs n 0) Id (Array α)
+  IterM.mk (ChunkArray.mk xs n 0) Id (Subarray α)
 
-def ChunkArray.PlausibleStep (it : IterM (α := ChunkArray α) m (Array α)) :
-    (step : IterStep (IterM (α := ChunkArray α) m (Array α)) (Array α)) → Prop
+def ChunkArray.PlausibleStep (it : IterM (α := ChunkArray α) m (Subarray α)) :
+    (step : IterStep (IterM (α := ChunkArray α) m (Subarray α)) (Subarray α)) → Prop
   | .yield it' v  =>
     it.internalState.curr < it.internalState.array.size ∧
     it.internalState.array = it'.internalState.array ∧
     it.internalState.chunkSize = it'.internalState.chunkSize ∧
     it.internalState.curr < it'.internalState.curr ∧
-    v.size ≤ it.internalState.chunkSize
+    v.size ≤ it.internalState.chunkSize ∧
+    v.array = it.internalState.array
   | .done => it.internalState.curr = it.internalState.array.size
   | .skip .. => False
 
-instance [Pure m] : Iterator (ChunkArray α) m (Array α) where
+instance [Pure m] : Iterator (ChunkArray α) m (Subarray α) where
   IsPlausibleStep := ChunkArray.PlausibleStep
   step it :=
     let { internalState := { array, chunkSize, chunkSize_gt_zero, curr, curr_valid } } := it
@@ -43,9 +44,9 @@ instance [Pure m] : Iterator (ChunkArray α) m (Array α) where
       let curr' := curr + chunkSize
       let curr'' := if curr' > array.size then array.size else curr'
       let it' : IterM (α := ChunkArray α) _ _ := ⟨{ array, chunkSize, curr := curr'' }⟩
-      pure <| .deflate <| .yield it' (array.extract curr curr'') (by grind [ChunkArray.PlausibleStep])
+      pure <| .deflate <| .yield it' (array[curr...curr'']) (by grind [ChunkArray.PlausibleStep])
 
-instance [Pure m] [Monad n] : IteratorLoop (ChunkArray α) (β := Array α) m n := IteratorLoop.defaultImplementation
+instance [Pure m] [Monad n] : IteratorLoop (ChunkArray α) (β := Subarray α) m n := IteratorLoop.defaultImplementation
 
 end
 
@@ -925,6 +926,7 @@ end DB
 
 open DB
 
+
 def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (dbFile : String)
     (sourceUrl? : Option String) : IO Unit := do
   let dbFile := buildDir / dbFile
@@ -934,9 +936,10 @@ def updateModuleDb (doc : Process.AnalyzerResult) (buildDir : System.FilePath) (
     let ctxStr :=
       if h : batch.size = 1 then batch[0].1.toString
       else if h : batch.size = 0 then "none"
-      else s!"{batch[0].1}-{batch[batch.size-1].1}"
+      else s!"{batch[0].1}-{batch[batch.size-1].1} ({batch.size} modules)"
+
     let _ ← withDbContext s!"transaction:immediate:{ctxStr}" <| db.sqlite.transaction (mode := .immediate) do
-      for (modName, modInfo) in doc.moduleInfo do
+      for (modName, modInfo) in batch do
         let modNameStr := modName.toString
         -- Collect structure field info to save in second pass (after all declarations are in name_info)
         let mut pendingStructureFields : Array (Int64 × Process.StructureInfo) := #[]
