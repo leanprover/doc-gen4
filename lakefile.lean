@@ -310,32 +310,73 @@ library_facet docsHeader (lib) : FilePath := do
 /--
 Generate HTML documentation for the given root modules.
 Fetches docInfo for all roots, ensures core docs are built, then runs a single `fromDb` process.
+Returns an array of all generated file paths.
 -/
-def generateHtmlDocs (rootMods : Array Module) (description : String) : FetchM (Job Unit) := do
+def generateHtmlDocs (rootMods : Array Module) (description : String) : FetchM (Job (Array FilePath)) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
   let coreJob ← coreDocs.fetch
   let docInfoJobs := Job.collectArray <| ← rootMods.mapM (fetch <| ·.facet `docInfo)
   let buildDir := (← getRootPackage).buildDir
+  let basePath := buildDir / "doc"
   let dbPath := buildDir / "api-docs.db"
+  let dataFile := basePath / "declarations" / "declaration-data.bmp"
+  let staticFiles := #[
+    basePath / "style.css",
+    basePath / "favicon.svg",
+    basePath / "declaration-data.js",
+    basePath / "color-scheme.js",
+    basePath / "nav.js",
+    basePath / "jump-src.js",
+    basePath / "expand-nav.js",
+    basePath / "how-about.js",
+    basePath / "search.js",
+    basePath / "mathjax-config.js",
+    basePath / "instances.js",
+    basePath / "importedBy.js",
+    basePath / "index.html",
+    basePath / "404.html",
+    basePath / "navbar.html",
+    basePath / "search.html",
+    basePath / "foundational_types.html",
+    basePath / "references.html",
+    basePath / "references.bib",
+    basePath / "tactics.html",
+    basePath / "find" / "index.html",
+    basePath / "find" / "find.js"
+  ]
   let rootNames := rootMods.map (·.name)
+  let manifestFile := buildDir / "doc-manifest.json"
   coreJob.bindM fun _ => do
     docInfoJobs.bindM fun _ => do
       bibPrepassJob.bindM fun _ => do
         exeJob.mapM fun exeFile => do
-          logInfo description
-          proc {
-            cmd := exeFile.toString
-            args := #["fromDb", "--build", buildDir.toString, dbPath.toString] ++ rootNames.map (·.toString)
-            env := ← getAugmentedEnv
-          }
+          buildFileUnlessUpToDate' dataFile do
+            logInfo description
+            proc {
+              cmd := exeFile.toString
+              args := #["fromDb", "--build", buildDir.toString, "--manifest", manifestFile.toString, dbPath.toString] ++ rootNames.map (·.toString)
+              env := ← getAugmentedEnv
+            }
+          let traces ← staticFiles.mapM computeTrace
+          addTrace <| mixTraceArray traces
+          -- We read the manifest to determine which HTML files were generated because we only
+          -- pass root module names to fromDb, which computes the transitive closure internally.
+          -- This avoids passing potentially thousands of module names on the command line.
+          match Lean.Json.parse <| ← IO.FS.readFile manifestFile with
+          | .error _ => return #[dataFile] ++ staticFiles
+          | .ok manifestData =>
+            match Lean.fromJson? manifestData with
+            | .error _ => return #[dataFile] ++ staticFiles
+            | .ok (manifestDeps : Array System.FilePath) =>
+              return #[dataFile] ++ staticFiles ++ manifestDeps.map (buildDir / ·)
 
 /-- Generate HTML for this module and its transitive imports. -/
-module_facet docs (mod) : Unit := do
+module_facet docs (mod) : Array FilePath := do
   generateHtmlDocs #[mod] s!"Generating documentation for {mod.name} and dependencies"
 
 /-- Generate HTML for all modules in this library. -/
-library_facet docs (lib) : Unit := do
+library_facet docs (lib) : Array FilePath := do
   let rootMods := lib.rootModules
   generateHtmlDocs rootMods s!"Generating documentation for {lib.name} ({rootMods.size} root modules)"
 
@@ -343,7 +384,7 @@ library_facet docs (lib) : Unit := do
 Generates documentation for the package's default library targets. Runs a single HTML generation
 process for all root modules across all default libraries.
 -/
-package_facet docs (pkg) : Unit := do
+package_facet docs (pkg) : Array FilePath := do
   let defaultTargets := pkg.defaultTargets
   let libs := pkg.leanLibs.filter fun lib => defaultTargets.contains lib.name
   let rootMods := libs.flatMap (·.rootModules)
