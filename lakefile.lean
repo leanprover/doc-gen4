@@ -189,6 +189,9 @@ target bibPrepass : FilePath := do
     return #["--build", buildDir.toString, "--none"]
   exeJob.mapM fun exeFile => do
     let args ← tryJson <|> tryBib <|> tryBibFailed
+    let bibOutputFile := buildDir / "doc" / "references.bib"
+    if !(← bibOutputFile.pathExists) then
+      IO.FS.removeFile outputFile |>.catchExceptions fun _ => pure ()
     buildFileUnlessUpToDate' outputFile do
       proc {
         cmd := exeFile.toString
