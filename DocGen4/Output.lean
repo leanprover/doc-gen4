@@ -22,7 +22,7 @@ import DocGen4.Helpers
 
 namespace DocGen4
 
-open Lean IO System Output Process
+open Lean IO System Output Process DB
 
 def collectBackrefs (buildDir : System.FilePath) : IO (Array BackrefItem) := do
   let mut backrefs : Array BackrefItem := #[]
@@ -106,8 +106,8 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
   -- Spawn one task per 100 modules, each returning its output file path
   let tasks ← (chunksOf targetModules 100).flatMapM fun mods => mods.mapM fun modName => IO.asTask do
     -- Each task opens its own DB connection (SQLite handles concurrent readers well)
-    let db ← openDbForReading dbPath
-    let module ← loadModule db modName
+    let db ← DB.openForReading dbPath
+    let module ← db.loadModule modName
 
     -- Build a minimal AnalyzerResult with just this module's info
     let result : AnalyzerResult := {

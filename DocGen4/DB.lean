@@ -3,363 +3,12 @@ import DocGen4.RenderedCode
 import SQLite
 import DocGen4.Helpers
 import DocGen4.DB.VersoDocString
+import DocGen4.DB.Schema
+import DocGen4.DB.Read
 
 namespace DocGen4.DB
 
-open Lean in
-/--
-Extracts a deterministic string representation of an inductive type, which is used to invalidate
-database schemas in which blobs implicitly depend on serializations of datatypes. Includes
-constructor names and their types.
--/
-private def inductiveRepr (env : Environment) (name : Name) : String := Id.run do
-  let some (.inductInfo info) := env.find? name | return s!"not found: {name}"
-  let mut s := s!"inductive {name} : {info.type}\n"
-  for ctor in info.ctors do
-    let some (.ctorInfo ctorInfo) := env.find? ctor | continue
-    let ctorName := ctor.replacePrefix name .anonymous
-    s := s ++ s!"  | {ctorName} : {ctorInfo.type}\n"
-  return s
-
-namespace Internals
-open Lean Elab Term in
-/--
-Gets a string representation of inductive type definitions, computed at compile time.
--/
-scoped elab "inductiveRepr![" types:ident,* "]" : term => do
-  let env ← getEnv
-  let mut reprs : Array String := #[]
-  for type in types.getElems do
-    let name ← resolveGlobalConstNoOverload type
-    reprs := reprs.push (inductiveRepr env name)
-  return .lit (.strVal (String.intercalate "\n" reprs.toList))
-end Internals
-
-open Internals in
-open Lean.Widget in
-/--
-The datatypes that are serialized to the database. If they change, then the database should be
-rebuilt.
--/
-def serializedCodeTypeDefs : String :=
-  inductiveRepr![
-    SortFormer,
-    RenderedCode.Tag,
-    TaggedText
-  ]
-
-def getDb (dbFile : System.FilePath) : IO SQLite := do
-  -- SQLite atomically creates the DB file, and the schema and journal settings here are applied
-  -- idempotently. This avoids DB creation race conditions.
-  let db ← SQLite.openWith dbFile .readWriteCreate
-  db.exec "PRAGMA busy_timeout = 86400000"  -- 24 hours - effectively no timeout for parallel builds
-  db.exec "PRAGMA journal_mode = WAL"
-  db.exec "PRAGMA synchronous = OFF"
-  db.exec "PRAGMA foreign_keys = ON"
-  try
-    db.transaction (db.exec ddl)
-  catch
-  | e =>
-    throw <| .userError s!"Exception while creating schema: {e}"
-  -- Check schema version via DDL hash and type definition hash
-  let ddlHash := toString ddl.hash
-  let typeHash := toString serializedCodeTypeDefs.hash
-  let stmt ← db.prepare "SELECT key, value FROM schema_meta"
-  let mut storedDdlHash : Option String := none
-  let mut storedTypeHash : Option String := none
-  while ← stmt.step do
-    let key ← stmt.columnText 0
-    let value ← stmt.columnText 1
-    if key == "ddl_hash" then storedDdlHash := some value
-    if key == "type_hash" then storedTypeHash := some value
-  match storedDdlHash, storedTypeHash with
-  | none, none =>
-    -- New database, store the hashes
-    db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('ddl_hash', '{ddlHash}')"
-    db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('type_hash', '{typeHash}')"
-  | some stored, _ =>
-    if stored != ddlHash then
-      throw <| .userError s!"Database schema is outdated (DDL hash mismatch). Run `lake clean` or delete '{dbFile}' and rebuild."
-    match storedTypeHash with
-    | none =>
-      -- Older DB without type hash, add it
-      db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('type_hash', '{typeHash}')"
-    | some storedType =>
-      if storedType != typeHash then
-        throw <| .userError s!"Database schema is outdated (serialized type definitions changed). Run `lake clean` or delete '{dbFile}' and rebuild."
-  | none, some _ => -- Shouldn't happen, but handle gracefully
-    db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('ddl_hash', '{ddlHash}')"
-  return db
-where
-  ddl :=
-    r#"
-PRAGMA journal_mode = WAL;
-
--- Modules table
-CREATE TABLE IF NOT EXISTS modules (
-  name TEXT PRIMARY KEY,
-  source_url TEXT
-);
-
--- Direct imports
-CREATE TABLE IF NOT EXISTS module_imports (
-  importer TEXT NOT NULL,
-  imported TEXT NOT NULL,
-  PRIMARY KEY (importer, imported),
-  FOREIGN KEY (importer) REFERENCES modules(name) ON DELETE CASCADE
-  -- There's no
-  -- FOREIGN KEY (imported) REFERENCES modules(name)
-  -- because docs are built incrementally.
-);
-
--- Index for reverse queries: "what imports this module?"
-CREATE INDEX IF NOT EXISTS idx_module_imports_imported ON module_imports(imported);
-
-CREATE TABLE IF NOT EXISTS module_items (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  item_type TEXT NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS declaration_ranges (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  start_line INTEGER NOT NULL,
-  start_column INTEGER NOT NULL,
-  start_utf16 INTEGER NOT NULL,
-  end_line INTEGER NOT NULL,
-  end_column INTEGER NOT NULL,
-  end_utf16 INTEGER NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS markdown_docstrings (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  text TEXT NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS verso_docstrings (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  content BLOB NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS name_info (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  kind TEXT,
-  name TEXT NOT NULL,
-  type TEXT NOT NULL,
-  sorried INTEGER NOT NULL,
-  render INTEGER NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS axioms (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  is_unsafe INTEGER NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
--- Internal names (like recursors) that aren't rendered but should link to a rendered declaration
-CREATE TABLE IF NOT EXISTS internal_names (
-  name TEXT NOT NULL PRIMARY KEY,
-  target_module TEXT NOT NULL,
-  target_position INTEGER NOT NULL,
-  FOREIGN KEY (target_module, target_position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
--- Index for CASCADE deletes: when name_info rows are deleted, find matching internal_names
-CREATE INDEX IF NOT EXISTS idx_internal_names_target ON internal_names(target_module, target_position);
-
-CREATE TABLE IF NOT EXISTS constructors (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  type_position INTEGER NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-  FOREIGN KEY (module_name, type_position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
--- Index for CASCADE deletes on the second FK (type_position)
-CREATE INDEX IF NOT EXISTS idx_constructors_type_pos ON constructors(module_name, type_position);
-
-CREATE TABLE IF NOT EXISTS inductives (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  is_unsafe INTEGER NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS class_inductives (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  is_unsafe INTEGER NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS opaques (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  safety TEXT NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS definitions (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  is_unsafe INTEGER NOT NULL,
-  hints TEXT NOT NULL,
-  is_noncomputable INTEGER NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS definition_equations (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  code TEXT NOT NULL,
-  sequence INTEGER NOT NULL,
-  PRIMARY KEY (module_name, position, sequence),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS instances (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  class_name TEXT NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS instance_args (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  sequence INTEGER NOT NULL,
-  type_name TEXT NOT NULL,
-  PRIMARY KEY (module_name, position, sequence),
-  FOREIGN KEY (module_name, position) REFERENCES instances(module_name, position) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS structures (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  is_class INTEGER NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS structure_parents (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  sequence INTEGER NOT NULL,
-  projection_fn TEXT NOT NULL,
-  type TEXT NOT NULL,
-  PRIMARY KEY (module_name, position, sequence),
-  FOREIGN KEY (module_name, position) REFERENCES structures(module_name, position) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS structure_constructors (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL, -- The structure's position
-  ctor_position INTEGER NOT NULL,
-  name TEXT NOT NULL,
-  type BLOB NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS structure_fields (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  sequence INTEGER NOT NULL,
-  proj_name TEXT NOT NULL,
-  type BLOB NOT NULL,
-  is_direct INTEGER NOT NULL,
-  PRIMARY KEY (module_name, position, sequence),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-  -- Note: No FK on proj_name because the projection function may be in a different module
-  -- (for inherited fields) that hasn't been processed yet. The JOIN at load time handles this.
-);
-
-CREATE TABLE IF NOT EXISTS structure_field_args (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  field_sequence INTEGER NOT NULL,
-  arg_sequence INTEGER NOT NULL,
-  binder BLOB NOT NULL,
-  is_implicit INTEGER NOT NULL,
-  PRIMARY KEY (module_name, position, field_sequence, arg_sequence),
-  FOREIGN KEY (module_name, position, field_sequence) REFERENCES structure_fields(module_name, position, sequence) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS declaration_args (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  sequence INTEGER NOT NULL,
-  binder BLOB NOT NULL,
-  is_implicit INTEGER NOT NULL,
-  PRIMARY KEY (module_name, position, sequence),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS declaration_attrs (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  sequence INTEGER NOT NULL,
-  attr TEXT NOT NULL,
-  PRIMARY KEY (module_name, position, sequence),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS tactics (
-  module_name TEXT NOT NULL,
-  internal_name TEXT NOT NULL,
-  user_name TEXT NOT NULL,
-  doc_string TEXT NOT NULL,
-  PRIMARY KEY (module_name, internal_name),
-  FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS tactic_tags (
-  module_name TEXT NOT NULL,
-  internal_name TEXT NOT NULL,
-  tag TEXT NOT NULL,
-  PRIMARY KEY (module_name, internal_name, tag),
-  FOREIGN KEY (module_name, internal_name) REFERENCES tactics(module_name, internal_name) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS schema_meta (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-"#
-
-def withDbContext [MonadLiftT BaseIO m] [MonadControlT IO m] [Monad m] (context : String) (act : m α) : m α :=
-  controlAt IO fun runInBase => do
-  let ms ← IO.monoMsNow
-  try
-    runInBase act
-  catch
-    | e =>
-      let ms' ← IO.monoMsNow
-      throw <| .userError s!"Exception in `{context}` after {ms' - ms}ms: {e.toString}"
-
-structure DB where
+structure DB extends ReadOps where
   sqlite : SQLite
   deleteModule (modName : String) : IO Unit
   saveModule (modName : String) (sourceUrl? : Option String) : IO Unit
@@ -391,6 +40,7 @@ structure DB where
   /-- Save a tactic defined in this module -/
   saveTactic (modName : String) (tactic : Process.TacticInfo Process.MarkdownDocstring) : IO Unit
 
+
 def DB.saveDocstring (db : DB) (modName : String) (position : Int64) (text : String ⊕ Lean.VersoDocString) : IO Unit :=
   match text with
   | .inl md => db.saveMarkdownDocstring modName position md
@@ -403,9 +53,6 @@ private def run (stmt : SQLite.Stmt) : IO Unit := do
   stmt.exec
   stmt.reset
   stmt.clearBindings
-
-def _root_.SQLite.Stmt.bind [SQLite.NullableQueryParam α] (stmt : SQLite.Stmt) (index : Int32) (param : α) : IO Unit := do
-  SQLite.NullableQueryParam.bind stmt index param
 
 instance : SQLite.QueryParam Lean.DefinitionSafety where
   bind stmt index safety :=
@@ -655,7 +302,8 @@ def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
       saveTacticTagStmt.bind 2 tactic.internalName.toString
       saveTacticTagStmt.bind 3 tag.toString
       run saveTacticTagStmt
-  pure {
+  let readOps ← mkReadOps sqlite values
+  pure { readOps with
     sqlite,
     deleteModule,
     saveModule,
@@ -698,6 +346,91 @@ def DBM.run (values : DocstringValues) (dbFile : System.FilePath) (act : DBM α)
 def withDB (f : DB → DBM α) : DBM α := do f (← read).db
 
 def withSQLite (f : SQLite → DBM α) : DBM α := do f (← read).db
+
+private def readonlyError : IO α := throw (IO.userError "DB opened for reading only")
+
+def openForReading (dbFile : System.FilePath) (values : DocstringValues := {}) : IO DB := do
+  let sqlite ← SQLite.openWith dbFile .readonly
+  sqlite.exec "PRAGMA busy_timeout = 86400000"
+  let readOps ← mkReadOps sqlite values
+  pure {
+    sqlite,
+    deleteModule := fun _ => readonlyError,
+    saveModule := fun _ _ => readonlyError,
+    saveImport := fun _ _ => readonlyError,
+    saveMarkdownDocstring := fun _ _ _ => readonlyError,
+    saveVersoDocstring := fun _ _ _ => readonlyError,
+    saveDeclarationRange := fun _ _ _ => readonlyError,
+    saveInfo := fun _ _ _ _ => readonlyError,
+    saveAxiom := fun _ _ _ => readonlyError,
+    saveOpaque := fun _ _ _ => readonlyError,
+    saveDefinition := fun _ _ _ _ _ => readonlyError,
+    saveDefinitionEquation := fun _ _ _ _ => readonlyError,
+    saveInstance := fun _ _ _ => readonlyError,
+    saveInstanceArg := fun _ _ _ _ => readonlyError,
+    saveInductive := fun _ _ _ => readonlyError,
+    saveConstructor := fun _ _ _ => readonlyError,
+    saveClassInductive := fun _ _ _ => readonlyError,
+    saveStructure := fun _ _ _ => readonlyError,
+    saveStructureConstructor := fun _ _ _ _ => readonlyError,
+    saveNameOnly := fun _ _ _ _ _ _ => readonlyError,
+    saveStructureParent := fun _ _ _ _ _ => readonlyError,
+    saveStructureField := fun _ _ _ _ _ _ => readonlyError,
+    saveStructureFieldArg := fun _ _ _ _ _ _ => readonlyError,
+    saveArg := fun _ _ _ _ _ => readonlyError,
+    saveAttr := fun _ _ _ _ => readonlyError,
+    saveInternalName := fun _ _ _ => readonlyError,
+    saveTactic := fun _ _ => readonlyError,
+    getModuleNames := readOps.getModuleNames,
+    getModuleSourceUrls := readOps.getModuleSourceUrls,
+    getModuleImports := readOps.getModuleImports,
+    buildName2ModIdx := readOps.buildName2ModIdx,
+    loadModule := readOps.loadModule,
+  }
+
+/-! ## DB Reading -/
+
+section Reading
+open Lean
+
+/-- Context needed for cross-module linking, without loading full module contents. -/
+structure LinkingContext where
+  moduleNames : Array Name
+  sourceUrls : Std.HashMap Name String
+  name2ModIdx : Std.HashMap Name ModuleIdx
+
+/-- Load the linking context from the database. -/
+def DB.loadLinkingContext (db : DB) : IO LinkingContext := do
+  let moduleNames ← db.getModuleNames
+  let sourceUrls ← db.getModuleSourceUrls
+  let name2ModIdx ← db.buildName2ModIdx moduleNames
+  return { moduleNames, sourceUrls, name2ModIdx }
+
+/--
+Get transitive closure of imports for given modules using recursive CTE.
+Uses dynamic SQL (variable number of placeholders) so cannot be pre-prepared.
+-/
+def DB.getTransitiveImports (db : DB) (modules : Array Name) : IO (Array Name) := withDbContext "read:transitive_imports" do
+  if modules.isEmpty then return #[]
+  let placeholders := ", ".intercalate (modules.toList.map fun _ => "(?)")
+  let sql := s!"
+    WITH RECURSIVE transitive_imports(name) AS (
+      VALUES {placeholders}
+      UNION
+      SELECT mi.imported FROM module_imports mi
+      JOIN transitive_imports ti ON mi.importer = ti.name
+    )
+    SELECT DISTINCT name FROM transitive_imports"
+  let stmt ← db.sqlite.prepare sql
+  for h : i in [0:modules.size] do
+    stmt.bind (i.toInt32 + 1) modules[i].toString
+  let mut result := #[]
+  while (← stmt.step) do
+    let name := (← stmt.columnText 0).toName
+    result := result.push name
+  return result
+
+end Reading
 
 end DB
 
@@ -870,515 +603,3 @@ where
     | .classInfo info => "class"
     | .classInductiveInfo info => "class inductive"
     | .ctorInfo info => "constructor"
-
-/-! ## DB Reading -/
-
-section Reading
-open Lean SQLite.Blob
-
-/-- Open a database for reading. -/
-def openDbForReading (dbFile : System.FilePath) : IO SQLite := do
-  let db ← SQLite.openWith dbFile .readonly
-  db.exec "PRAGMA busy_timeout = 86400000"  -- 24 hours - effectively no timeout
-  return db
-
-/-- Read RenderedCode from a blob. -/
-def readRenderedCode (blob : ByteArray) : IO RenderedCode := do
-  match fromBinary blob with
-  | .ok code => return code
-  | .error e => throw <| IO.userError s!"Failed to deserialize RenderedCode: {e}"
-
-/-- Read VersoDocString from a blob. -/
-def readVersoDocString  (blob : ByteArray) : DBM VersoDocString := do
-  have := versoDocStringFromBinary (← read).values
-  match fromBinary blob with
-  | .ok doc => return doc
-  | .error e => throw <| IO.userError s!"Failed to deserialize VersoDocString: {e}"
-
-/-- Get all module names from the database. -/
-def getModuleNames (db : SQLite) : IO (Array Name) := withDbContext "read:modules:names" do
-  let stmt ← db.prepare "SELECT name FROM modules ORDER BY name"
-  let mut names := #[]
-  while (← stmt.step) do
-    let name := (← stmt.columnText 0).toName
-    names := names.push name
-  return names
-
-/-- Get all module source URLs from the database. -/
-def getModuleSourceUrls (db : SQLite) : IO (Std.HashMap Name String) := withDbContext "read:modules:source_urls" do
-  let stmt ← db.prepare "SELECT name, source_url FROM modules WHERE source_url IS NOT NULL"
-  let mut urls : Std.HashMap Name String := {}
-  while (← stmt.step) do
-    let name := (← stmt.columnText 0).toName
-    let url ← stmt.columnText 1
-    urls := urls.insert name url
-  return urls
-
-/-- Get all module imports from the database. -/
-def getModuleImports (db : SQLite) (moduleName : Name) : IO (Array Name) := withDbContext "read:module_imports" do
-  let stmt ← db.prepare "SELECT imported FROM module_imports WHERE importer = ?"
-  stmt.bind 1 moduleName.toString
-  let mut imports := #[]
-  while (← stmt.step) do
-    let name := (← stmt.columnText 0).toName
-    imports := imports.push name
-  return imports
-
-/-- Build the name-to-module index needed for cross-linking. -/
-def buildName2ModIdx (db : SQLite) (moduleNames : Array Name) : IO (Std.HashMap Name ModuleIdx) := do
-  -- First build a map from module name string to index
-  let modNameToIdx : Std.HashMap Name ModuleIdx :=
-    moduleNames.foldl (init := {}) fun acc modName =>
-      acc.insert modName acc.size
-  -- Now query all names and their modules
-  let stmt ← db.prepare "SELECT name, module_name FROM name_info"
-  let mut result : Std.HashMap Name ModuleIdx := {}
-  while (← stmt.step) do
-    let name := (← stmt.columnText 0).toName
-    let moduleName := (← stmt.columnText 1).toName
-    if let some idx := modNameToIdx[moduleName]? then
-      result := result.insert name idx
-  -- Also add internal names (like recursors) that map to their target's module.
-  -- Only add if not already in result (name_info entries take precedence).
-  let internalStmt ← db.prepare "SELECT name, target_module FROM internal_names"
-  while (← internalStmt.step) do
-    let name := (← internalStmt.columnText 0).toName
-    if !result.contains name then
-      let targetModule := (← internalStmt.columnText 1).toName
-      if let some idx := modNameToIdx[targetModule]? then
-        result := result.insert name idx
-  return result
-
-/-- Load declaration arguments from the database. -/
-def loadArgs (moduleName : String) (position : Int64) : DBM (Array Process.Arg) := withDbContext "read:declaration_args" <| withSQLite fun db => do
-  let stmt ← db.prepare "SELECT binder, is_implicit FROM declaration_args WHERE module_name = ? AND position = ? ORDER BY sequence"
-  stmt.bind 1 moduleName
-  stmt.bind 2 position
-  let mut args := #[]
-  while (← stmt.step) do
-    let binderBlob ← stmt.columnBlob 0
-    let binder ← readRenderedCode binderBlob
-    let isImplicit := (← stmt.columnInt64 1) != 0
-    args := args.push { binder, implicit := isImplicit }
-  return args
-
-/-- Load declaration attributes from the database. -/
-def loadAttrs (moduleName : String) (position : Int64) : DBM (Array String) := withDbContext "read:declaration_attrs" <| withSQLite fun db => do
-  let stmt ← db.prepare "SELECT attr FROM declaration_attrs WHERE module_name = ? AND position = ? ORDER BY sequence"
-  stmt.bind 1 moduleName
-  stmt.bind 2 position
-  let mut attrs := #[]
-  while (← stmt.step) do
-    let attr ← stmt.columnText 0
-    attrs := attrs.push attr
-  return attrs
-
-/-- Load a docstring from the database. -/
-def loadDocstring  (moduleName : String) (position : Int64) : DBM (Option (String ⊕ VersoDocString)) := withDbContext "read:docstrings" <| withSQLite fun db => do
-  -- Try markdown first
-  let mdStmt ← db.prepare "SELECT text FROM markdown_docstrings WHERE module_name = ? AND position = ?"
-  mdStmt.bind 1 moduleName
-  mdStmt.bind 2 position
-  if (← mdStmt.step) then
-    let text ← mdStmt.columnText 0
-    return some (.inl text)
-  -- Try verso
-  let versoStmt ← db.prepare "SELECT content FROM verso_docstrings WHERE module_name = ? AND position = ?"
-  versoStmt.bind 1 moduleName
-  versoStmt.bind 2 position
-  if (← versoStmt.step) then
-    let blob ← versoStmt.columnBlob 0
-    let doc ← readVersoDocString  blob
-    return some (.inr doc)
-  return none
-
-/-- Load a declaration range from the database. -/
-def loadDeclarationRange  (moduleName : String) (position : Int64) : DBM (Option DeclarationRange) := withDbContext "read:declaration_ranges" <| withSQLite fun db => do
-  let stmt ← db.prepare "SELECT start_line, start_column, start_utf16, end_line, end_column, end_utf16 FROM declaration_ranges WHERE module_name = ? AND position = ?"
-  stmt.bind 1 moduleName
-  stmt.bind 2 position
-  if (← stmt.step) then
-    let startLine := (← stmt.columnInt64 0).toNatClampNeg
-    let startCol := (← stmt.columnInt64 1).toNatClampNeg
-    let startUtf16 := (← stmt.columnInt64 2).toNatClampNeg
-    let endLine := (← stmt.columnInt64 3).toNatClampNeg
-    let endCol := (← stmt.columnInt64 4).toNatClampNeg
-    let endUtf16 := (← stmt.columnInt64 5).toNatClampNeg
-    return some {
-      pos := ⟨startLine, startCol⟩
-      charUtf16 := startUtf16
-      endPos := ⟨endLine, endCol⟩
-      endCharUtf16 := endUtf16
-    }
-  return none
-
-/-- Load base Info from the database row. -/
-def loadInfo (moduleName : String) (position : Int64) (name : Name) (typeBlob : ByteArray) (sorried : Bool) (render : Bool) : DBM Process.Info := do
-  let type ← readRenderedCode typeBlob
-  let doc ← loadDocstring moduleName position
-  let args ← loadArgs moduleName position
-  let attrs ← loadAttrs moduleName position
-  let some declRange ← loadDeclarationRange moduleName position
-    | throw <| IO.userError s!"Missing declaration range for {name}"
-  return {
-    name
-    type
-    doc
-    args
-    declarationRange := declRange
-    attrs
-    sorried
-    render
-  }
-
-/-- Load definition equations from the database.
-    Returns `none` if no equations exist, `some eqns` otherwise. -/
-def loadEquations (moduleName : String) (position : Int64) : DBM (Option (Array RenderedCode)) := withDbContext "read:definition_equations" <| withSQLite fun db => do
-  let stmt ← db.prepare "SELECT code FROM definition_equations WHERE module_name = ? AND position = ? ORDER BY sequence"
-  stmt.bind 1 moduleName
-  stmt.bind 2 position
-  if !(← stmt.step) then return none
-  let mut eqns := #[← readRenderedCode (← stmt.columnBlob 0)]
-  while (← stmt.step) do
-    eqns := eqns.push (← readRenderedCode (← stmt.columnBlob 0))
-  return some eqns
-
-/-- Load instance type names from the database. -/
-def loadInstanceArgs (moduleName : String) (position : Int64) : DBM (Array Name) := withSQLite fun db => do
-  let stmt ← db.prepare "SELECT type_name FROM instance_args WHERE module_name = ? AND position = ? ORDER BY sequence"
-  stmt.bind 1 moduleName
-  stmt.bind 2 position
-  let mut typeNames := #[]
-  while (← stmt.step) do
-    let typeName := (← stmt.columnText 0).toName
-    typeNames := typeNames.push typeName
-  return typeNames
-
-/-- Load structure parents from the database. -/
-def loadStructureParents (moduleName : String) (position : Int64) : DBM (Array Process.StructureParentInfo) := withSQLite fun db => do
-  let stmt ← db.prepare "SELECT projection_fn, type FROM structure_parents WHERE module_name = ? AND position = ? ORDER BY sequence"
-  stmt.bind 1 moduleName
-  stmt.bind 2 position
-  let mut parents := #[]
-  while (← stmt.step) do
-    let projFn := (← stmt.columnText 0).toName
-    let typeBlob ← stmt.columnBlob 1
-    let type ← readRenderedCode typeBlob
-    parents := parents.push { projFn, type }
-  return parents
-
-/-- Load structure field args from the database. -/
-def loadStructureFieldArgs (db : SQLite) (moduleName : String) (position : Int64) (fieldSeq : Int64) : IO (Array Process.Arg) := do
-  let stmt ← db.prepare "SELECT binder, is_implicit FROM structure_field_args WHERE module_name = ? AND position = ? AND field_sequence = ? ORDER BY arg_sequence"
-  stmt.bind 1 moduleName
-  stmt.bind 2 position
-  stmt.bind 3 fieldSeq
-  let mut args := #[]
-  while (← stmt.step) do
-    let binderBlob ← stmt.columnBlob 0
-    let binder ← readRenderedCode binderBlob
-    let isImplicit := (← stmt.columnInt64 1) != 0
-    args := args.push { binder, implicit := isImplicit }
-  return args
-
-/-- Load structure fields from the database. -/
-def loadStructureFields (moduleName : String) (position : Int64) : DBM (Array Process.FieldInfo) := withSQLite fun db => do
-  -- Get structure fields and look up projection function info by name
-  let stmt ← db.prepare "SELECT sequence, proj_name, type, is_direct FROM structure_fields WHERE module_name = ? AND position = ? ORDER BY sequence"
-  stmt.bind 1 moduleName
-  stmt.bind 2 position
-  let mut fields := #[]
-  while (← stmt.step) do
-    let fieldSeq := ← stmt.columnInt64 0
-    let name := (← stmt.columnText 1).toName
-    let typeBlob ← stmt.columnBlob 2
-    let type ← readRenderedCode typeBlob
-    let isDirect := (← stmt.columnInt64 3) != 0
-    -- Look up projection function by name to get its module and position
-    let projStmt ← db.prepare "SELECT module_name, position FROM name_info WHERE name = ? LIMIT 1"
-    projStmt.bind 1 name.toString
-    let (doc, attrs, declRange, render) ← if (← projStmt.step) then do
-      let projModName ← projStmt.columnText 0
-      let projPos ← projStmt.columnInt64 1
-      -- Load projection function's docstring, attrs, and declaration range
-      let doc ← loadDocstring projModName projPos
-      let attrs ← loadAttrs projModName projPos
-      let declRange ← loadDeclarationRange projModName projPos
-      -- Get render flag from projection function's name_info
-      let render ← do
-        let renderStmt ← db.prepare "SELECT render FROM name_info WHERE module_name = ? AND position = ?"
-        renderStmt.bind 1 projModName
-        renderStmt.bind 2 projPos
-        if (← renderStmt.step) then
-          pure ((← renderStmt.columnInt64 0) != 0)
-        else
-          pure true
-      pure (doc, attrs, declRange, render)
-    else
-      -- Projection function not found in name_info - use defaults
-      -- This can happen for inherited fields whose parent module wasn't processed
-      pure (none, #[], none, true)
-    -- Load field-specific args from structure_field_args
-    let args ← loadStructureFieldArgs db moduleName position fieldSeq
-    fields := fields.push {
-      name
-      type
-      doc
-      args
-      declarationRange := declRange.getD default
-      attrs
-      render
-      isDirect
-    }
-  return fields
-
-/-- Load structure constructor from the database. -/
-def loadStructureConstructor (moduleName : String) (position : Int64) : DBM (Option Process.NameInfo) := withSQLite fun db => do
-  let stmt ← db.prepare "SELECT name, type, ctor_position FROM structure_constructors WHERE module_name = ? AND position = ?"
-  stmt.bind 1 moduleName
-  stmt.bind 2 position
-  if (← stmt.step) then
-    let name := (← stmt.columnText 0).toName
-    let typeBlob ← stmt.columnBlob 1
-    let ctorPos ← stmt.columnInt64 2
-    let type ← readRenderedCode typeBlob
-    let doc ← loadDocstring moduleName ctorPos
-    return some { name, type, doc }
-  return none
-
-/-- Load constructors for an inductive type. -/
-def loadConstructors (moduleName : String) (position : Int64) : DBM (List Process.ConstructorInfo) := withSQLite fun db => do
-  let stmt ← db.prepare "SELECT c.position FROM constructors c WHERE c.module_name = ? AND c.type_position = ? ORDER BY c.position"
-  stmt.bind 1 moduleName
-  stmt.bind 2 position
-  let mut ctors := []
-  while (← stmt.step) do
-    let ctorPos ← stmt.columnInt64 0
-    -- Now load the full info for this constructor
-    let infoStmt ← db.prepare "SELECT name, type, sorried, render FROM name_info WHERE module_name = ? AND position = ?"
-    infoStmt.bind 1 moduleName
-    infoStmt.bind 2 ctorPos
-    if (← infoStmt.step) then
-      let name := (← infoStmt.columnText 0).toName
-      let typeBlob ← infoStmt.columnBlob 1
-      let sorried := (← infoStmt.columnInt64 2) != 0
-      let render := (← infoStmt.columnInt64 3) != 0
-      let info ← loadInfo moduleName ctorPos name typeBlob sorried render
-      ctors := ctors ++ [info]
-  return ctors
-
-/-- Load a DocInfo from the database based on its kind. -/
-def loadDocInfo (moduleName : String) (position : Int64) (kind : String)
-    (name : Name) (typeBlob : ByteArray) (sorried : Bool) (render : Bool) : DBM (Option Process.DocInfo) := withSQLite fun db => do
-  let info ← loadInfo moduleName position name typeBlob sorried render
-  match kind with
-  | "axiom" =>
-    let stmt ← db.prepare "SELECT is_unsafe FROM axioms WHERE module_name = ? AND position = ?"
-    stmt.bind 1 moduleName
-    stmt.bind 2 position
-    if (← stmt.step) then
-      let isUnsafe := (← stmt.columnInt64 0) != 0
-      return some <| .axiomInfo { toInfo := info, isUnsafe }
-    return none
-  | "theorem" =>
-    return some <| .theoremInfo { toInfo := info }
-  | "opaque" =>
-    let stmt ← db.prepare "SELECT safety FROM opaques WHERE module_name = ? AND position = ?"
-    stmt.bind 1 moduleName
-    stmt.bind 2 position
-    if (← stmt.step) then
-      let safetyStr ← stmt.columnText 0
-      let safety := match safetyStr with
-        | "unsafe" => .unsafe
-        | "partial" => .partial
-        | _ => .safe
-      return some <| .opaqueInfo { toInfo := info, definitionSafety := safety }
-    return none
-  | "definition" =>
-    let stmt ← db.prepare "SELECT is_unsafe, hints, is_noncomputable FROM definitions WHERE module_name = ? AND position = ?"
-    stmt.bind 1 moduleName
-    stmt.bind 2 position
-    if (← stmt.step) then
-      let isUnsafe := (← stmt.columnInt64 0) != 0
-      let hintsStr ← stmt.columnText 1
-      let isNonComputable := (← stmt.columnInt64 2) != 0
-      let hints : ReducibilityHints := match hintsStr with
-        | "opaque" => .opaque
-        | "abbrev" => .abbrev
-        | s => .regular (s.toNat?.getD 0 |>.toUInt32)
-      let equations ← loadEquations moduleName position
-      return some <| .definitionInfo { toInfo := info, isUnsafe, hints, equations, isNonComputable }
-    return none
-  | "instance" =>
-    let instStmt ← db.prepare "SELECT class_name FROM instances WHERE module_name = ? AND position = ?"
-    instStmt.bind 1 moduleName
-    instStmt.bind 2 position
-    if (← instStmt.step) then
-      let className := (← instStmt.columnText 0).toName
-      let defStmt ← db.prepare "SELECT is_unsafe, hints, is_noncomputable FROM definitions WHERE module_name = ? AND position = ?"
-      defStmt.bind 1 moduleName
-      defStmt.bind 2 position
-      if (← defStmt.step) then
-        let isUnsafe := (← defStmt.columnInt64 0) != 0
-        let hintsStr ← defStmt.columnText 1
-        let isNonComputable := (← defStmt.columnInt64 2) != 0
-        let hints : ReducibilityHints := match hintsStr with
-          | "opaque" => .opaque
-          | "abbrev" => .abbrev
-          | s => .regular (s.toNat?.getD 0 |>.toUInt32)
-        let equations ← loadEquations moduleName position
-        let typeNames ← loadInstanceArgs moduleName position
-        return some <| .instanceInfo { toInfo := info, isUnsafe, hints, equations, isNonComputable, className, typeNames }
-    return none
-  | "inductive" =>
-    let stmt ← db.prepare "SELECT is_unsafe FROM inductives WHERE module_name = ? AND position = ?"
-    stmt.bind 1 moduleName
-    stmt.bind 2 position
-    if (← stmt.step) then
-      let isUnsafe := (← stmt.columnInt64 0) != 0
-      let ctors ← loadConstructors moduleName position
-      return some <| .inductiveInfo { toInfo := info, isUnsafe, ctors }
-    return none
-  | "structure" =>
-    let stmt ← db.prepare "SELECT is_class FROM structures WHERE module_name = ? AND position = ?"
-    stmt.bind 1 moduleName
-    stmt.bind 2 position
-    if (← stmt.step) then
-      let parents ← loadStructureParents moduleName position
-      let fieldInfo ← loadStructureFields moduleName position
-      let some ctor ← loadStructureConstructor moduleName position
-        | return none
-      return some <| .structureInfo { toInfo := info, fieldInfo, parents, ctor }
-    return none
-  | "class" =>
-    let stmt ← db.prepare "SELECT is_class FROM structures WHERE module_name = ? AND position = ?"
-    stmt.bind 1 moduleName
-    stmt.bind 2 position
-    if (← stmt.step) then
-      let parents ← loadStructureParents moduleName position
-      let fieldInfo ← loadStructureFields moduleName position
-      let some ctor ← loadStructureConstructor moduleName position
-        | return none
-      return some <| .classInfo { toInfo := info, fieldInfo, parents, ctor }
-    return none
-  | "class inductive" =>
-    let stmt ← db.prepare "SELECT is_unsafe FROM class_inductives WHERE module_name = ? AND position = ?"
-    stmt.bind 1 moduleName
-    stmt.bind 2 position
-    if (← stmt.step) then
-      let isUnsafe := (← stmt.columnInt64 0) != 0
-      let ctors ← loadConstructors moduleName position
-      return some <| .classInductiveInfo { toInfo := info, isUnsafe, ctors }
-    return none
-  | "constructor" =>
-    -- Constructors are handled as part of their parent inductive
-    return some <| .ctorInfo info
-  | _ =>
-    return none
-
-/-- Load a module from the database. -/
-def loadModule (moduleName : Name) : DBM Process.Module := withSQLite fun db => do
-  let modNameStr := moduleName.toString
-  let imports ← getModuleImports db moduleName
-  -- Load all members (declarations and module docs) with their positions.
-  -- We'll sort by (declaration range, position) to maintain deterministic ordering
-  -- even when multiple declarations have the same position (which happens for
-  -- auto-generated declarations like instance defaults).
-  let stmt ← db.prepare "
-    SELECT n.position, n.kind, n.name, n.type, n.sorried, n.render
-    FROM name_info n
-    WHERE n.module_name = ?"
-  stmt.bind 1 modNameStr
-  let mut members : Array (Int64 × Process.ModuleMember) := #[]
-  while (← stmt.step) do
-    let position ← stmt.columnInt64 0
-    let kind ← stmt.columnText 1
-    let name := (← stmt.columnText 2).toName
-    let typeBlob ← stmt.columnBlob 3
-    let sorried := (← stmt.columnInt64 4) != 0
-    let render := (← stmt.columnInt64 5) != 0
-    if let some docInfo ← loadDocInfo modNameStr position kind name typeBlob sorried render then
-      members := members.push (position, .docInfo docInfo)
-  -- Load module docs
-  let mdStmt ← db.prepare "
-    SELECT m.position, m.text
-    FROM markdown_docstrings m
-    WHERE m.module_name = ?
-      AND m.position NOT IN (SELECT position FROM name_info WHERE module_name = ?)"
-  mdStmt.bind 1 modNameStr
-  mdStmt.bind 2 modNameStr
-  while (← mdStmt.step) do
-    let position ← mdStmt.columnInt64 0
-    let doc ← mdStmt.columnText 1
-    if let some declRange ← loadDeclarationRange modNameStr position then
-      members := members.push (position, .modDoc { doc, declarationRange := declRange })
-  -- Sort by (declaration range, position) to maintain deterministic ordering.
-  -- Primary key: declaration range position (line, column) using Position.lt
-  -- Secondary key: DB position (to break ties when ranges are equal)
-  let sortedMembers := members.qsort fun (pos1, m1) (pos2, m2) =>
-    let r1 := m1.getDeclarationRange.pos
-    let r2 := m2.getDeclarationRange.pos
-    if Position.lt r1 r2 then true
-    else if Position.lt r2 r1 then false
-    else pos1 < pos2  -- Tiebreaker: use DB position
-  -- Load tactics defined in this module
-  let tacStmt ← db.prepare "
-    SELECT internal_name, user_name, doc_string
-    FROM tactics
-    WHERE module_name = ?"
-  tacStmt.bind 1 modNameStr
-  let tagStmt ← db.prepare "
-    SELECT tag FROM tactic_tags
-    WHERE module_name = ? AND internal_name = ?"
-  let mut tactics : Array (Process.TacticInfo Process.MarkdownDocstring) := #[]
-  while (← tacStmt.step) do
-    let internalName := (← tacStmt.columnText 0).toName
-    let userName ← tacStmt.columnText 1
-    let docString ← tacStmt.columnText 2
-    -- Load tags for this tactic
-    tagStmt.bind 1 modNameStr
-    tagStmt.bind 2 internalName.toString
-    let mut tags : Array Name := #[]
-    while (← tagStmt.step) do
-      tags := tags.push (← tagStmt.columnText 0).toName
-    tagStmt.reset
-    tactics := tactics.push { internalName, userName, tags, docString, definingModule := moduleName }
-  return { name := moduleName, members := sortedMembers.map (·.2), imports, tactics }
-
-/-- Context needed for cross-module linking, without loading full module contents. -/
-structure LinkingContext where
-  moduleNames : Array Name
-  sourceUrls : Std.HashMap Name String
-  name2ModIdx : Std.HashMap Name ModuleIdx
-
-/-- Load the linking context from the database. -/
-def loadLinkingContext (db : SQLite) : IO LinkingContext := do
-  let moduleNames ← getModuleNames db
-  let sourceUrls ← getModuleSourceUrls db
-  let name2ModIdx ← buildName2ModIdx db moduleNames
-  return { moduleNames, sourceUrls, name2ModIdx }
-
-/-- Get transitive closure of imports for given modules using recursive CTE. -/
-def getTransitiveImports (db : SQLite) (modules : Array Name) : IO (Array Name) := withDbContext "read:transitive_imports" do
-  if modules.isEmpty then return #[]
-  -- Build the VALUES clause for starting modules
-  let placeholders := ", ".intercalate (modules.toList.map fun _ => "(?)")
-  let sql := s!"
-    WITH RECURSIVE transitive_imports(name) AS (
-      VALUES {placeholders}
-      UNION
-      SELECT mi.imported FROM module_imports mi
-      JOIN transitive_imports ti ON mi.importer = ti.name
-    )
-    SELECT DISTINCT name FROM transitive_imports"
-  let stmt ← db.prepare sql
-  -- Bind all module names
-  for h : i in [0:modules.size] do
-    stmt.bind (i.toInt32 + 1) modules[i].toString
-  let mut result := #[]
-  while (← stmt.step) do
-    let name := (← stmt.columnText 0).toName
-    result := result.push name
-  return result
-
-end Reading

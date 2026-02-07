@@ -19,7 +19,7 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
   let sourceUri := p.positionalArg! "sourceUri" |>.as! String
   let doc ← load <| .analyzeConcreteModules relevantModules
-  updateModuleDb doc buildDir dbFile (some sourceUri)
+  updateModuleDb {} doc buildDir dbFile (some sourceUri)
   return 0
 
 def runGenCoreCmd (p : Parsed) : IO UInt32 := do
@@ -29,7 +29,7 @@ def runGenCoreCmd (p : Parsed) : IO UInt32 := do
   let dbFile := p.positionalArg! "db" |>.as! String
   let module := p.positionalArg! "module" |>.as! String |> String.toName
   let doc ← load <| .analyzePrefixModules module
-  updateModuleDb doc buildDir dbFile none
+  updateModuleDb {} doc buildDir dbFile none
   return 0
 
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
@@ -72,15 +72,15 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let moduleRoots := (p.variableArgsAs! String).map String.toName
 
   -- Load linking context (module names, source URLs, declaration locations)
-  let db ← openDbForReading dbPath
-  let linkCtx ← loadLinkingContext db
+  let db ← DB.openForReading dbPath
+  let linkCtx ← db.loadLinkingContext
 
   -- Determine which modules to generate HTML for
   let targetModules ←
     if moduleRoots.isEmpty then
       pure linkCtx.moduleNames
     else
-      getTransitiveImports db moduleRoots
+      db.getTransitiveImports moduleRoots
 
   -- Add `references` pseudo-module to hierarchy since references.html is always generated
   let hierarchy := Hierarchy.fromArray (targetModules.push `references)
