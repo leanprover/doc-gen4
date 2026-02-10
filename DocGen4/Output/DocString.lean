@@ -1,12 +1,8 @@
 import MD4Lean
 import DocGen4.Output.Template
-import Std.Internal.Parsec
 import UnicodeBasic
 
-open Lean Xml Parser DocGen4.Process
-
-open Std.Internal.Parsec
-open Std.Internal.Parsec.String
+open Lean DocGen4.Process
 
 namespace DocGen4
 namespace Output
@@ -29,37 +25,6 @@ namespace Output
   e.g. `splitAround "a,b,c" (fun c => c = ',') = ["a", ",", "b", ",", "c"]`
 -/
 def splitAround (s : String) (p : Char → Bool) : List String := splitAroundAux s p 0 0 []
-
-instance : Inhabited Element := ⟨"", Std.TreeMap.empty, #[]⟩
-
-/-- Parse an array of Xml/Html document from String. -/
-def manyDocument : Parser (Array Element) := many (prolog *> element <* many Misc) <* eof
-
-/--
-  Generate id for heading elements, with the following rules:
-
-  1. Characters in `letter`, `mark`, `number` and `symbol` unicode categories are preserved.
-  2. Any sequences of Characters in `punctuation`, `separator` and `other` categories are replaced by a single dash.
-  3. Cases (upper and lower) are preserved.
-  4. Xml/Html tags are ignored.
--/
-partial def xmlGetHeadingId (el : Xml.Element) : String :=
-  elementToPlainText el |> replaceCharSeq unicodeToDrop "-"
-  where
-    elementToPlainText el := match el with
-    | (Element.Element _ _ contents) =>
-      "".intercalate (contents.toList.map contentToPlainText)
-    contentToPlainText c := match c with
-    | Content.Element el => elementToPlainText el
-    | Content.Comment _ => ""
-    | Content.Character s => s
-    replaceCharSeq pattern replacement s :=
-      s.splitToList pattern
-      |>.filter (!·.isEmpty)
-      |> replacement.intercalate
-    unicodeToDrop (c : Char) : Bool :=
-      -- punctuation (`P`), separator (`Z`), other (`C`)
-      c ∈ Unicode.GC.P ||| Unicode.GC.Z ||| Unicode.GC.C
 
 /--
   This function try to find the given name, both globally and in current module.
@@ -118,43 +83,6 @@ def extendLink (s : String)  : HtmlM String := do
     return s
   else return ((← getRoot) ++ s)
 
-/-- Apply function `modifyElement` to an array of `Lean.Xml.Content`s. -/
-def modifyContents (contents : Array Content) (funName : String)
-    (modifyElement : Element → String → HtmlM Element) :
-    HtmlM (Array Content) := do
-  let modifyContent (c : Content) : HtmlM Content := do
-    match c with
-    | Content.Element e =>
-      pure (.Element (← modifyElement e funName))
-    | _ =>
-      pure c
-  contents.mapM modifyContent
-
-/-- Apply function `modifyElement` to an array of `Lean.Xml.Element`s. -/
-def modifyElements (elements : Array Element) (funName : String)
-    (modifyElement : Element → String → HtmlM Element) :
-    HtmlM (Array Element) := do
-  elements.mapM (modifyElement · funName)
-
-/-- Add attributes for heading. -/
-def addHeadingAttributes (el : Element) (funName : String)
-    (modifyElement : Element → String → HtmlM Element) :
-    HtmlM Element := do
-  match el with
-  | Element.Element name attrs contents => do
-    let id := xmlGetHeadingId el
-    let anchorAttributes := Std.TreeMap.empty
-      |>.insert "class" "hover-link"
-      |>.insert "href" s!"#{id}"
-    let anchor := Element.Element "a" anchorAttributes #[Content.Character "#"]
-    let newAttrs := attrs
-      |>.insert "id" id
-      |>.insert "class" "markdown-heading"
-    let newContents ← modifyContents contents funName modifyElement
-    return ⟨ name, newAttrs, newContents
-      |>.push (Content.Character " ")
-      |>.push (Content.Element anchor) ⟩
-
 /-- Find a bibitem if `href` starts with `thePrefix`. -/
 def findBibitem? (href : String) (thePrefix : String := "") : HtmlM (Option BibItem) := do
   if href.startsWith thePrefix then
@@ -162,84 +90,260 @@ def findBibitem? (href : String) (thePrefix : String := "") : HtmlM (Option BibI
   else
     pure .none
 
-/-- Extend anchor links. -/
-def extendAnchor (el : Element) (funName : String) : HtmlM Element := do
-  match el with
-  | Element.Element name attrs contents =>
-    match attrs.get? "href" with
-    | some href =>
-      let bibitem ← findBibitem? href "references.html#ref_"
-      let attrs := attrs.insert "href" (← extendLink href)
-      match bibitem with
-      | .some bibitem =>
-        let newBackref ← addBackref bibitem.citekey funName
-        let changeName : Bool :=
-          if let #[.Character s] := contents then
-            s == bibitem.citekey
-          else
-            false
-        let newContents : Array Content :=
-          if changeName then #[.Character bibitem.tag] else contents
-        let attrs := attrs.insert "title" bibitem.plaintext
-          |>.insert "id" s!"_backref_{newBackref.index}"
-        return ⟨ name, attrs, newContents ⟩
-      | .none =>
-        return ⟨ name, attrs, contents ⟩
-    | none => return ⟨ name, attrs, contents ⟩
+/-- Flattens an array of `MD4Lean.AttrText` to a plain `String`. -/
+def attrTextToString (ts : Array MD4Lean.AttrText) : String :=
+  String.join <|
+  ts.toList.map fun
+    | .normal s => s
+    | .entity s => s
+    -- CommonMark requires that null characters be replaced by the Unicode replacement character.
+    | .nullchar => "\uFFFD"
 
-/-- Automatically add intra documentation link for inline code span. -/
-def autoLink (el : Element) : HtmlM Element := do
-  match el with
-  | Element.Element name attrs contents =>
-    let mut newContents := #[]
-    for c in contents do
-      match c with
-      | Content.Character s =>
-        newContents := newContents ++ (← splitAround s unicodeToSplit |>.mapM linkify).flatten
-      | _ => newContents := newContents.push c
-    return ⟨ name, attrs, newContents ⟩
+mutual
+/-- Extracts plain text from a single `MD4Lean.Text`, ignoring all formatting. -/
+def textToPlaintext (t : MD4Lean.Text) : String :=
+  match t with
+  | .normal s => s
+  | .nullchar => "\uFFFD"
+  | .br _ => "\n"
+  | .softbr _ => "\n"
+  | .entity s => s
+  | .em ts => textsToPlaintext ts
+  | .strong ts => textsToPlaintext ts
+  | .u ts => textsToPlaintext ts
+  | .del ts => textsToPlaintext ts
+  | .a _ _ _ ts => textsToPlaintext ts
+  | .img _ _ alt => textsToPlaintext alt
+  | .code ss => String.join ss.toList
+  | .latexMath ss => String.join ss.toList
+  | .latexMathDisplay ss => String.join ss.toList
+  | .wikiLink _ ts => textsToPlaintext ts
+termination_by sizeOf t
+
+/-- Extract plain text from an array of `MD4Lean.Text`. -/
+def textsToPlaintext (ts : Array MD4Lean.Text) : String :=
+  ts.foldl (init := "") fun str t => str ++ textToPlaintext t
+termination_by sizeOf ts
+end
+
+/--
+  Generates an `id` attribute for heading elements, with the following rules:
+
+  1. Characters in `letter`, `mark`, `number` and `symbol` Unicode categories are preserved.
+  2. Any sequences of characters in `punctuation`, `separator` and `other` categories are replaced by a single dash.
+  3. Cases (upper and lower) are preserved.
+-/
+def mdGetHeadingId (texts : Array MD4Lean.Text) : String :=
+  textsToPlaintext texts |> replaceCharSeq unicodeToDrop "-"
   where
-    linkify s := do
-      let link? ← nameToLink? s
-      match link? with
+    textsToPlaintext ts := String.join (ts.toList.map textToPlaintext)
+    replaceCharSeq pattern replacement s :=
+      s.splitToList pattern
+      |>.filter (!·.isEmpty)
+      |> replacement.intercalate
+    unicodeToDrop (c : Char) : Bool :=
+      -- punctuation (`P`), separator (`Z`), other (`C`)
+      c ∈ Unicode.GC.P ||| Unicode.GC.Z ||| Unicode.GC.C
+
+/-- Checks whether a fenced code block language allows auto-linking. -/
+def isLeanCode (lang : Array MD4Lean.AttrText) : Bool :=
+  let s := attrTextToString lang
+  s.isEmpty || s == "lean"
+
+/--
+Automatically adds intra-documentation links for code content.
+-/
+def autoLinkInline (ss : Array String) : HtmlM (Array Html) := do
+  let mut result : Array Html := #[]
+  for s in ss do
+    let parts := splitAround s unicodeToSplit
+    for part in parts do
+      match ← nameToLink? part with
       | some link =>
-        let attributes := Std.TreeMap.empty.insert "href" link
-        return [Content.Element <| Element.Element "a" attributes #[Content.Character s]]
+        result := result.push <| Html.element "a" true #[("href", link)] #[Html.text part]
       | none =>
-        let sHead := s.dropEndWhile (· != '.') |>.copy
-        let sTail := s.takeEndWhile (· != '.') |>.copy
-        let link'? ← nameToLink? sTail
-        match link'? with
-        | some link' =>
-          let attributes := Std.TreeMap.empty.insert "href" link'
-          return [
-            Content.Character sHead,
-            Content.Element <| Element.Element "a" attributes #[Content.Character sTail]
-          ]
+        let sHead := part.dropEndWhile (· != '.') |>.copy
+        let sTail := part.takeEndWhile (· != '.') |>.copy
+        match ← nameToLink? sTail with
+        | some link =>
+          if !sHead.isEmpty then
+            result := result.push <| Html.text sHead
+          result := result.push <| Html.element "a" true #[("href", link)] #[Html.text sTail]
         | none =>
-          return [Content.Character s]
+          result := result.push <| Html.text part
+  return result
+  where
     unicodeToSplit (c : Char) : Bool :=
       -- separator (`Z`), other (`C`)
       c ∈ Unicode.GC.Z ||| Unicode.GC.C
 
-/-- Core function of modifying the cmark rendered docstring html. -/
-partial def modifyElement (element : Element) (funName : String) : HtmlM Element :=
-  match element with
-  | el@(Element.Element name attrs contents) => do
-    -- add id and class to <h_></h_>
-    if name = "h1" ∨ name = "h2" ∨ name = "h3" ∨ name = "h4" ∨ name = "h5" ∨ name = "h6" then
-      addHeadingAttributes el funName modifyElement
-    -- extend relative href for <a></a>
-    else if name = "a" then
-      extendAnchor el funName
-    -- auto link for inline <code></code>
-    else if name = "code" ∧
-      -- don't linkify code blocks explicitly tagged with a language other than lean
-      (((attrs.get? "class").getD "").splitOn.all (fun s => s == "language-lean" || !s.startsWith "language-")) then
-      autoLink el
-    -- recursively modify
+mutual
+
+/--
+Renders a single `MD4Lean.Text` inline element to HTML, while processing custom extensions such as
+bibliography items. `inLink` suppresses auto-linking inside `<a>` to avoid nested anchors.
+-/
+partial def renderText (t : MD4Lean.Text) (funName : String) (inLink : Bool := false) : HtmlM (Array Html) := do
+  match t with
+  | .normal s => return #[Html.text s]
+  | .nullchar => return #[Html.raw "\uFFFD"]
+  | .br _ => return #[Html.raw "<br>\n"] -- This avoids <br></br>, which is incorrect HTML5
+  | .softbr _ => return #[Html.raw "\n"]
+  | .entity s => return #[Html.raw s]
+  | .em ts =>
+    let inner ← renderTexts ts funName inLink
+    return #[Html.element "em" true #[] inner]
+  | .strong ts =>
+    let inner ← renderTexts ts funName inLink
+    return #[Html.element "strong" true #[] inner]
+  | .u ts =>
+    let inner ← renderTexts ts funName inLink
+    return #[Html.element "u" true #[] inner]
+  | .del ts =>
+    let inner ← renderTexts ts funName inLink
+    return #[Html.element "del" true #[] inner]
+  | .a href title _isAuto children =>
+    let hrefStr := attrTextToString href
+    let titleStr := attrTextToString title
+    let bibitem ← findBibitem? hrefStr "references.html#ref_"
+    let extHref ← extendLink hrefStr
+    match bibitem with
+    | .some bibitem =>
+      let newBackref ← addBackref bibitem.citekey funName
+      let childrenHtml ← renderTexts children funName (inLink := true)
+      let changeName : Bool :=
+        if let #[.normal s] := children then
+          s == bibitem.citekey
+        else
+          false
+      let newChildren : Array Html :=
+        if changeName then #[Html.text bibitem.tag] else childrenHtml
+      let mut attrs : Array (String × String) := #[("href", extHref)]
+      attrs := attrs.push ("title", bibitem.plaintext)
+      attrs := attrs.push ("id", s!"_backref_{newBackref.index}")
+      return #[Html.element "a" true attrs newChildren]
+    | .none =>
+      let childrenHtml ← renderTexts children funName (inLink := true)
+      let mut attrs : Array (String × String) := #[("href", extHref)]
+      if !titleStr.isEmpty then
+        attrs := attrs.push ("title", titleStr)
+      return #[Html.element "a" true attrs childrenHtml]
+  | .img src title alt =>
+    let srcStr := Html.escape (attrTextToString src)
+    let titleStr := Html.escape (attrTextToString title)
+    let altTexts := alt.toList.map textToPlaintext
+    let altStr := Html.escape (String.join altTexts)
+    let mut s := s!"<img src=\"{srcStr}\" alt=\"{altStr}\""
+    if !titleStr.isEmpty then
+      s := s ++ s!" title=\"{titleStr}\""
+    s := s ++ ">"
+    return #[Html.raw s]
+  | .code ss =>
+    let inner ← if inLink then
+        pure #[Html.text (String.join ss.toList)]
+      else
+        autoLinkInline ss
+    return #[Html.element "code" true #[] inner]
+  -- Math is rendered with dollar signs because MathJax will later render them
+  | .latexMath ss =>
+    let content := String.join ss.toList
+    return #[Html.raw s!"${Html.escape content}$"]
+  -- Math is rendered with dollar signs because MathJax will later render them
+  | .latexMathDisplay ss =>
+    let content := String.join ss.toList
+    return #[Html.raw s!"$${Html.escape content}$$"]
+  | .wikiLink target children =>
+    let inner ← renderTexts children funName inLink
+    let targetStr := attrTextToString target
+    return #[Html.element "x-wikilink" true #[("data-target", targetStr)] inner]
+
+/-- Render an array of `MD4Lean.Text` inline elements to HTML. -/
+partial def renderTexts (texts : Array MD4Lean.Text) (funName : String) (inLink : Bool := false) : HtmlM (Array Html) := do
+  let mut result : Array Html := #[]
+  for t in texts do
+    result := result ++ (← renderText t funName inLink)
+  return result
+
+/-- Render a single `MD4Lean.Block` element to HTML. -/
+partial def renderBlock (block : MD4Lean.Block) (funName : String) (tight : Bool := false) : HtmlM (Array Html) := do
+  match block with
+  | .p texts =>
+    let inner ← renderTexts texts funName
+    if tight then
+      return inner
     else
-      return ⟨ name, attrs, ← modifyContents contents funName modifyElement ⟩
+      return #[Html.element "p" true #[] inner]
+  | .ul isTight _mark items =>
+    let mut lis : Array Html := #[]
+    for item in items do
+      let liHtml ← renderLi item funName isTight
+      lis := lis ++ liHtml
+    return #[Html.element "ul" true #[] lis]
+  | .ol isTight start _mark items =>
+    let mut lis : Array Html := #[]
+    for item in items do
+      let liHtml ← renderLi item funName isTight
+      lis := lis ++ liHtml
+    let attrs : Array (String × String) :=
+      if start != 1 then #[("start", toString start)] else #[]
+    return #[Html.element "ol" true attrs lis]
+  | .hr => return #[Html.raw "<hr>\n"]
+  | .header level texts =>
+    let id := mdGetHeadingId texts
+    let inner ← renderTexts texts funName
+    let anchor := Html.element "a" true #[("class", "hover-link"), ("href", s!"#{id}")] #[Html.text "#"]
+    let children := inner.push (Html.text " ") |>.push anchor
+    let tag := s!"h{level}"
+    return #[Html.element tag true #[("id", id), ("class", "markdown-heading")] children]
+  | .code _info lang _fenceChar content =>
+    let langStr := attrTextToString lang
+    let codeAttrs : Array (String × String) :=
+      if !langStr.isEmpty then #[("class", s!"language-{langStr}")] else #[]
+    let inner : Array Html ←
+      if isLeanCode lang then
+        autoLinkInline content
+      else
+        pure #[Html.text (String.join content.toList)]
+    let codeElem := Html.element "code" true codeAttrs inner
+    return #[Html.element "pre" true #[] #[codeElem]]
+  | .html content =>
+    return #[Html.raw (String.join content.toList)]
+  | .blockquote blocks =>
+    let mut inner : Array Html := #[]
+    for b in blocks do
+      inner := inner ++ (← renderBlock b funName)
+    return #[Html.element "blockquote" true #[] inner]
+  | .table head body =>
+    let mut headCells : Array Html := #[]
+    for cell in head do
+      let cellHtml ← renderTexts cell funName
+      headCells := headCells.push (Html.element "th" true #[] cellHtml)
+    let headRow := Html.element "tr" true #[] headCells
+    let thead := Html.element "thead" true #[] #[headRow]
+    let mut bodyRows : Array Html := #[]
+    for row in body do
+      let mut rowCells : Array Html := #[]
+      for cell in row do
+        let cellHtml ← renderTexts cell funName
+        rowCells := rowCells.push (Html.element "td" true #[] cellHtml)
+      bodyRows := bodyRows.push (Html.element "tr" true #[] rowCells)
+    let tbody := Html.element "tbody" true #[] bodyRows
+    return #[Html.element "table" true #[] #[thead, tbody]]
+
+/-- Render a list item to HTML. -/
+partial def renderLi (li : MD4Lean.Li MD4Lean.Block) (funName : String) (tight : Bool) : HtmlM (Array Html) := do
+  let mut inner : Array Html := #[]
+  if li.isTask then
+    let checked := li.taskChar == some 'x' || li.taskChar == some 'X'
+    if checked then
+      inner := inner.push (Html.raw "<input type=\"checkbox\" checked=\"\" disabled=\"\">")
+    else
+      inner := inner.push (Html.raw "<input type=\"checkbox\" disabled=\"\">")
+  for b in li.contents do
+    inner := inner ++ (← renderBlock b funName tight)
+  return #[Html.element "li" true #[] inner]
+
+end
 
 /-- Find all references in a markdown text. -/
 partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String) (i : s.Pos := s.startPos)
@@ -266,17 +370,13 @@ def docStringToHtml (docString : String ⊕ VersoDocString) (funName : String) :
   let refsMarkdown := "\n\n" ++ (String.join <|
     (findAllReferences (← read).refsMap docString).toList.map fun s =>
       s!"[{s}]: references.html#ref_{s}\n")
-  match MD4Lean.renderHtml (docString ++ refsMarkdown) with
-  | .some rendered =>
-    match manyDocument ⟨rendered, rendered.startPos⟩ with
-    | .success _ res =>
-      let newRes ← modifyElements res funName modifyElement
-      -- TODO: use `toString` instead of `eToStringEscaped`
-      -- once <https://github.com/leanprover/lean4/issues/4411> is fixed
-      return (newRes.map fun x => Html.raw (eToStringEscaped x))
-    | _ =>
-      addError <| "Error: failed to postprocess HTML:\n" ++ rendered
-      return #[.raw "<span style='color:red;'>Error: failed to postprocess: </span>", .raw rendered]
+  let flags := MD4Lean.MD_DIALECT_GITHUB ||| MD4Lean.MD_FLAG_LATEXMATHSPANS ||| MD4Lean.MD_FLAG_NOHTML
+  match MD4Lean.parse (docString ++ refsMarkdown) flags with
+  | .some doc =>
+    let mut result : Array Html := #[]
+    for block in doc.blocks do
+      result := result ++ (← renderBlock block funName)
+    return result
   | .none =>
     addError <| "Error: failed to parse markdown:\n" ++ docString
     return #[.raw "<span style='color:red;'>Error: failed to parse markdown: </span>", .text docString]
