@@ -54,4 +54,4 @@ TAR_ARGS=(doc)
 if [ -f "$TMPDIR/mathproject/.lake/build/api-docs.db" ]; then
   TAR_ARGS+=(api-docs.db)
 fi
-tar czf "$REPO_ROOT/mathlib-docs.tar.gz" -C "$TMPDIR/mathproject/.lake/build" "${TAR_ARGS[@]}"
+tar cf - -C "$TMPDIR/mathproject/.lake/build" "${TAR_ARGS[@]}" | zstd -o "$REPO_ROOT/mathlib-docs.tar.zst"
