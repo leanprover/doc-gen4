@@ -103,8 +103,8 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
   FS.createDirAll <| basePath baseConfig.buildDir
   FS.createDirAll <| declarationsBasePath baseConfig.buildDir
 
-  -- Spawn one task per 100 modules, each returning its output file path
-  let tasks ← (chunksOf targetModules 100).mapM fun mods => IO.asTask do mods.mapM fun modName => do
+  -- Spawn one task per 500 modules, each returning its output file path
+  let tasks ← (chunksOf targetModules 500).mapM fun mods => IO.asTask do mods.mapM fun modName => do
     -- Each task opens its own DB connection (SQLite handles concurrent readers well)
     let db ← DB.openForReading dbPath builtinDocstringValues
     let module ← db.loadModule modName
