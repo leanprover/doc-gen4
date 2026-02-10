@@ -32,16 +32,16 @@ instance : Coe String Html :=
 
 namespace Html
 
-def escapePairs : Array (String × String) :=
-  #[
-    ("&", "&amp;"),
-    ("<", "&lt;"),
-    (">", "&gt;"),
-    ("\"", "&quot;")
-  ]
-
 def escape (s : String) : String :=
-  escapePairs.foldl (fun acc (o, r) => acc.replace o r) s
+  if s.any (fun c => c == '&' || c == '<' || c == '>' || c == '"') then
+    s.foldl (init := "") fun
+      | out, '&' => out ++ "&amp;"
+      | out, '<' => out ++ "&lt;"
+      | out, '>' => out ++ "&gt;"
+      | out, '"' => out ++ "&quot;"
+      | out, c => out.push c
+  else
+    s
 
 -- TODO: remove the following 3 functions
 -- once <https://github.com/leanprover/lean4/issues/4411> is fixed
