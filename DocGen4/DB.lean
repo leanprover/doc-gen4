@@ -174,10 +174,13 @@ def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
     run saveDefinitionStmt
   let saveDefinitionEquationStmt ← sqlite.prepare "INSERT INTO definition_equations (module_name, position, code, text_length, sequence) VALUES (?, ?, ?, ?, ?)"
   let saveDefinitionEquation modName position (code : RenderedCode) sequence := withDbContext "write:insert:definition_equations" do
+    let textLength := RenderedCode.textLength code
     saveDefinitionEquationStmt.bind 1 modName
     saveDefinitionEquationStmt.bind 2 position
-    saveDefinitionEquationStmt.bind 3 code
-    saveDefinitionEquationStmt.bind 4 (RenderedCode.textLength code).toInt64
+    saveDefinitionEquationStmt.bind 3 <|
+      if textLength < Process.equationLimit then some code
+      else none
+    saveDefinitionEquationStmt.bind 4 textLength.toInt64
     saveDefinitionEquationStmt.bind 5 sequence
     run saveDefinitionEquationStmt
   let saveInstanceStmt ← sqlite.prepare "INSERT INTO instances (module_name, position, class_name) VALUES (?, ?, ?)"

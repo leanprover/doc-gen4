@@ -1,6 +1,5 @@
 
 import DocGen4.RenderedCode
-import DocGen4.Process.Base
 import SQLite
 import DocGen4.DB.VersoDocString
 
@@ -80,7 +79,7 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
   let readMdDocstringStmt ← sqlite.prepare "SELECT text FROM markdown_docstrings WHERE module_name = ? AND position = ?"
   let readVersoDocstringStmt ← sqlite.prepare "SELECT content FROM verso_docstrings WHERE module_name = ? AND position = ?"
   let loadDeclRangeStmt ← sqlite.prepare "SELECT start_line, start_column, start_utf16, end_line, end_column, end_utf16 FROM declaration_ranges WHERE module_name = ? AND position = ?"
-  let loadEqnsStmt ← sqlite.prepare "SELECT CASE WHEN text_length < ? THEN code ELSE NULL END FROM definition_equations WHERE module_name = ? AND position = ? ORDER BY sequence"
+  let loadEqnsStmt ← sqlite.prepare "SELECT code FROM definition_equations WHERE module_name = ? AND position = ? ORDER BY sequence"
   let loadInstanceArgsStmt ← sqlite.prepare "SELECT type_name FROM instance_args WHERE module_name = ? AND position = ? ORDER BY sequence"
   let loadStructureParentsStmt ← sqlite.prepare "SELECT projection_fn, type FROM structure_parents WHERE module_name = ? AND position = ? ORDER BY sequence"
   let loadFieldArgsStmt ← sqlite.prepare "SELECT binder, is_implicit FROM structure_field_args WHERE module_name = ? AND position = ? AND field_sequence = ? ORDER BY arg_sequence"
@@ -196,9 +195,8 @@ private def ReadStmts.loadInfo (s : ReadStmts) (moduleName : String) (position :
 
 open Lean SQLite.Blob in
 private def ReadStmts.loadEquations (s : ReadStmts) (moduleName : String) (position : Int64) : IO (Option (Array RenderedCode) × Bool) := withDbContext "read:definition_equations" do
-  s.loadEqnsStmt.bind 1 Process.equationLimit.toInt64
-  s.loadEqnsStmt.bind 2 moduleName
-  s.loadEqnsStmt.bind 3 position
+  s.loadEqnsStmt.bind 1 moduleName
+  s.loadEqnsStmt.bind 2 position
   if !(← s.loadEqnsStmt.step) then
     done s.loadEqnsStmt
     return (none, false)

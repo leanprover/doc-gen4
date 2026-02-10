@@ -222,7 +222,7 @@ CREATE TABLE IF NOT EXISTS definitions (
 CREATE TABLE IF NOT EXISTS definition_equations (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
-  code BLOB NOT NULL,
+  code BLOB,
   text_length INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
   PRIMARY KEY (module_name, position, sequence),
