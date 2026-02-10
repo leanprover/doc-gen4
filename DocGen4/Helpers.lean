@@ -43,10 +43,10 @@ instance [Pure m] : Iterator (ChunkArray α) m (Subarray α) where
 
 instance [Pure m] [Monad n] : IteratorLoop (ChunkArray α) (β := Subarray α) m n := IteratorLoop.defaultImplementation
 
-def chunksOf (xs : Array α) (size : Nat) (_ok : size > 0 := by grind) : Array (Array α) := Id.run do
+def chunksOf (xs : Array α) (chunkSize : Nat) (_ok : chunkSize > 0 := by grind) : Array (Array α) := Id.run do
   let mut out := #[]
   let mut n := 0
-  while n < out.size do
-    out := out.push <| xs.extract n (n + size)
-    n := n + size
+  while n < xs.size do
+    out := out.push <| xs.extract n (n + chunkSize)
+    n := n + chunkSize
   return out
