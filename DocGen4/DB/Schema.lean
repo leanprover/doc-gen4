@@ -113,14 +113,6 @@ CREATE TABLE IF NOT EXISTS module_imports (
 -- Index for reverse queries: "what imports this module?"
 CREATE INDEX IF NOT EXISTS idx_module_imports_imported ON module_imports(imported);
 
-CREATE TABLE IF NOT EXISTS module_items (
-  module_name TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  item_type TEXT NOT NULL,
-  PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
-);
-
 CREATE TABLE IF NOT EXISTS declaration_ranges (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
@@ -155,7 +147,7 @@ CREATE TABLE IF NOT EXISTS name_info (
   position INTEGER NOT NULL,
   kind TEXT,
   name TEXT NOT NULL,
-  type TEXT NOT NULL,
+  type BLOB NOT NULL,
   sorried INTEGER NOT NULL,
   render INTEGER NOT NULL,
   PRIMARY KEY (module_name, position),
@@ -186,7 +178,7 @@ CREATE TABLE IF NOT EXISTS constructors (
   position INTEGER NOT NULL,
   type_position INTEGER NOT NULL,
   PRIMARY KEY (module_name, position),
-  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
+  FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE,
   FOREIGN KEY (module_name, type_position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
 );
 
@@ -230,7 +222,7 @@ CREATE TABLE IF NOT EXISTS definitions (
 CREATE TABLE IF NOT EXISTS definition_equations (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
-  code TEXT NOT NULL,
+  code BLOB NOT NULL,
   sequence INTEGER NOT NULL,
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE
@@ -266,7 +258,7 @@ CREATE TABLE IF NOT EXISTS structure_parents (
   position INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
   projection_fn TEXT NOT NULL,
-  type TEXT NOT NULL,
+  type BLOB NOT NULL,
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES structures(module_name, position) ON DELETE CASCADE
 );

@@ -120,14 +120,7 @@ def getDocString : DocInfo → Option (String ⊕ VersoDocString)
 def getMarkdownDocString (i : DocInfo) : Option String :=
   i.getDocString.map fun
     | .inl md => md
-    | .inr v => toMarkdown v
-where
-  toMarkdown : VersoDocString → String
-  | .mk bs ps => Doc.MarkdownM.run' do
-      for b in bs do
-        Doc.ToMarkdown.toMarkdown b
-      for p in ps do
-        Doc.ToMarkdown.toMarkdown p
+    | .inr v => versoDocToMarkdown v
 
 def shouldRender : DocInfo → Bool
 | axiomInfo i => i.render

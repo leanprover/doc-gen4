@@ -198,7 +198,6 @@ private def tokenize (txt : String) : RenderedCode := Id.run do
       continue
   return toks
 where
-  tokenEnder (str : String.Slice) : Bool := str.front?.map Char.isAlphanum |>.getD true
   kws := ["let", "fun", "do", "match", "with", "if", "then", "else", "break", "continue", "for", "in", "mut"]
 
 /--

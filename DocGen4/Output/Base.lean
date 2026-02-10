@@ -260,27 +260,6 @@ def declNameToHtmlBreakWithinLink (name : Name) : HtmlM Html := do
     </a>
 
 /--
-In Lean syntax declarations the following pattern is quite common:
-```
-syntax term " + " term : term
-```
-that is, we place spaces around the operator in the middle. When the
-`InfoTree` framework provides us with information about what source token
-corresponds to which identifier it will thus say that `" + "` corresponds to
-`HAdd.hadd`. This is however not the way we want this to be linked, in the HTML
-only `+` should be linked, taking care of this is what this function is
-responsible for.
--/
-def splitWhitespaces (s : String) : String × String × String :=
-  let length := s.length
-  let s := s.trimAsciiStart
-  let front := "".pushn ' ' (length - s.positions.count)
-  let length := s.positions.count
-  let s := s.trimAsciiEnd.copy
-  let back := "".pushn ' ' (length - s.length)
-  (front, s, back)
-
-/--
 For a name, try to find a linkable target by stripping suffix components
 that are numeric or start with `_`. Returns the first name found in name2ModIdx,
 or none if nothing is found.

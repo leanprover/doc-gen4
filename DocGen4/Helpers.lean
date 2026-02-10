@@ -11,9 +11,6 @@ structure ChunkArray α where
   chunkSize_gt_zero : chunkSize > 0 := by grind
   curr_valid : curr ≤ array.size := by grind
 
-def chunkedM {m : Type u → Type v} (xs : Array α) (n : Nat) (ok : n > 0 := by grind) :=
-  IterM.mk (ChunkArray.mk xs n 0) m (Subarray α)
-
 def chunked (xs : Array α) (n : Nat) (ok : n > 0 := by grind) :=
   IterM.mk (ChunkArray.mk xs n 0) Id (Subarray α)
 

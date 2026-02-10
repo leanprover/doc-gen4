@@ -338,7 +338,9 @@ private def ReadStmts.loadDocInfo (s : ReadStmts) (moduleName : String) (positio
   | "class" => readStructure .classInfo info
   | "class inductive" => readClassInductive info
   | "constructor" => return some <| .ctorInfo info
-  | _ => return none
+  | other =>
+    IO.eprintln s!"warning: unknown declaration kind '{other}' for '{name}' in module '{moduleName}'; skipping"
+    return none
 where
   readAxiom (info : Process.Info) : IO (Option Process.DocInfo) := do
     s.readAxiomStmt.bind 1 moduleName
@@ -498,16 +500,18 @@ private def ReadStmts.loadModule (s : ReadStmts) (moduleName : Name) : IO Proces
     let typeBlob ← s.loadModuleStmt.columnBlob 3
     let sorried := (← s.loadModuleStmt.columnInt64 4) != 0
     let render := (← s.loadModuleStmt.columnInt64 5) != 0
-    if let some docInfo ← s.loadDocInfo modNameStr position kind name typeBlob sorried render then
-      members := members.push (position, .docInfo docInfo)
+    match (← s.loadDocInfo modNameStr position kind name typeBlob sorried render) with
+    | some docInfo => members := members.push (position, .docInfo docInfo)
+    | none => IO.eprintln s!"warning: failed to load declaration '{name}' (kind '{kind}') at position {position} in module '{modNameStr}'; skipping"
   done s.loadModuleStmt
   s.loadModuleDocsStmt.bind 1 modNameStr
   s.loadModuleDocsStmt.bind 2 modNameStr
   while (← s.loadModuleDocsStmt.step) do
     let position ← s.loadModuleDocsStmt.columnInt64 0
     let doc ← s.loadModuleDocsStmt.columnText 1
-    if let some declRange ← s.loadDeclarationRange modNameStr position then
-      members := members.push (position, .modDoc { doc, declarationRange := declRange })
+    match (← s.loadDeclarationRange modNameStr position) with
+    | some declRange => members := members.push (position, .modDoc { doc, declarationRange := declRange })
+    | none => IO.eprintln s!"warning: missing declaration range for module docstring at position {position} in module '{modNameStr}'; skipping"
   done s.loadModuleDocsStmt
   let sortedMembers := members.qsort fun (pos1, m1) (pos2, m2) =>
     let r1 := m1.getDeclarationRange.pos
