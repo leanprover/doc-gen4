@@ -349,7 +349,7 @@ def withSQLite (f : SQLite → DBM α) : DBM α := do f (← read).db
 
 private def readonlyError : IO α := throw (IO.userError "DB opened for reading only")
 
-def openForReading (dbFile : System.FilePath) (values : DocstringValues := {}) : IO DB := do
+def openForReading (dbFile : System.FilePath) (values : DocstringValues) : IO DB := do
   let sqlite ← SQLite.openWith dbFile .readonly
   sqlite.exec "PRAGMA busy_timeout = 86400000"
   let readOps ← mkReadOps sqlite values

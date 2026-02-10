@@ -72,7 +72,7 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let moduleRoots := (p.variableArgsAs! String).map String.toName
 
   -- Load linking context (module names, source URLs, declaration locations)
-  let db ← DB.openForReading dbPath
+  let db ← DB.openForReading dbPath builtinDocstringValues
   let linkCtx ← db.loadLinkingContext
 
   -- Determine which modules to generate HTML for

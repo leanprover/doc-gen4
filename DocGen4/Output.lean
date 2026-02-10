@@ -106,7 +106,7 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
   -- Spawn one task per 100 modules, each returning its output file path
   let tasks ← (chunksOf targetModules 100).mapM fun mods => IO.asTask do mods.mapM fun modName => do
     -- Each task opens its own DB connection (SQLite handles concurrent readers well)
-    let db ← DB.openForReading dbPath
+    let db ← DB.openForReading dbPath builtinDocstringValues
     let module ← db.loadModule modName
 
     -- Build a minimal AnalyzerResult with just this module's info

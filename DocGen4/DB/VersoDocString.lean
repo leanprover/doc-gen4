@@ -20,7 +20,9 @@ structure DocstringValues where
 private def toBinaryElab (vals : DocstringValues) (name : Name) (val : Dynamic) (b : ByteArray) : ByteArray :=
   match vals.handlers.get? name with
   | none => b.push 0 |> ToBinary.serializer name
-  | some s => b.push 1 |> ToBinary.serializer name |> s.serialize val
+  | some s =>
+    let payload := s.serialize val .empty
+    b.push 1 |> ToBinary.serializer name |> ToBinary.serializer payload.size |> (· ++ payload)
 
 def toBinaryElabInline (vals : DocstringValues) : Serializer ElabInline
   | { name, val }, b => toBinaryElab vals name val b
@@ -41,8 +43,11 @@ private def fromBinaryElab (vals : DocstringValues) (label : String) : Deseriali
     pure (`unknown ++ name, .mk Unknown.mk)
   | 1 =>
     let name ← FromBinary.deserializer
+    let len : Nat ← FromBinary.deserializer
     match vals.handlers.get? name with
-    | none => pure (`unknown ++ name, .mk Unknown.mk)
+    | none =>
+      let _ ← Deserializer.nbytes len
+      pure (`unknown ++ name, .mk Unknown.mk)
     | some d =>
       let val ← d.deserialize
       pure (name, val)
