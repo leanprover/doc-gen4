@@ -88,6 +88,11 @@ deriving Inhabited, BEq, Repr, ToBinary, FromBinary, Hashable
 
 def RenderedCode.empty : RenderedCode := .append #[]
 
+partial def RenderedCode.textLength : RenderedCode → Nat
+  | .text s => s.length
+  | .tag _ inner => textLength inner
+  | .append xs => xs.foldl (init := 0) fun len x => len + textLength x
+
 open Lean.Widget in
 mutual
 partial def RenderedCode.pushRight (xs : Array RenderedCode) (x : RenderedCode) : Array RenderedCode :=

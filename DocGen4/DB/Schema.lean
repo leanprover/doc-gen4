@@ -223,6 +223,7 @@ CREATE TABLE IF NOT EXISTS definition_equations (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
   code BLOB NOT NULL,
+  text_length INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE

@@ -8,9 +8,6 @@ namespace Output
 open scoped DocGen4.Jsx
 open Lean Widget
 
-/-- This is basically an arbitrary number that seems to work okay. -/
-def equationLimit : Nat := 200
-
 def equationToHtml (c : RenderedCode) : HtmlM Html := do
   return <li class="equation">[← renderedCodeToHtml c]</li>
 
@@ -23,14 +20,13 @@ defined in `equationLimit` we stop trying since they:
 def equationsToHtml (i : Process.DefinitionInfo) : HtmlM (Array Html) := do
   if let some eqs := i.equations then
     let equationsHtml ← eqs.mapM equationToHtml
-    let filteredEquationsHtml := equationsHtml.filter (·.textLength < equationLimit)
-    if equationsHtml.size ≠ filteredEquationsHtml.size then
+    if i.equationsWereOmitted then
       return #[
         <details>
           <summary>Equations</summary>
           <ul class="equations">
             <li class="equation">One or more equations did not get rendered due to their size.</li>
-            [filteredEquationsHtml]
+            [equationsHtml]
           </ul>
         </details>
       ]
@@ -39,7 +35,7 @@ def equationsToHtml (i : Process.DefinitionInfo) : HtmlM (Array Html) := do
         <details>
           <summary>Equations</summary>
           <ul class="equations">
-            [filteredEquationsHtml]
+            [equationsHtml]
           </ul>
         </details>
       ]

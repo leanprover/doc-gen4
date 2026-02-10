@@ -1,5 +1,6 @@
 
 import DocGen4.RenderedCode
+import DocGen4.Process.Base
 import SQLite
 import DocGen4.DB.VersoDocString
 
@@ -79,7 +80,7 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
   let readMdDocstringStmt ← sqlite.prepare "SELECT text FROM markdown_docstrings WHERE module_name = ? AND position = ?"
   let readVersoDocstringStmt ← sqlite.prepare "SELECT content FROM verso_docstrings WHERE module_name = ? AND position = ?"
   let loadDeclRangeStmt ← sqlite.prepare "SELECT start_line, start_column, start_utf16, end_line, end_column, end_utf16 FROM declaration_ranges WHERE module_name = ? AND position = ?"
-  let loadEqnsStmt ← sqlite.prepare "SELECT code FROM definition_equations WHERE module_name = ? AND position = ? ORDER BY sequence"
+  let loadEqnsStmt ← sqlite.prepare "SELECT CASE WHEN text_length < ? THEN code ELSE NULL END FROM definition_equations WHERE module_name = ? AND position = ? ORDER BY sequence"
   let loadInstanceArgsStmt ← sqlite.prepare "SELECT type_name FROM instance_args WHERE module_name = ? AND position = ? ORDER BY sequence"
   let loadStructureParentsStmt ← sqlite.prepare "SELECT projection_fn, type FROM structure_parents WHERE module_name = ? AND position = ? ORDER BY sequence"
   let loadFieldArgsStmt ← sqlite.prepare "SELECT binder, is_implicit FROM structure_field_args WHERE module_name = ? AND position = ? AND field_sequence = ? ORDER BY arg_sequence"
@@ -194,17 +195,33 @@ private def ReadStmts.loadInfo (s : ReadStmts) (moduleName : String) (position :
   return { name, type, doc, args, declarationRange := declRange, attrs, sorried, render }
 
 open Lean SQLite.Blob in
-private def ReadStmts.loadEquations (s : ReadStmts) (moduleName : String) (position : Int64) : IO (Option (Array RenderedCode)) := withDbContext "read:definition_equations" do
-  s.loadEqnsStmt.bind 1 moduleName
-  s.loadEqnsStmt.bind 2 position
+private def ReadStmts.loadEquations (s : ReadStmts) (moduleName : String) (position : Int64) : IO (Option (Array RenderedCode) × Bool) := withDbContext "read:definition_equations" do
+  s.loadEqnsStmt.bind 1 Process.equationLimit.toInt64
+  s.loadEqnsStmt.bind 2 moduleName
+  s.loadEqnsStmt.bind 3 position
   if !(← s.loadEqnsStmt.step) then
     done s.loadEqnsStmt
-    return none
-  let mut eqns := #[← readRenderedCode (← s.loadEqnsStmt.columnBlob 0)]
+    return (none, false)
+  let mut eqns := #[]
+  let mut wereOmitted := false
+  let processRow : IO (Option RenderedCode) := do
+    let colType ← s.loadEqnsStmt.columnType 0
+    if colType == .null then
+      return none
+    else
+      let blob ← s.loadEqnsStmt.columnBlob 0
+      return some (← readRenderedCode blob)
+  match (← processRow) with
+  | some code => eqns := eqns.push code
+  | none => wereOmitted := true
   while (← s.loadEqnsStmt.step) do
-    eqns := eqns.push (← readRenderedCode (← s.loadEqnsStmt.columnBlob 0))
+    match (← processRow) with
+    | some code => eqns := eqns.push code
+    | none => wereOmitted := true
   done s.loadEqnsStmt
-  return some eqns
+  if eqns.isEmpty && !wereOmitted then
+    return (none, false)
+  return (some eqns, wereOmitted)
 
 open Lean SQLite.Blob in
 private def ReadStmts.loadInstanceArgs (s : ReadStmts) (moduleName : String) (position : Int64) : IO (Array Name) := do
@@ -376,8 +393,8 @@ where
         | "opaque" => .opaque
         | "abbrev" => .abbrev
         | s => .regular (s.toNat?.getD 0 |>.toUInt32)
-      let equations ← s.loadEquations moduleName position
-      return some <| .definitionInfo { toInfo := info, isUnsafe, hints, equations, isNonComputable }
+      let (equations, equationsWereOmitted) ← s.loadEquations moduleName position
+      return some <| .definitionInfo { toInfo := info, isUnsafe, hints, equations, equationsWereOmitted, isNonComputable }
     done s.readDefinitionStmt
     return none
   readInstance (info : Process.Info) : IO (Option Process.DocInfo) := do
@@ -397,9 +414,9 @@ where
           | "opaque" => .opaque
           | "abbrev" => .abbrev
           | s => .regular (s.toNat?.getD 0 |>.toUInt32)
-        let equations ← s.loadEquations moduleName position
+        let (equations, equationsWereOmitted) ← s.loadEquations moduleName position
         let typeNames ← s.loadInstanceArgs moduleName position
-        return some <| .instanceInfo { toInfo := info, isUnsafe, hints, equations, isNonComputable, className, typeNames }
+        return some <| .instanceInfo { toInfo := info, isUnsafe, hints, equations, equationsWereOmitted, isNonComputable, className, typeNames }
       done s.readDefinitionStmt
     else
       done s.readInstanceStmt

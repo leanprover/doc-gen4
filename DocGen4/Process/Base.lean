@@ -137,6 +137,9 @@ structure OpaqueInfo extends Info where
 
 deriving instance Hashable for ReducibilityHints
 
+/-- The maximum string length of equations before they are omitted from rendering. -/
+def equationLimit : Nat := 200
+
 /--
 Information about a `def` declaration, note that partial defs are handled by `OpaqueInfo`.
 -/
@@ -144,6 +147,7 @@ structure DefinitionInfo extends Info where
   isUnsafe : Bool
   hints : ReducibilityHints
   equations : Option (Array RenderedCode)
+  equationsWereOmitted : Bool := false
   isNonComputable : Bool
   deriving Inhabited, Hashable
 
