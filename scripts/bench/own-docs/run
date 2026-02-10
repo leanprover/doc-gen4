@@ -14,3 +14,9 @@ lake build doc-gen4
 
 env DOCGEN_SRC="file" "$BENCH/measure.py" -t own-docs -m instructions -m maxrss -m task-clock -m wall-clock -- \
   lake build DocGen4:docs
+
+TAR_ARGS=(doc)
+if [ -f .lake/build/api-docs.db ]; then
+  TAR_ARGS+=(api-docs.db)
+fi
+tar czf own-docs.tar.gz -C .lake/build "${TAR_ARGS[@]}"
