@@ -9,3 +9,13 @@ echo "Running benchmark: own-docs"
 echo "Running benchmark: mathlib-docs"
 "$BENCH/mathlib-docs/run"
 
+if [ -n "${IN_RADAR:-}" ]; then
+  SHA=$(git rev-parse HEAD)
+  BASE_URL="https://speed.lean-lang.org/doc-gen4-out/$SHA"
+  for f in own-docs.tar.gz mathlib-docs.tar.gz; do
+    URL="$BASE_URL/$f"
+    echo "Uploading $f to $URL"
+    curl -T "$f" "$URL"
+  done
+fi
+
