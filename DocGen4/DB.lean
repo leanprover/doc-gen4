@@ -108,12 +108,12 @@ def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
   let saveDeclarationRange modName position (declRange : Lean.DeclarationRange) := withDbContext "write:insert:declaration_ranges" do
     saveDeclarationRangeStmt.bind 1 modName
     saveDeclarationRangeStmt.bind 2 position
-    saveDeclarationRangeStmt.bind 3 declRange.pos.line
-    saveDeclarationRangeStmt.bind 4 declRange.pos.column
-    saveDeclarationRangeStmt.bind 5 declRange.charUtf16
-    saveDeclarationRangeStmt.bind 6 declRange.endPos.line
-    saveDeclarationRangeStmt.bind 7 declRange.endPos.column
-    saveDeclarationRangeStmt.bind 8 declRange.endCharUtf16
+    saveDeclarationRangeStmt.bind 3 declRange.pos.line.toInt64
+    saveDeclarationRangeStmt.bind 4 declRange.pos.column.toInt64
+    saveDeclarationRangeStmt.bind 5 declRange.charUtf16.toInt64
+    saveDeclarationRangeStmt.bind 6 declRange.endPos.line.toInt64
+    saveDeclarationRangeStmt.bind 7 declRange.endPos.column.toInt64
+    saveDeclarationRangeStmt.bind 8 declRange.endCharUtf16.toInt64
     run saveDeclarationRangeStmt
   let saveInfoStmt ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, ?, ?)"
   let saveArgStmt ← sqlite.prepare "INSERT INTO declaration_args (module_name, position, sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?)"
