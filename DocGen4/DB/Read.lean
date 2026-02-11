@@ -68,8 +68,7 @@ private structure ReadStmts where
   getModuleImportsStmt : SQLite.Stmt
   buildNameInfoStmt : SQLite.Stmt
   buildInternalNamesStmt : SQLite.Stmt
-  loadModuleStmt : SQLite.Stmt
-  loadModuleDocsStmt : SQLite.Stmt
+  loadModuleMembersStmt : SQLite.Stmt
   loadTacticsStmt : SQLite.Stmt
   loadTacticTagsStmt : SQLite.Stmt
 
@@ -77,15 +76,15 @@ open Lean SQLite.Blob in
 private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO ReadStmts := do
   let loadArgsStmt ← sqlite.prepare "SELECT binder, is_implicit FROM declaration_args WHERE module_name = ? AND position = ? ORDER BY sequence"
   let loadAttrsStmt ← sqlite.prepare "SELECT attr FROM declaration_attrs WHERE module_name = ? AND position = ? ORDER BY sequence"
-  let readMdDocstringStmt ← sqlite.prepare "SELECT text FROM markdown_docstrings WHERE module_name = ? AND position = ?"
-  let readVersoDocstringStmt ← sqlite.prepare "SELECT content FROM verso_docstrings WHERE module_name = ? AND position = ?"
+  let readMdDocstringStmt ← sqlite.prepare "SELECT text FROM declaration_markdown_docstrings WHERE module_name = ? AND position = ?"
+  let readVersoDocstringStmt ← sqlite.prepare "SELECT content FROM declaration_verso_docstrings WHERE module_name = ? AND position = ?"
   let loadDeclRangeStmt ← sqlite.prepare "SELECT start_line, start_column, start_utf16, end_line, end_column, end_utf16 FROM declaration_ranges WHERE module_name = ? AND position = ?"
   let loadEqnsStmt ← sqlite.prepare "SELECT code FROM definition_equations WHERE module_name = ? AND position = ? ORDER BY sequence"
   let loadInstanceArgsStmt ← sqlite.prepare "SELECT type_name FROM instance_args WHERE module_name = ? AND position = ? ORDER BY sequence"
   let loadStructureParentsStmt ← sqlite.prepare "SELECT projection_fn, type FROM structure_parents WHERE module_name = ? AND position = ? ORDER BY sequence"
   let loadFieldArgsStmt ← sqlite.prepare "SELECT binder, is_implicit FROM structure_field_args WHERE module_name = ? AND position = ? AND field_sequence = ? ORDER BY arg_sequence"
   let loadFieldsStmt ← sqlite.prepare "SELECT sequence, proj_name, type, is_direct FROM structure_fields WHERE module_name = ? AND position = ? ORDER BY sequence"
-  let loadFieldsJoinedStmt ← sqlite.prepare "SELECT f.sequence, f.proj_name, f.type, f.is_direct, n.module_name, n.position, n.render, md.text, v.content, dr.start_line, dr.start_column, dr.start_utf16, dr.end_line, dr.end_column, dr.end_utf16 FROM structure_fields f LEFT JOIN name_info n ON n.name = f.proj_name LEFT JOIN markdown_docstrings md ON md.module_name = n.module_name AND md.position = n.position LEFT JOIN verso_docstrings v ON v.module_name = n.module_name AND v.position = n.position LEFT JOIN declaration_ranges dr ON dr.module_name = n.module_name AND dr.position = n.position WHERE f.module_name = ? AND f.position = ? ORDER BY f.sequence"
+  let loadFieldsJoinedStmt ← sqlite.prepare "SELECT f.sequence, f.proj_name, f.type, f.is_direct, n.module_name, n.position, n.render, md.text, v.content, dr.start_line, dr.start_column, dr.start_utf16, dr.end_line, dr.end_column, dr.end_utf16 FROM structure_fields f LEFT JOIN name_info n ON n.name = f.proj_name LEFT JOIN declaration_markdown_docstrings md ON md.module_name = n.module_name AND md.position = n.position LEFT JOIN declaration_verso_docstrings v ON v.module_name = n.module_name AND v.position = n.position LEFT JOIN declaration_ranges dr ON dr.module_name = n.module_name AND dr.position = n.position WHERE f.module_name = ? AND f.position = ? ORDER BY f.sequence"
   let lookupProjStmt ← sqlite.prepare "SELECT module_name, position FROM name_info WHERE name = ? LIMIT 1"
   let lookupRenderStmt ← sqlite.prepare "SELECT render FROM name_info WHERE module_name = ? AND position = ?"
   let loadStructCtorStmt ← sqlite.prepare "SELECT name, type, ctor_position FROM structure_constructors WHERE module_name = ? AND position = ?"
@@ -103,8 +102,13 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
   let getModuleImportsStmt ← sqlite.prepare "SELECT imported FROM module_imports WHERE importer = ?"
   let buildNameInfoStmt ← sqlite.prepare "SELECT name, module_name FROM name_info"
   let buildInternalNamesStmt ← sqlite.prepare "SELECT name, target_module FROM internal_names"
-  let loadModuleStmt ← sqlite.prepare "SELECT n.position, n.kind, n.name, n.type, n.sorried, n.render FROM name_info n WHERE n.module_name = ?"
-  let loadModuleDocsStmt ← sqlite.prepare "SELECT m.position, m.text FROM markdown_docstrings m WHERE m.module_name = ? AND m.position NOT IN (SELECT position FROM name_info WHERE module_name = ?)"
+  let loadModuleMembersStmt ← sqlite.prepare
+    "SELECT position, kind, name, type, sorried, render, NULL as mod_doc \
+     FROM name_info WHERE module_name = ? \
+     UNION ALL \
+     SELECT position, NULL, NULL, NULL, 0, 0, text \
+     FROM module_docs_markdown WHERE module_name = ? \
+     ORDER BY position"
   let loadTacticsStmt ← sqlite.prepare "SELECT internal_name, user_name, doc_string FROM tactics WHERE module_name = ?"
   let loadTacticTagsStmt ← sqlite.prepare "SELECT tag FROM tactic_tags WHERE module_name = ? AND internal_name = ?"
   pure {
@@ -116,7 +120,7 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
     readInductiveStmt, readStructureStmt, readClassInductiveStmt,
     getModuleNamesStmt, getModuleSourceUrlsStmt, getModuleImportsStmt,
     buildNameInfoStmt, buildInternalNamesStmt,
-    loadModuleStmt, loadModuleDocsStmt, loadTacticsStmt, loadTacticTagsStmt
+    loadModuleMembersStmt, loadTacticsStmt, loadTacticTagsStmt
   }
 
 open Lean SQLite.Blob in
@@ -273,7 +277,7 @@ private def ReadStmts.loadStructureFields (s : ReadStmts) (moduleName : String) 
     let typeBlob ← stmt.columnBlob 2
     let type ← readRenderedCode typeBlob
     let isDirect := (← stmt.columnInt64 3) != 0
-    -- Columns 4-14 come from LEFT JOINs on name_info, markdown_docstrings, verso_docstrings, declaration_ranges
+    -- Columns 4-14 come from LEFT JOINs on name_info, declaration_markdown_docstrings, declaration_verso_docstrings, declaration_ranges
     let projFound := (← stmt.columnType 4) != .null
     let (doc, attrs, declRange, render) ← if projFound then do
       let projModName ← stmt.columnText 4
@@ -511,34 +515,29 @@ open Lean SQLite.Blob in
 private def ReadStmts.loadModule (s : ReadStmts) (moduleName : Name) : IO Process.Module := do
   let modNameStr := moduleName.toString
   let imports ← s.getModuleImports moduleName
-  s.loadModuleStmt.bind 1 modNameStr
-  let mut members : Array (Int64 × Process.ModuleMember) := #[]
-  while (← s.loadModuleStmt.step) do
-    let position ← s.loadModuleStmt.columnInt64 0
-    let kind ← s.loadModuleStmt.columnText 1
-    let name := (← s.loadModuleStmt.columnText 2).toName
-    let typeBlob ← s.loadModuleStmt.columnBlob 3
-    let sorried := (← s.loadModuleStmt.columnInt64 4) != 0
-    let render := (← s.loadModuleStmt.columnInt64 5) != 0
-    match (← s.loadDocInfo modNameStr position kind name typeBlob sorried render) with
-    | some docInfo => members := members.push (position, .docInfo docInfo)
-    | none => IO.eprintln s!"warning: failed to load declaration '{name}' (kind '{kind}') at position {position} in module '{modNameStr}'; skipping"
-  done s.loadModuleStmt
-  s.loadModuleDocsStmt.bind 1 modNameStr
-  s.loadModuleDocsStmt.bind 2 modNameStr
-  while (← s.loadModuleDocsStmt.step) do
-    let position ← s.loadModuleDocsStmt.columnInt64 0
-    let doc ← s.loadModuleDocsStmt.columnText 1
-    match (← s.loadDeclarationRange modNameStr position) with
-    | some declRange => members := members.push (position, .modDoc { doc, declarationRange := declRange })
-    | none => IO.eprintln s!"warning: missing declaration range for module docstring at position {position} in module '{modNameStr}'; skipping"
-  done s.loadModuleDocsStmt
-  let sortedMembers := members.qsort fun (pos1, m1) (pos2, m2) =>
-    let r1 := m1.getDeclarationRange.pos
-    let r2 := m2.getDeclarationRange.pos
-    if Position.lt r1 r2 then true
-    else if Position.lt r2 r1 then false
-    else pos1 < pos2
+  -- Single query returns declarations and standalone module docs in position order
+  s.loadModuleMembersStmt.bind 1 modNameStr
+  s.loadModuleMembersStmt.bind 2 modNameStr
+  let mut members : Array Process.ModuleMember := #[]
+  while (← s.loadModuleMembersStmt.step) do
+    let position ← s.loadModuleMembersStmt.columnInt64 0
+    if (← s.loadModuleMembersStmt.columnNull 1) then
+      -- Standalone module doc (kind column is NULL)
+      let doc ← s.loadModuleMembersStmt.columnText 6
+      match (← s.loadDeclarationRange modNameStr position) with
+      | some declRange => members := members.push (.modDoc { doc, declarationRange := declRange })
+      | none => IO.eprintln s!"warning: missing declaration range for module docstring at position {position} in module '{modNameStr}'; skipping"
+    else
+      -- Declaration
+      let kind ← s.loadModuleMembersStmt.columnText 1
+      let name := (← s.loadModuleMembersStmt.columnText 2).toName
+      let typeBlob ← s.loadModuleMembersStmt.columnBlob 3
+      let sorried := (← s.loadModuleMembersStmt.columnInt64 4) != 0
+      let render := (← s.loadModuleMembersStmt.columnInt64 5) != 0
+      match (← s.loadDocInfo modNameStr position kind name typeBlob sorried render) with
+      | some docInfo => members := members.push (.docInfo docInfo)
+      | none => IO.eprintln s!"warning: failed to load declaration '{name}' (kind '{kind}') at position {position} in module '{modNameStr}'; skipping"
+  done s.loadModuleMembersStmt
   s.loadTacticsStmt.bind 1 modNameStr
   let mut tactics : Array (Process.TacticInfo Process.MarkdownDocstring) := #[]
   while (← s.loadTacticsStmt.step) do
@@ -553,7 +552,7 @@ private def ReadStmts.loadModule (s : ReadStmts) (moduleName : Name) : IO Proces
     done s.loadTacticTagsStmt
     tactics := tactics.push { internalName, userName, tags, docString, definingModule := moduleName }
   done s.loadTacticsStmt
-  return { name := moduleName, members := sortedMembers.map (·.2), imports, tactics }
+  return { name := moduleName, members, imports, tactics }
 
 def mkReadOps (sqlite : SQLite) (values : DocstringValues) : IO ReadOps := do
   let s ← ReadStmts.prepare sqlite values

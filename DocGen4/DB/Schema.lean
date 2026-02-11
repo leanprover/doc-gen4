@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS declaration_ranges (
   FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS markdown_docstrings (
+CREATE TABLE IF NOT EXISTS declaration_markdown_docstrings (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
   text TEXT NOT NULL,
@@ -133,7 +133,17 @@ CREATE TABLE IF NOT EXISTS markdown_docstrings (
   FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS verso_docstrings (
+CREATE TABLE IF NOT EXISTS module_docs_markdown (
+  module_name TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  PRIMARY KEY (module_name, position),
+  FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
+);
+
+-- TODO: Add module_docs_verso table for Lean.VersoModuleDocs.Snippet
+
+CREATE TABLE IF NOT EXISTS declaration_verso_docstrings (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
   content BLOB NOT NULL,

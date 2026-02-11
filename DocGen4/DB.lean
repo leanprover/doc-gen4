@@ -14,6 +14,7 @@ structure DB extends ReadOps where
   saveModule (modName : String) (sourceUrl? : Option String) : IO Unit
   saveImport (modName : String) (imported : Lean.Name) : IO Unit
   saveMarkdownDocstring (modName : String) (position : Int64) (text : String) : IO Unit
+  saveModuleDoc (modName : String) (position : Int64) (text : String) : IO Unit
   saveVersoDocstring (modName : String) (position : Int64) (text : Lean.VersoDocString) : IO Unit
   saveDeclarationRange (modName : String) (position : Int64) (declRange : Lean.DeclarationRange) : IO Unit
   saveInfo (modName : String) (position : Int64) (kind : String) (info : Process.Info) : IO Unit
@@ -90,14 +91,20 @@ def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
     saveImportStmt.bind 1 modName
     saveImportStmt.bind 2 imported.toString
     run saveImportStmt
-  let saveMarkdownDocstringStmt ← sqlite.prepare "INSERT INTO markdown_docstrings (module_name, position, text) VALUES (?, ?, ?)"
-  let saveMarkdownDocstring modName position text := withDbContext "write:insert:markdown_docstrings" do
+  let saveMarkdownDocstringStmt ← sqlite.prepare "INSERT INTO declaration_markdown_docstrings (module_name, position, text) VALUES (?, ?, ?)"
+  let saveMarkdownDocstring modName position text := withDbContext "write:insert:declaration_markdown_docstrings" do
     saveMarkdownDocstringStmt.bind 1 modName
     saveMarkdownDocstringStmt.bind 2 position
     saveMarkdownDocstringStmt.bind 3 text
     run saveMarkdownDocstringStmt
-  let saveVersoDocstringStmt ← sqlite.prepare "INSERT INTO verso_docstrings (module_name, position, content) VALUES (?, ?, ?)"
-  let saveVersoDocstring modName position text := withDbContext "write:insert:verso_docstrings" do
+  let saveModuleDocStmt ← sqlite.prepare "INSERT INTO module_docs_markdown (module_name, position, text) VALUES (?, ?, ?)"
+  let saveModuleDoc modName position text := withDbContext "write:insert:module_docs_markdown" do
+    saveModuleDocStmt.bind 1 modName
+    saveModuleDocStmt.bind 2 position
+    saveModuleDocStmt.bind 3 text
+    run saveModuleDocStmt
+  let saveVersoDocstringStmt ← sqlite.prepare "INSERT INTO declaration_verso_docstrings (module_name, position, content) VALUES (?, ?, ?)"
+  let saveVersoDocstring modName position text := withDbContext "write:insert:declaration_verso_docstrings" do
     saveVersoDocstringStmt.bind 1 modName
     saveVersoDocstringStmt.bind 2 position
     saveVersoDocstringStmt.bind 3 text
@@ -296,6 +303,7 @@ def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
     saveModule,
     saveImport,
     saveMarkdownDocstring,
+    saveModuleDoc,
     saveVersoDocstring,
     saveDeclarationRange,
     saveInfo,
@@ -344,6 +352,7 @@ def openForReading (dbFile : System.FilePath) (values : DocstringValues) : IO DB
     saveModule := fun _ _ => readonlyError,
     saveImport := fun _ _ => readonlyError,
     saveMarkdownDocstring := fun _ _ _ => readonlyError,
+    saveModuleDoc := fun _ _ _ => readonlyError,
     saveVersoDocstring := fun _ _ _ => readonlyError,
     saveDeclarationRange := fun _ _ _ => readonlyError,
     saveInfo := fun _ _ _ _ => readonlyError,
@@ -449,7 +458,7 @@ def updateModuleDb (values : DocstringValues)
             match mem with
             | .modDoc doc =>
               db.saveDeclarationRange modNameStr pos doc.declarationRange
-              db.saveMarkdownDocstring modNameStr pos doc.doc
+              db.saveModuleDoc modNameStr pos doc.doc
             | .docInfo info =>
               let baseInfo := info.toInfo
               -- Skip saving ctorInfo here - they're saved along with their parent inductive
