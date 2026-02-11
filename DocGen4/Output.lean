@@ -103,56 +103,58 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
   FS.createDirAll <| basePath baseConfig.buildDir
   FS.createDirAll <| declarationsBasePath baseConfig.buildDir
 
-  -- Spawn one task per 500 modules, each returning its output file path
-  let tasks ← (chunksOf targetModules 500).mapM fun mods => IO.asTask do mods.mapM fun modName => do
+  let chunkSize := if targetModules.size > 20 then targetModules.size / 20 else 1
+  -- Spawn about 20 tasks
+  let tasks ← (chunksOf targetModules chunkSize).mapM fun mods => IO.asTask do
     -- Each task opens its own DB connection (SQLite handles concurrent readers well)
     let db ← DB.openForReading dbPath builtinDocstringValues
-    let module ← db.loadModule modName
+    mods.mapM fun modName => do
+      let module ← db.loadModule modName
 
-    -- Build a minimal AnalyzerResult with just this module's info
-    let result : AnalyzerResult := {
-      name2ModIdx := linkCtx.name2ModIdx
-      moduleNames := linkCtx.moduleNames
-      moduleInfo := ({} : Std.HashMap Name Process.Module).insert modName module
-    }
+      -- Build a minimal AnalyzerResult with just this module's info
+      let result : AnalyzerResult := {
+        name2ModIdx := linkCtx.name2ModIdx
+        moduleNames := linkCtx.moduleNames
+        moduleInfo := ({} : Std.HashMap Name Process.Module).insert modName module
+      }
 
-    let config : SiteContext := {
-      result := result
-      sourceLinker := (sourceLinker?.getD SourceLinker.sourceLinker) none
-      refsMap := Std.HashMap.emptyWithCapacity baseConfig.refs.size |>.insertMany (baseConfig.refs.iter.map fun x => (x.citekey, x))
-      declarationDecorator := declarationDecorator?.getD defaultDeclarationDecorator
-    }
+      let config : SiteContext := {
+        result := result
+        sourceLinker := (sourceLinker?.getD SourceLinker.sourceLinker) none
+        refsMap := Std.HashMap.emptyWithCapacity baseConfig.refs.size |>.insertMany (baseConfig.refs.iter.map fun x => (x.citekey, x))
+        declarationDecorator := declarationDecorator?.getD defaultDeclarationDecorator
+      }
 
-    -- path: 'basePath/module/components/till/last.html'
-    -- The last component is the file name, so we drop it from the depth to root.
-    let moduleConfig := { baseConfig with
-      depthToRoot := modName.components.dropLast.length
-      currentName := some modName
-    }
-    let (moduleHtml, cfg) := moduleToHtml module |>.run {} config moduleConfig
-    let (tactics, cfg) := module.tactics.mapM TacticInfo.docStringToHtml |>.run cfg config baseConfig
-    if not cfg.errors.isEmpty then
-      throw <| IO.userError s!"There are errors when generating HTML for '{modName}': {cfg.errors}"
+      -- path: 'basePath/module/components/till/last.html'
+      -- The last component is the file name, so we drop it from the depth to root.
+      let moduleConfig := { baseConfig with
+        depthToRoot := modName.components.dropLast.length
+        currentName := some modName
+      }
+      let (moduleHtml, cfg) := moduleToHtml module |>.run {} config moduleConfig
+      let (tactics, cfg) := module.tactics.mapM TacticInfo.docStringToHtml |>.run cfg config baseConfig
+      if not cfg.errors.isEmpty then
+        throw <| IO.userError s!"There are errors when generating HTML for '{modName}': {cfg.errors}"
 
-    -- Write HTML file
-    let relFilePath := basePathComponent / moduleNameToFile modName
-    let filePath := baseConfig.buildDir / relFilePath
-    if let .some d := filePath.parent then
-      FS.createDirAll d
-    FS.writeFile filePath moduleHtml.toString
+      -- Write HTML file
+      let relFilePath := basePathComponent / moduleNameToFile modName
+      let filePath := baseConfig.buildDir / relFilePath
+      if let .some d := filePath.parent then
+        FS.createDirAll d
+      FS.writeFile filePath moduleHtml.toString
 
-    -- Write backrefs JSON
-    FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json")
-      (toString (toJson cfg.backrefs))
+      -- Write backrefs JSON
+      FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json")
+        (toString (toJson cfg.backrefs))
 
-    saveTacticsJSON (declarationsBasePath baseConfig.buildDir / s!"tactics-{module.name}.json") tactics
+      saveTacticsJSON (declarationsBasePath baseConfig.buildDir / s!"tactics-{module.name}.json") tactics
 
-    -- Generate declaration data JSON for search
-    let (jsonDecls, _) := Module.toJson module |>.run {} config baseConfig
-    FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"declaration-data-{module.name}.bmp")
-      jsonDecls.compress
+      -- Generate declaration data JSON for search
+      let (jsonDecls, _) := Module.toJson module |>.run {} config baseConfig
+      FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"declaration-data-{module.name}.bmp")
+        jsonDecls.compress
 
-    return relFilePath
+      return relFilePath
 
   -- Wait for all tasks and collect output paths
   let mut outputs := #[]
