@@ -207,8 +207,15 @@ def headerDataOutput (buildDir : System.FilePath) : IO Unit := do
   for entry in ← System.FilePath.readDir (declarationsBasePath buildDir) do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
       let fileContent ← FS.readFile entry.path
-      let .ok jsonContent := Json.parse fileContent | unreachable!
-      let .ok (module : JsonModule) := fromJson? jsonContent | unreachable!
+      let jsonContent ←
+        match Json.parse fileContent with
+        | .ok c => pure c
+        | .error e => throw <| IO.userError s!"failed to parse JSON in {entry.path}: {e}"
+      let (module : JsonModule) ←
+        match fromJson? jsonContent with
+        | .ok v => pure v
+        | .error e =>
+          throw <| IO.userError s!"failed to deserialize JsonModule from {entry.path}: {e}"
       headerIndex := headerIndex.addModule module
 
   let finalHeaderJson := toJson headerIndex
