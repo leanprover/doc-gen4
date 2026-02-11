@@ -128,7 +128,7 @@ def DocInfo.toJson (sourceLinker : Option DeclarationRange → String) (info : P
   let info := { name, kind, doc, docLink, sourceLink, line }
   return { info, header }
 
-def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
+def moduleToJsonModule (module : Process.Module) : HtmlM JsonModule := do
     let mut jsonDecls := []
     let mut instances := #[]
     let sourceLinker := (← read).sourceLinker module.name
@@ -141,12 +141,14 @@ def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
           className := i.className.toString
           typeNames := i.typeNames.map Name.toString
         }
-    let jsonMod : JsonModule :=  {
+    return {
       name := module.name.toString,
       declarations := jsonDecls,
       instances,
       imports := module.imports.map Name.toString
     }
-    return ToJson.toJson jsonMod
+
+def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
+    return ToJson.toJson (← moduleToJsonModule module)
 
 end DocGen4.Output

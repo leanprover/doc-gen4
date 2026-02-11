@@ -87,10 +87,10 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let baseConfig ← getSimpleBaseContext buildDir hierarchy
 
   -- Parallel HTML generation
-  let outputs ← htmlOutputResultsParallel baseConfig dbPath linkCtx targetModules (sourceLinker? := some (dbSourceLinker linkCtx.sourceUrls))
+  let (outputs, jsonModules) ← htmlOutputResultsParallel baseConfig dbPath linkCtx targetModules (sourceLinker? := some (dbSourceLinker linkCtx.sourceUrls))
 
   -- Generate the search index (declaration-data.bmp)
-  htmlOutputIndex baseConfig
+  htmlOutputIndex baseConfig jsonModules
 
   -- Update navbar to include all modules on disk
   updateNavbarFromDisk buildDir

@@ -99,7 +99,7 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
     (linkCtx : LinkingContext)
     (targetModules : Array Name := linkCtx.moduleNames)
     (sourceLinker? : Option SourceLinkerFn := none)
-    (declarationDecorator? : Option DeclarationDecoratorFn := none) : IO (Array System.FilePath) := do
+    (declarationDecorator? : Option DeclarationDecoratorFn := none) : IO (Array System.FilePath × Array JsonModule) := do
   FS.createDirAll <| basePath baseConfig.buildDir
   FS.createDirAll <| declarationsBasePath baseConfig.buildDir
 
@@ -150,19 +150,23 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
       saveTacticsJSON (declarationsBasePath baseConfig.buildDir / s!"tactics-{module.name}.json") tactics
 
       -- Generate declaration data JSON for search
-      let (jsonDecls, _) := Module.toJson module |>.run {} config baseConfig
+      let (jsonModule, _) := moduleToJsonModule module |>.run {} config baseConfig
       FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"declaration-data-{module.name}.bmp")
-        jsonDecls.compress
+        (ToJson.toJson jsonModule).compress
 
-      return relFilePath
+      return (relFilePath, jsonModule)
 
-  -- Wait for all tasks and collect output paths
+  -- Wait for all tasks and collect output paths and modules
   let mut outputs := #[]
+  let mut jsonModules := #[]
   for task in tasks do
     match (← IO.wait task) with
-    | .ok paths => outputs := outputs ++ paths
+    | .ok results =>
+      for (path, jsonMod) in results do
+        outputs := outputs.push path
+        jsonModules := jsonModules.push jsonMod
     | .error e => throw e
-  return outputs
+  return (outputs, jsonModules)
 
 def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) :
     IO SiteBaseContext := do
@@ -183,22 +187,12 @@ def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) :
         refs := refs
       }
 
-def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
+def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) : IO Unit := do
   htmlOutputSetup baseConfig
 
   let mut index : JsonIndex := {}
-  for entry in ← System.FilePath.readDir (declarationsBasePath baseConfig.buildDir) do
-    if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
-      let fileContent ← FS.readFile entry.path
-      match Json.parse fileContent with
-      | .error err =>
-        throw <| IO.userError s!"failed to parse file '{entry.path}' as json: {err}"
-      | .ok jsonContent =>
-        match fromJson? jsonContent with
-        | .error err =>
-          throw <| IO.userError s!"failed to parse file '{entry.path}': {err}"
-        | .ok (module : JsonModule) =>
-          index := index.addModule module |>.run baseConfig
+  for module in modules do
+    index := index.addModule module |>.run baseConfig
 
   let finalJson := toJson index
   -- The root JSON for find
