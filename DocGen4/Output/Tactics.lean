@@ -63,29 +63,5 @@ def tactics (tacticInfo : Array (TacticInfo Html)) : BaseHtmlM Html := do
       sectionsHtml)
   ]
 
-def loadTacticsJSON (buildDir : System.FilePath) : IO (Array (TacticInfo Html)) := do
-  let mut result : Array (TacticInfo _) := #[]
-  for entry in ← System.FilePath.readDir (declarationsBasePath buildDir) do
-    if entry.fileName.startsWith "tactics-" && entry.fileName.endsWith ".json" then
-      let fileContent ← IO.FS.readFile entry.path
-      match Json.parse fileContent with
-      | .error err =>
-        throw <| IO.userError s!"failed to parse file '{entry.path}' as json: {err}"
-      | .ok jsonContent =>
-        match fromJson? jsonContent with
-        | .error err =>
-          throw <| IO.userError s!"failed to parse file '{entry.path}': {err}"
-        | .ok (arr : Array (TacticInfo _)) => result := result ++ arr
-  return result.qsort (lt := (·.userName < ·.userName))
-
-/-- Save sections of supplementary pages declared in a specific module.
-
-This `abbrev` exists as a type-checking wrapper around `toJson`, ensuring `loadTacticsJSON` gets
-objects in the expected format.
--/
-abbrev saveTacticsJSON (fileName : System.FilePath) (tacticInfo : Array (TacticInfo Html)) : IO Unit := do
-  if tacticInfo.size > 0 then
-    IO.FS.writeFile fileName (toString (toJson tacticInfo))
-
 end Output
 end DocGen4

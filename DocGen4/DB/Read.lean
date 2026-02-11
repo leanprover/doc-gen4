@@ -21,6 +21,7 @@ structure ReadOps where
   getModuleImports : Lean.Name → IO (Array Lean.Name)
   buildName2ModIdx : Array Lean.Name → IO (Std.HashMap Lean.Name Lean.ModuleIdx)
   loadModule : Lean.Name → IO Process.Module
+  loadAllTactics : IO (Array (Process.TacticInfo Process.MarkdownDocstring))
 
 private def done (stmt : SQLite.Stmt) : IO Unit := do
   stmt.reset
@@ -71,6 +72,8 @@ private structure ReadStmts where
   loadModuleMembersStmt : SQLite.Stmt
   loadTacticsStmt : SQLite.Stmt
   loadTacticTagsStmt : SQLite.Stmt
+  loadAllTacticsStmt : SQLite.Stmt
+  loadAllTacticTagsStmt : SQLite.Stmt
 
 open Lean SQLite.Blob in
 private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO ReadStmts := do
@@ -111,6 +114,10 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
      ORDER BY position"
   let loadTacticsStmt ← sqlite.prepare "SELECT internal_name, user_name, doc_string FROM tactics WHERE module_name = ?"
   let loadTacticTagsStmt ← sqlite.prepare "SELECT tag FROM tactic_tags WHERE module_name = ? AND internal_name = ?"
+  let loadAllTacticsStmt ← sqlite.prepare
+    "SELECT module_name, internal_name, user_name, doc_string FROM tactics \
+     ORDER BY user_name, module_name, internal_name"
+  let loadAllTacticTagsStmt ← sqlite.prepare "SELECT tag FROM tactic_tags WHERE module_name = ? AND internal_name = ?"
   pure {
     values, loadArgsStmt, loadAttrsStmt, readMdDocstringStmt, readVersoDocstringStmt,
     loadDeclRangeStmt, loadEqnsStmt, loadInstanceArgsStmt, loadStructureParentsStmt,
@@ -120,7 +127,8 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
     readInductiveStmt, readStructureStmt, readClassInductiveStmt,
     getModuleNamesStmt, getModuleSourceUrlsStmt, getModuleImportsStmt,
     buildNameInfoStmt, buildInternalNamesStmt,
-    loadModuleMembersStmt, loadTacticsStmt, loadTacticTagsStmt
+    loadModuleMembersStmt, loadTacticsStmt, loadTacticTagsStmt,
+    loadAllTacticsStmt, loadAllTacticTagsStmt
   }
 
 open Lean SQLite.Blob in
@@ -554,6 +562,24 @@ private def ReadStmts.loadModule (s : ReadStmts) (moduleName : Name) : IO Proces
   done s.loadTacticsStmt
   return { name := moduleName, members, imports, tactics }
 
+open Lean in
+private def ReadStmts.loadAllTactics (s : ReadStmts) : IO (Array (Process.TacticInfo Process.MarkdownDocstring)) := withDbContext "read:all_tactics" do
+  let mut tactics : Array (Process.TacticInfo Process.MarkdownDocstring) := #[]
+  while (← s.loadAllTacticsStmt.step) do
+    let moduleName := (← s.loadAllTacticsStmt.columnText 0).toName
+    let internalName := (← s.loadAllTacticsStmt.columnText 1).toName
+    let userName ← s.loadAllTacticsStmt.columnText 2
+    let docString ← s.loadAllTacticsStmt.columnText 3
+    s.loadAllTacticTagsStmt.bind 1 moduleName.toString
+    s.loadAllTacticTagsStmt.bind 2 internalName.toString
+    let mut tags : Array Name := #[]
+    while (← s.loadAllTacticTagsStmt.step) do
+      tags := tags.push (← s.loadAllTacticTagsStmt.columnText 0).toName
+    done s.loadAllTacticTagsStmt
+    tactics := tactics.push { internalName, userName, tags, docString, definingModule := moduleName }
+  done s.loadAllTacticsStmt
+  return tactics
+
 def mkReadOps (sqlite : SQLite) (values : DocstringValues) : IO ReadOps := do
   let s ← ReadStmts.prepare sqlite values
   pure {
@@ -562,6 +588,7 @@ def mkReadOps (sqlite : SQLite) (values : DocstringValues) : IO ReadOps := do
     getModuleImports := s.getModuleImports
     buildName2ModIdx := s.buildName2ModIdx
     loadModule := s.loadModule
+    loadAllTactics := s.loadAllTactics
   }
 
 end DocGen4.DB

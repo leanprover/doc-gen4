@@ -98,8 +98,20 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   -- Parallel HTML generation
   let (outputs, jsonModules) ← htmlOutputResultsParallel baseConfig dbPath linkCtx targetModules (sourceLinker? := some (dbSourceLinker linkCtx.sourceUrls))
 
+  -- Load all tactics from DB in sorted order and convert markdown docstrings to HTML
+  let allTacticsRaw ← db.loadAllTactics
+  let refsMap : Std.HashMap String BibItem :=
+    Std.HashMap.emptyWithCapacity baseConfig.refs.size |>.insertMany
+      (baseConfig.refs.iter.map fun x => (x.citekey, x))
+  let minimalSiteCtx : SiteContext := {
+    result := { name2ModIdx := linkCtx.name2ModIdx, moduleNames := linkCtx.moduleNames, moduleInfo := {} }
+    sourceLinker := fun _ _ => "#"
+    refsMap := refsMap
+  }
+  let (allTactics, _) := allTacticsRaw.mapM Process.TacticInfo.docStringToHtml |>.run {} minimalSiteCtx baseConfig
+
   -- Generate the search index (declaration-data.bmp)
-  htmlOutputIndex baseConfig jsonModules
+  htmlOutputIndex baseConfig jsonModules allTactics
 
   -- Update navbar to include all modules on disk
   updateNavbarFromDisk buildDir

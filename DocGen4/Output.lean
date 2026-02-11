@@ -39,7 +39,7 @@ def collectBackrefs (buildDir : System.FilePath) : IO (Array BackrefItem) := do
         | .ok (arr : Array BackrefItem) => backrefs := backrefs ++ arr
   return backrefs
 
-def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
+def htmlOutputSetup (config : SiteBaseContext) (tacticInfo : Array (Process.TacticInfo Html)) : IO Unit := do
   let findBasePath (buildDir : System.FilePath) := basePath buildDir / "find"
 
   -- Base structure
@@ -55,7 +55,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let navbarHtml := ReaderT.run navbar config |>.toString
   let searchHtml := ReaderT.run search config |>.toString
   let referencesHtml := ReaderT.run (references (← collectBackrefs config.buildDir)) config |>.toString
-  let tacticsHtml := ReaderT.run (tactics (← loadTacticsJSON config.buildDir)) config |>.toString
+  let tacticsHtml := ReaderT.run (tactics tacticInfo) config |>.toString
   let docGenStatic := #[
     ("style.css", styleCss),
     ("favicon.svg", faviconSvg),
@@ -132,7 +132,6 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
         currentName := some modName
       }
       let (moduleHtml, cfg) := moduleToHtml module |>.run {} config moduleConfig
-      let (tactics, cfg) := module.tactics.mapM TacticInfo.docStringToHtml |>.run cfg config baseConfig
       if not cfg.errors.isEmpty then
         throw <| IO.userError s!"There are errors when generating HTML for '{modName}': {cfg.errors}"
 
@@ -146,8 +145,6 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
       -- Write backrefs JSON
       FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json")
         (toString (toJson cfg.backrefs))
-
-      saveTacticsJSON (declarationsBasePath baseConfig.buildDir / s!"tactics-{module.name}.json") tactics
 
       -- Generate declaration data JSON for search
       let (jsonModule, _) := moduleToJsonModule module |>.run {} config baseConfig
@@ -187,8 +184,8 @@ def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) :
         refs := refs
       }
 
-def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) : IO Unit := do
-  htmlOutputSetup baseConfig
+def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) (tacticInfo : Array (Process.TacticInfo Html)) : IO Unit := do
+  htmlOutputSetup baseConfig tacticInfo
 
   -- Build a set of module names we just generated (already in memory)
   let freshModuleNames : Std.HashSet String := modules.foldl (init := {}) fun s m => s.insert m.name
