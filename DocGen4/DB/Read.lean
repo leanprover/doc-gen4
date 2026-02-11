@@ -379,7 +379,7 @@ where
       return some <| .opaqueInfo { toInfo := info, definitionSafety := safety }
     done s.readOpaqueStmt
     return none
-  readDefinition (info : Process.Info) : IO (Option Process.DocInfo) := do
+  readDefinitionData : IO (Option (Bool × ReducibilityHints × Bool × Option (Array RenderedCode) × Bool)) := do
     s.readDefinitionStmt.bind 1 moduleName
     s.readDefinitionStmt.bind 2 position
     if (← s.readDefinitionStmt.step) then
@@ -392,30 +392,23 @@ where
         | "abbrev" => .abbrev
         | s => .regular (s.toNat?.getD 0 |>.toUInt32)
       let (equations, equationsWereOmitted) ← s.loadEquations moduleName position
-      return some <| .definitionInfo { toInfo := info, isUnsafe, hints, equations, equationsWereOmitted, isNonComputable }
+      return some (isUnsafe, hints, isNonComputable, equations, equationsWereOmitted)
     done s.readDefinitionStmt
     return none
+  readDefinition (info : Process.Info) : IO (Option Process.DocInfo) := do
+    let some (isUnsafe, hints, isNonComputable, equations, equationsWereOmitted) ← readDefinitionData
+      | return none
+    return some <| .definitionInfo { toInfo := info, isUnsafe, hints, equations, equationsWereOmitted, isNonComputable }
   readInstance (info : Process.Info) : IO (Option Process.DocInfo) := do
     s.readInstanceStmt.bind 1 moduleName
     s.readInstanceStmt.bind 2 position
     if (← s.readInstanceStmt.step) then
       let className := (← s.readInstanceStmt.columnText 0).toName
       done s.readInstanceStmt
-      s.readDefinitionStmt.bind 1 moduleName
-      s.readDefinitionStmt.bind 2 position
-      if (← s.readDefinitionStmt.step) then
-        let isUnsafe := (← s.readDefinitionStmt.columnInt64 0) != 0
-        let hintsStr ← s.readDefinitionStmt.columnText 1
-        let isNonComputable := (← s.readDefinitionStmt.columnInt64 2) != 0
-        done s.readDefinitionStmt
-        let hints : ReducibilityHints := match hintsStr with
-          | "opaque" => .opaque
-          | "abbrev" => .abbrev
-          | s => .regular (s.toNat?.getD 0 |>.toUInt32)
-        let (equations, equationsWereOmitted) ← s.loadEquations moduleName position
-        let typeNames ← s.loadInstanceArgs moduleName position
-        return some <| .instanceInfo { toInfo := info, isUnsafe, hints, equations, equationsWereOmitted, isNonComputable, className, typeNames }
-      done s.readDefinitionStmt
+      let some (isUnsafe, hints, isNonComputable, equations, equationsWereOmitted) ← readDefinitionData
+        | return none
+      let typeNames ← s.loadInstanceArgs moduleName position
+      return some <| .instanceInfo { toInfo := info, isUnsafe, hints, equations, equationsWereOmitted, isNonComputable, className, typeNames }
     else
       done s.readInstanceStmt
     return none

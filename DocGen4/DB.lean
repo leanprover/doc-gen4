@@ -33,8 +33,6 @@ structure DB extends ReadOps where
   saveStructureParent (modName : String) (position : Int64) (sequence : Int32) (projectionFn : String) (type : RenderedCode) : IO Unit
   saveStructureField (modName : String) (position : Int64) (sequence : Int64) (projName : String) (type : RenderedCode) (isDirect : Bool) : IO Unit
   saveStructureFieldArg (modName : String) (position : Int64) (fieldSeq : Int64) (argSeq : Int64) (binder : RenderedCode) (isImplicit : Bool) : IO Unit
-  saveArg (modName : String) (position : Int64) (sequence : Int64) (binder : RenderedCode) (isImplicit : Bool) : IO Unit
-  saveAttr (modName : String) (position : Int64) (sequence : Int64) (attr : String) : IO Unit
   /-- Save an internal name (like a recursor) that should link to its target declaration -/
   saveInternalName (name : Lean.Name) (targetModule : String) (targetPosition : Int64) : IO Unit
   /-- Save a tactic defined in this module -/
@@ -118,8 +116,8 @@ def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
     saveDeclarationRangeStmt.bind 8 declRange.endCharUtf16
     run saveDeclarationRangeStmt
   let saveInfoStmt ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  let saveArgStmt' ← sqlite.prepare "INSERT INTO declaration_args (module_name, position, sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?)"
-  let saveAttrStmt' ← sqlite.prepare "INSERT INTO declaration_attrs (module_name, position, sequence, attr) VALUES (?, ?, ?, ?)"
+  let saveArgStmt ← sqlite.prepare "INSERT INTO declaration_args (module_name, position, sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?)"
+  let saveAttrStmt ← sqlite.prepare "INSERT INTO declaration_attrs (module_name, position, sequence, attr) VALUES (?, ?, ?, ?)"
   let saveInfo modName position kind (info : Process.Info) := withDbContext "write:insert:name_info" do
     saveInfoStmt.bind 1 modName
     saveInfoStmt.bind 2 position
@@ -136,22 +134,22 @@ def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
     -- Save args
     for h : j in 0...info.args.size do
       let arg := info.args[j]
-      withDbContext "write:insert:declaration_args:info" do
-        saveArgStmt'.bind 1 modName
-        saveArgStmt'.bind 2 position
-        saveArgStmt'.bind 3 j.toInt64
-        saveArgStmt'.bind 4 arg.binder
-        saveArgStmt'.bind 5 arg.implicit
-        run saveArgStmt'
+      withDbContext "write:insert:declaration_args" do
+        saveArgStmt.bind 1 modName
+        saveArgStmt.bind 2 position
+        saveArgStmt.bind 3 j.toInt64
+        saveArgStmt.bind 4 arg.binder
+        saveArgStmt.bind 5 arg.implicit
+        run saveArgStmt
     -- Save attrs
     for h : j in 0...info.attrs.size do
       let attr := info.attrs[j]
-      withDbContext "write:insert:declaration_attrs:info" do
-        saveAttrStmt'.bind 1 modName
-        saveAttrStmt'.bind 2 position
-        saveAttrStmt'.bind 3 j.toInt64
-        saveAttrStmt'.bind 4 attr
-        run saveAttrStmt'
+      withDbContext "write:insert:declaration_attrs" do
+        saveAttrStmt.bind 1 modName
+        saveAttrStmt.bind 2 position
+        saveAttrStmt.bind 3 j.toInt64
+        saveAttrStmt.bind 4 attr
+        run saveAttrStmt
   let saveAxiomStmt ← sqlite.prepare "INSERT INTO axioms (module_name, position, is_unsafe) VALUES (?, ?, ?)"
   let saveAxiom modName position isUnsafe := withDbContext "write:insert:axioms" do
     saveAxiomStmt.bind 1 modName
@@ -260,21 +258,6 @@ def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
     saveStructureFieldArgStmt.bind 5 binder
     saveStructureFieldArgStmt.bind 6 isImplicit
     run saveStructureFieldArgStmt
-  let saveArgStmt ← sqlite.prepare "INSERT INTO declaration_args (module_name, position, sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?)"
-  let saveArg modName position sequence (binder : RenderedCode) isImplicit := withDbContext "write:insert:declaration_args" do
-    saveArgStmt.bind 1 modName
-    saveArgStmt.bind 2 position
-    saveArgStmt.bind 3 sequence
-    saveArgStmt.bind 4 binder
-    saveArgStmt.bind 5 isImplicit
-    run saveArgStmt
-  let saveAttrStmt ← sqlite.prepare "INSERT INTO declaration_attrs (module_name, position, sequence, attr) VALUES (?, ?, ?, ?)"
-  let saveAttr modName position sequence attr := withDbContext "write:insert:declaration_attrs" do
-    saveAttrStmt.bind 1 modName
-    saveAttrStmt.bind 2 position
-    saveAttrStmt.bind 3 sequence
-    saveAttrStmt.bind 4 attr
-    run saveAttrStmt
   -- For saving minimal info to name_info for name lookups only (not rendering)
   let saveNameOnlyStmt ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, 0, 0)"
   let saveNameOnly modName position kind (name : Lean.Name) (type : RenderedCode) (declRange : Lean.DeclarationRange) := withDbContext "write:insert:name_info:nameonly" do
@@ -330,8 +313,6 @@ def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
     saveStructureParent,
     saveStructureField,
     saveStructureFieldArg,
-    saveArg,
-    saveAttr,
     saveNameOnly,
     saveInternalName,
     saveTactic
@@ -381,8 +362,6 @@ def openForReading (dbFile : System.FilePath) (values : DocstringValues) : IO DB
     saveStructureParent := fun _ _ _ _ _ => readonlyError,
     saveStructureField := fun _ _ _ _ _ _ => readonlyError,
     saveStructureFieldArg := fun _ _ _ _ _ _ => readonlyError,
-    saveArg := fun _ _ _ _ _ => readonlyError,
-    saveAttr := fun _ _ _ _ => readonlyError,
     saveInternalName := fun _ _ _ => readonlyError,
     saveTactic := fun _ _ => readonlyError,
     getModuleNames := readOps.getModuleNames,
