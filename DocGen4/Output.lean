@@ -39,24 +39,29 @@ def collectBackrefs (buildDir : System.FilePath) : IO (Array BackrefItem) := do
         | .ok (arr : Array BackrefItem) => backrefs := backrefs ++ arr
   return backrefs
 
-def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
-  let findBasePath (buildDir : System.FilePath) := basePath buildDir / "find"
+def htmlOutputSetup (config : SiteBaseConfig) : IO Unit := do
+  let bp := basePath config.buildDir
+  let findBasePath := bp / "find"
 
   -- Base structure
-  FS.createDirAll <| basePath config.buildDir
-  FS.createDirAll <| findBasePath config.buildDir
+  FS.createDirAll bp
+  FS.createDirAll findBasePath
   FS.createDirAll <| srcBasePath config.buildDir
   FS.createDirAll <| declarationsBasePath config.buildDir
 
-  -- All the doc-gen static stuff
-  let indexHtml := ReaderT.run index config |>.toString
-  let notFoundHtml := ReaderT.run notFound config |>.toString
-  let foundationalTypesHtml := ReaderT.run foundationalTypes config |>.toString
-  let navbarHtml := ReaderT.run navbar config |>.toString
-  let searchHtml := ReaderT.run search config |>.toString
-  let referencesHtml := ReaderT.run (references (← collectBackrefs config.buildDir)) config |>.toString
-  let tacticsHtml := ReaderT.run (tactics (← loadTacticsJSON config.buildDir)) config |>.toString
-  let docGenStatic := #[
+  -- HTML pages written directly to files
+  let run action path := runHtmlToFile action config path
+  run index (bp / "index.html")
+  run notFound (bp / "404.html")
+  run foundationalTypes (bp / "foundational_types.html")
+  run navbar (bp / "navbar.html")
+  run search (bp / "search.html")
+  run (references (← collectBackrefs config.buildDir)) (bp / "references.html")
+  run (tactics (← loadTacticsJSON config.buildDir)) (bp / "tactics.html")
+  runHtmlToFile find { config with depthToRoot := 1 } (findBasePath / "index.html")
+
+  -- Static assets
+  let staticFiles := #[
     ("style.css", styleCss),
     ("favicon.svg", faviconSvg),
     ("declaration-data.js", declarationDataCenterJs),
@@ -65,28 +70,14 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
     ("jump-src.js", jumpSrcJs),
     ("expand-nav.js", expandNavJs),
     ("how-about.js", howAboutJs),
-    ("search.html", searchHtml),
     ("search.js", searchJs),
     ("mathjax-config.js", mathjaxConfigJs),
     ("instances.js", instancesJs),
     ("importedBy.js", importedByJs),
-    ("index.html", indexHtml),
-    ("foundational_types.html", foundationalTypesHtml),
-    ("404.html", notFoundHtml),
-    ("navbar.html", navbarHtml),
-    ("references.html", referencesHtml),
-    ("tactics.html", tacticsHtml),
   ]
-  for (fileName, content) in docGenStatic do
-    FS.writeFile (basePath config.buildDir / fileName) content
-
-  let findHtml := ReaderT.run find { config with depthToRoot := 1 } |>.toString
-  let findStatic := #[
-    ("index.html", findHtml),
-    ("find.js", findJs)
-  ]
-  for (fileName, content) in findStatic do
-    FS.writeFile (findBasePath config.buildDir / fileName) content
+  for (fileName, content) in staticFiles do
+    FS.writeFile (bp / fileName) content
+  FS.writeFile (findBasePath / "find.js") findJs
 
 /-- Custom source linker type: given an optional source URL and module name, returns a function from declaration range to URL -/
 abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → String
@@ -95,7 +86,7 @@ abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → 
     Each task loads its module from DB, renders HTML, and writes output files.
     The linking context provides cross-module linking without loading all module data upfront.
     When `targetModules` is provided, only those modules are rendered (but linking uses all modules). -/
-def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.FilePath)
+def htmlOutputResultsParallel (baseConfig : SiteBaseConfig) (dbPath : System.FilePath)
     (linkCtx : LinkingContext)
     (targetModules : Array Name := linkCtx.moduleNames)
     (sourceLinker? : Option SourceLinkerFn := none)
@@ -125,21 +116,26 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
 
     -- path: 'basePath/module/components/till/last.html'
     -- The last component is the file name, so we drop it from the depth to root.
-    let moduleConfig := { baseConfig with
-      depthToRoot := modName.components.dropLast.length
-      currentName := some modName
-    }
-    let (moduleHtml, cfg) := moduleToHtml module |>.run {} config moduleConfig
-    let (tactics, cfg) := module.tactics.mapM TacticInfo.docStringToHtml |>.run cfg config baseConfig
-    if not cfg.errors.isEmpty then
-      throw <| IO.userError s!"There are errors when generating HTML for '{modName}': {cfg.errors}"
-
-    -- Write HTML file
     let relFilePath := basePathComponent / moduleNameToFile modName
     let filePath := baseConfig.buildDir / relFilePath
     if let .some d := filePath.parent then
       FS.createDirAll d
-    FS.writeFile filePath moduleHtml.toString
+
+    let handle ← FS.Handle.mk filePath .write
+    let fileStream := FS.Stream.ofHandle handle
+    let moduleConfig : SiteBaseContext := {
+      toSiteBaseConfig := { baseConfig with
+        depthToRoot := modName.components.dropLast.length
+        currentName := some modName
+      }
+      stream := fileStream
+    }
+    let (_, cfg) ← moduleToHtml module |>.run {} config moduleConfig
+
+    -- Run tactic docstring rendering
+    let (tactics, cfg) ← module.tactics.mapM TacticInfo.docStringToHtml |>.eval cfg config baseConfig
+    if not cfg.errors.isEmpty then
+      throw <| IO.userError s!"There are errors when generating HTML for '{modName}': {cfg.errors}"
 
     -- Write backrefs JSON
     FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json")
@@ -148,7 +144,7 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
     saveTacticsJSON (declarationsBasePath baseConfig.buildDir / s!"tactics-{module.name}.json") tactics
 
     -- Generate declaration data JSON for search
-    let (jsonDecls, _) := Module.toJson module |>.run {} config baseConfig
+    let (jsonDecls, _) ← Module.toJson module |>.eval {} config baseConfig
     FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"declaration-data-{module.name}.bmp")
       jsonDecls.compress
 
@@ -162,8 +158,8 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
     | .error e => throw e
   return outputs
 
-def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) :
-    IO SiteBaseContext := do
+def getSimpleBaseConfig (buildDir : System.FilePath) (hierarchy : Hierarchy) :
+    IO SiteBaseConfig := do
   let contents ← FS.readFile (declarationsBasePath buildDir / "references.json") <|> (pure "[]")
   match Json.parse contents with
   | .error err =>
@@ -181,9 +177,11 @@ def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) :
         refs := refs
       }
 
-def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
+def htmlOutputIndex (baseConfig : SiteBaseConfig) : IO Unit := do
   htmlOutputSetup baseConfig
 
+  let ref ← IO.mkRef {}
+  let ctx : SiteBaseContext := { toSiteBaseConfig := baseConfig, stream := IO.FS.Stream.ofBuffer ref }
   let mut index : JsonIndex := {}
   for entry in ← System.FilePath.readDir (declarationsBasePath baseConfig.buildDir) do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
@@ -196,7 +194,7 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
         | .error err =>
           throw <| IO.userError s!"failed to parse file '{entry.path}': {err}"
         | .ok (module : JsonModule) =>
-          index := index.addModule module |>.run baseConfig
+          index ← (index.addModule module).run ctx
 
   let finalJson := toJson index
   -- The root JSON for find
@@ -285,7 +283,7 @@ def updateNavbarFromDisk (buildDir : System.FilePath) : IO Unit := do
       match fromJson? jsonContent with
       | .error _ => pure #[]
       | .ok refs => pure refs
-  let baseConfig : SiteBaseContext := {
+  let baseConfig : SiteBaseConfig := {
     buildDir := buildDir
     depthToRoot := 0
     currentName := none
@@ -293,7 +291,6 @@ def updateNavbarFromDisk (buildDir : System.FilePath) : IO Unit := do
     refs := refs
   }
   -- Regenerate navbar
-  let navbarHtml := ReaderT.run navbar baseConfig |>.toString
-  FS.writeFile (docDir / "navbar.html") navbarHtml
+  runHtmlToFile navbar baseConfig (docDir / "navbar.html")
 
 end DocGen4

@@ -7,7 +7,7 @@ import DocGen4.Process
 namespace DocGen4
 namespace Output
 
-def classInductiveToHtml (i : Process.ClassInductiveInfo) : HtmlM (Array Html) := do
+def classInductiveToHtml (i : Process.ClassInductiveInfo) : HtmlM Unit := do
   inductiveToHtml i
 
 end Output

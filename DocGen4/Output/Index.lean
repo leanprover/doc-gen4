@@ -11,8 +11,8 @@ namespace Output
 
 open scoped DocGen4.Jsx
 
-def index : BaseHtmlM Html := do templateExtends (baseHtml "Index") <|
-  pure <|
+def index : BaseHtmlM Unit := do
+  baseHtmlGenerator "Index" do
     <main>
       <a id="top"></a>
       <h1> Welcome to the documentation page </h1>

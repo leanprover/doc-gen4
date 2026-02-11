@@ -10,6 +10,7 @@ import DocGen4.RenderedCode
 namespace DocGen4.Output
 
 open scoped DocGen4.Jsx
+open DocGen4 (Raw escape)
 open Lean System Widget Elab Process
 
 def basePathComponent := "doc"
@@ -44,15 +45,14 @@ structure BackrefItem where
   deriving FromJson, ToJson, Inhabited
 
 /--
-The context used in the `BaseHtmlM` monad for HTML templating.
+Site configuration without a rendering stream. Used by callers that only need site metadata, but
+won't generate HTML, such as JSON generation.
 -/
-structure SiteBaseContext where
-
+structure SiteBaseConfig where
   /--
   The build directory (provided by lake).
   -/
   buildDir : System.FilePath
-
   /--
   The module hierarchy as a tree structure.
   -/
@@ -72,16 +72,95 @@ structure SiteBaseContext where
   refs : Array BibItem
 
 /--
-Declaration decorator function type: given a module name, declaration name, and declaration kind,
-returns optional extra HTML to inject into the declaration's rendering.
-This enables external tools to add badges, links, or other decorations to declarations.
+The context used in the `BaseHtmlM` monad for HTML templating.
+Extends `SiteBaseConfig` with a stream for writing HTML output.
 -/
-abbrev DeclarationDecoratorFn := Name → Name → String → Array Html
+structure SiteBaseContext extends SiteBaseConfig where
+  /--
+  The stream to write HTML output to.
+  -/
+  stream : IO.FS.Stream
+
+def setCurrentName (name : Name) (ctx : SiteBaseContext) := { ctx with currentName := some name }
+def SiteBaseConfig.setCurrentName (name : Name) (cfg : SiteBaseConfig) := { cfg with currentName := some name }
+
+abbrev BaseHtmlT := ReaderT SiteBaseContext
+abbrev BaseHtmlM := BaseHtmlT IO
+
+/-! ## Write helpers
+
+These are the concrete implementations referenced by JSX macro expansion.
+They read the stream from `SiteBaseContext` via the reader monad. -/
+
+section
+variable [Monad m] [MonadReaderOf SiteBaseContext m] [MonadLiftT IO m]
+
+@[always_inline, inline] def putHtml (s : String) : m Unit := do
+  (← read).stream.putStr s
+
+@[always_inline, inline] def putEscaped (s : String) : m Unit := putHtml (escape s)
+
+
+
+namespace Html
+
+/-- Writes escaped text content to the HTML stream. -/
+@[always_inline, inline] def text (s : String) : m Unit := putEscaped s
+
+/-- Writes raw (unescaped) HTML content to the stream. -/
+@[always_inline, inline] def rawText (s : String) : m Unit := putHtml s
+
+end Html
+
+def putOpenTag (tag : String) (attrs : Array (String × String)) : m Unit := do
+  putHtml s!"<{tag}"
+  for (k, v) in attrs do putHtml s!" {k}=\"{escape v}\""
+  putHtml ">"
+
+@[always_inline, inline] def putCloseTag (tag : String) : m Unit := putHtml s!"</{tag}>"
+
+namespace Html
+
+/-- Writes an HTML element with open/close tags wrapping a body action. -/
+def element (tag : String) (attrs : Array (String × String)) (body : m Unit) : m Unit := do
+  putOpenTag tag attrs
+  body
+  putCloseTag tag
+
+end Html
+
+scoped instance : Coe String (m Unit) where
+  coe s := putEscaped s
+
+scoped instance : Coe Raw (m Unit) where
+  coe r := putHtml r.html
+
+end
+
+/--
+The writable state used in the `HtmlM` monad for HTML templating.
+-/
+structure SiteState where
+  /--
+  The list of back references, as an array.
+  -/
+  backrefs : Array BackrefItem := #[]
+  /--
+  The errors occurred during the process.
+  -/
+  errors : String := ""
+
+/--
+Declaration decorator function type: given a module name, declaration name, and declaration kind,
+writes optional extra HTML to inject into the declaration's rendering. This enables external tools
+to add badges, links, or other decorations to declarations.
+-/
+abbrev DeclarationDecoratorFn := Name → Name → String → BaseHtmlM Unit
 
 /--
 The default declaration decorator that produces no extra HTML.
 -/
-def defaultDeclarationDecorator : DeclarationDecoratorFn := fun _ _ _ => #[]
+def defaultDeclarationDecorator : DeclarationDecoratorFn := fun _ _ _ => pure ()
 
 /--
 The read-only context used in the `HtmlM` monad for HTML templating.
@@ -101,45 +180,22 @@ structure SiteContext where
   refsMap : Std.HashMap String BibItem
   /--
   A function to decorate declarations with extra HTML (e.g., verification badges).
-  Receives (moduleName, declarationName, declarationKind) and returns extra HTML.
+  Receives (moduleName, declarationName, declarationKind) and writes extra HTML.
   Defaults to producing no extra HTML.
   -/
   declarationDecorator : DeclarationDecoratorFn := defaultDeclarationDecorator
 
-/--
-The writable state used in the `HtmlM` monad for HTML templating.
--/
-structure SiteState where
-  /--
-  The list of back references, as an array.
-  -/
-  backrefs : Array BackrefItem := #[]
-  /--
-  The errors occurred during the process.
-  -/
-  errors : String := ""
-
-def setCurrentName (name : Name) (ctx : SiteBaseContext) := {ctx with currentName := some name}
-
-abbrev BaseHtmlT := ReaderT SiteBaseContext
-abbrev BaseHtmlM := BaseHtmlT Id
-
 abbrev HtmlT (m) := StateT SiteState <| ReaderT SiteContext <| BaseHtmlT m
-abbrev HtmlM := HtmlT Id
+abbrev HtmlM := HtmlT IO
 
 def HtmlT.run (x : HtmlT m α) (state : SiteState) (ctx : SiteContext)
     (baseCtx : SiteBaseContext) : m (α × SiteState) :=
   StateT.run x state |>.run ctx |>.run baseCtx
 
 def HtmlM.run (x : HtmlM α) (state : SiteState) (ctx : SiteContext)
-    (baseCtx : SiteBaseContext) : α × SiteState :=
-  StateT.run x state |>.run ctx |>.run baseCtx |>.run
+    (baseCtx : SiteBaseContext) : IO (α × SiteState) :=
+  HtmlT.run x state ctx baseCtx
 
-instance [Monad m] : MonadLift HtmlM (HtmlT m) where
-  monadLift x := do return (x.run (← getThe SiteState) (← readThe SiteContext) (← readThe SiteBaseContext)).1
-
-instance [Monad m] : MonadLift BaseHtmlM (BaseHtmlT m) where
-  monadLift x := do return x.run (← readThe SiteBaseContext)
 
 /-- Add a backref of the given `citekey` and `funName` to current document, and returns it. -/
 def addBackref (citekey funName : String) : HtmlM BackrefItem := do
@@ -157,14 +213,13 @@ def addError (err : String) : HtmlM Unit := do
   modify fun cfg => { cfg with errors := cfg.errors ++ err ++ "\n" }
 
 /--
-Obtains the root URL as a relative one to the current depth.
+Obtains the root URL relative to the given depth.
 -/
 def getRoot : BaseHtmlM String := do
-  let rec go: Nat -> String
-  | 0 => "./"
-  | Nat.succ n' => "../" ++ go n'
-  let d <- SiteBaseContext.depthToRoot <$> read
-  return (go d)
+  let rec go : Nat → String
+    | 0 => "./"
+    | n + 1 => "../" ++ go n
+  return go (← read).depthToRoot
 
 def getHierarchy : BaseHtmlM Hierarchy := do return (← read).hierarchy
 def getCurrentName : BaseHtmlM (Option Name) := do return (← read).currentName
@@ -173,27 +228,18 @@ def getSourceUrl (module : Name) (range : Option DeclarationRange): HtmlM String
 def getDeclarationDecorator : HtmlM DeclarationDecoratorFn := do return (← read).declarationDecorator
 
 /--
-If a template is meant to be extended because it for example only provides the
-header but no real content this is the way to fill the template with content.
-This is untyped so HtmlM and BaseHtmlM can be mixed.
--/
-def templateExtends {α β} {m} [Bind m] (base : α → m β) (new : m α) : m β :=
-  new >>= base
-
-def templateLiftExtends {α β} {m n} [Bind m] [MonadLiftT n m] (base : α → n β) (new : m α) : m β :=
-  new >>= (monadLift ∘ base)
-/--
 Returns the doc-gen4 link to a module name.
 -/
 def moduleNameToLink (n : Name) : BaseHtmlM String := do
+  let root ← getRoot
   let parts := n.components.map (Name.toString (escape := False))
-  return (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+  return root ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
 
 /--
 Returns the HTML doc-gen4 link to a module name.
 -/
-def moduleToHtmlLink (module : Name) : BaseHtmlM Html := do
-  return <a href={← moduleNameToLink module}>{module.toString}</a>
+def moduleToHtmlLink (module : Name) : BaseHtmlM Unit := do
+  <a href={← moduleNameToLink module}>{module.toString}</a>
 
 /--
 Returns the path to the HTML file that contains information about a module.
@@ -236,28 +282,28 @@ def declNameToLink (name : Name) : HtmlM String := do
 /--
 Returns the HTML doc-gen4 link to a declaration name.
 -/
-def declNameToHtmlLink (name : Name) : HtmlM Html := do
-  return <a href={← declNameToLink name}>{name.toString}</a>
+def declNameToHtmlLink (name : Name) : HtmlM Unit := do
+  <a href={← declNameToLink name}>{name.toString}</a>
 
 /--
-Returns a name splitted into parts.
-Together with "break_within" CSS class this helps browser to break a name
-nicely.
+Writes a name split into parts, each wrapped in a span.
+Together with "break_within" CSS class this helps browser to break a name nicely.
 -/
-def breakWithin (name: String) : (Array Html) :=
-  name.splitOn "."
-    |> .map (fun (s: String) => <span class="name">{s}</span>)
-    |> .intersperse "."
-    |> List.toArray
+def breakWithin [Monad m] [MonadReaderOf SiteBaseContext m] [MonadLiftT IO m] (name: String) : m Unit := do
+  let parts := name.splitOn "."
+  for part in parts, i in [:parts.length] do
+    if i > 0 then
+      Html.text "."
+    (<span class="name">{part}</span>)
 
 /--
 Returns the HTML doc-gen4 link to a declaration name with "break_within"
 set as class.
 -/
-def declNameToHtmlBreakWithinLink (name : Name) : HtmlM Html := do
-  return <a class="break_within" href={← declNameToLink name}>
-      [breakWithin name.toString]
-    </a>
+def declNameToHtmlBreakWithinLink (name : Name) : HtmlM Unit := do
+  <a class="break_within" href={← declNameToLink name}>
+    {breakWithin name.toString}
+  </a>
 
 /--
 For a name, try to find a linkable target by stripping suffix components
@@ -296,97 +342,140 @@ where
         .str (go parent) s
     | _ => .anonymous
 
+/-- Captures the HTML output of an HtmlM action and also returns its result. -/
+def captureHtmlWith (action : HtmlM α) : HtmlM (String × α) := do
+  let ref ← IO.mkRef {}
+  let bufStream := IO.FS.Stream.ofBuffer ref
+  let result ← withTheReader SiteBaseContext (fun ctx => { ctx with stream := bufStream }) action
+  return (String.fromUTF8! (← ref.get).data, result)
+
+/-- Captures the HTML output of an HtmlM action as a string. -/
+def captureHtml (action : HtmlM Unit) : HtmlM String := do
+  return (← captureHtmlWith action).1
+
+/-- Captures the HTML output of a BaseHtmlM action as a string. -/
+def captureBaseHtml (action : BaseHtmlM Unit) : BaseHtmlM String := do
+  let ref ← IO.mkRef {}
+  let bufStream := IO.FS.Stream.ofBuffer ref
+  withTheReader SiteBaseContext (fun ctx => { ctx with stream := bufStream }) action
+  return String.fromUTF8! (← ref.get).data
+
+/-- Runs an HtmlM action inside a BaseHtmlM context using an IO.Ref for state. -/
+def runHtmlInBase (action : HtmlM Unit) (siteCtx : SiteContext) (stateRef : IO.Ref SiteState) : BaseHtmlM Unit := do
+  let baseCtx ← read
+  let s ← stateRef.get
+  let ((), s') ← HtmlM.run action s siteCtx baseCtx
+  stateRef.set s'
+
+/-- Runs a BaseHtmlM action, writing output directly to a file. -/
+def runHtmlToFile (action : BaseHtmlM Unit) (config : SiteBaseConfig) (path : FilePath) : IO Unit := do
+  let handle ← IO.FS.Handle.mk path .write
+  let fileStream := IO.FS.Stream.ofHandle handle
+  action.run { toSiteBaseConfig := config, stream := fileStream }
+
+/-- Runs an HtmlM action for its return value, auto-providing a buffer stream. -/
+def HtmlM.eval (x : HtmlM α) (state : SiteState) (ctx : SiteContext)
+    (config : SiteBaseConfig) : IO (α × SiteState) := do
+  let ref ← IO.mkRef {}
+  let bufStream := IO.FS.Stream.ofBuffer ref
+  HtmlM.run x state ctx { toSiteBaseConfig := config, stream := bufStream }
+
 /--
-Convert RenderedCode to HTML with declaration links.
-Returns (hasAnchor, html) where hasAnchor indicates if the result contains an anchor tag.
-This is used to avoid creating nested anchors (invalid HTML).
+Converts RenderedCode to HTML with declaration links. Returns `true` if the result contains an
+anchor tag and thus shouldn't be wrapped by a surrounding one.
 -/
-partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM (Bool × Array Html) := do
+partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM Bool := do
   match code with
-  | .text t => return (false, #[t])
+  | .text t =>
+    Html.text t
+    return false
   | .append xs =>
-    xs.foldlM (init := (false, #[])) fun (a?, acc) t => do
-      let (a?', acc') ← renderedCodeToHtmlAux t
-      pure (a? || a?', acc ++ acc')
+    let mut hasAnchor := false
+    for t in xs do
+      let a? ← renderedCodeToHtmlAux t
+      hasAnchor := hasAnchor || a?
+    return hasAnchor
   | .tag tag inner =>
-    let (innerHasAnchor, innerHtml) ← renderedCodeToHtmlAux inner
     match tag with
     | .const name =>
       let name2ModIdx := (← getResult).name2ModIdx
+      -- Always capture inner to a string since we may need to wrap it
+      let (innerStr, innerHasAnchor) ← captureHtmlWith (renderedCodeToHtmlAux inner)
       if name2ModIdx.contains name then
-        let link ← declNameToLink name
-        -- Avoid nested anchors: if inner content already has anchors, don't wrap again
-        -- Match original behavior: no fn wrapper when const is in name2ModIdx
         if innerHasAnchor then
-          return (true, innerHtml)
+          Html.rawText innerStr
+          return true
         else
-          return (true, #[<a href={link}>[innerHtml]</a>])
+          let link ← declNameToLink name
+          (<a href={link}>{Html.rawText innerStr}</a>)
+          return true
       else
-        -- Name not in name2ModIdx - try to find a linkable parent
-        -- This handles both:
-        -- 1. Private names like `_private.Init.Prelude.0.Lean.Name.hash._proof_1`
-        -- 2. Auxiliary names like `Std.Do.Option.instWPMonad._proof_2`
         let nameToSearch := Lean.privateToUserName? name |>.getD name
         match findLinkableParent name2ModIdx nameToSearch with
         | some target =>
-          let link ← declNameToLink target
           if innerHasAnchor then
-            return (true, innerHtml)
+            Html.rawText innerStr
+            return true
           else
-            return (true, #[<a href={link}>[innerHtml]</a>])
+            let link ← declNameToLink target
+            (<a href={link}>{Html.rawText innerStr}</a>)
+            return true
         | none =>
-          -- For private names, fall back to linking to the module itself (no anchor)
           match Lean.privatePrefix? name with
           | some pfx =>
             let modName := moduleFromPrivatePrefix pfx
             if modName != .anonymous then
-              let link ← moduleNameToLink modName
               if innerHasAnchor then
-                return (true, innerHtml)
+                Html.rawText innerStr
+                return true
               else
-                return (true, #[<a href={link}>[innerHtml]</a>])
+                let link ← moduleNameToLink modName
+                (<a href={link}>{Html.rawText innerStr}</a>)
+                return true
             else
-              return (innerHasAnchor, fn innerHtml)
+              (<span class="fn">{Html.rawText innerStr}</span>)
+              return innerHasAnchor
           | none =>
-            return (innerHasAnchor, fn innerHtml)
+            (<span class="fn">{Html.rawText innerStr}</span>)
+            return innerHasAnchor
     | .sort _ =>
-      let link := s!"{← getRoot}foundational_types.html"
-      -- Avoid nested anchors
-      -- Match original behavior: no fn wrapper when creating sort link
+      let (innerStr, innerHasAnchor) ← captureHtmlWith (renderedCodeToHtmlAux inner)
       if innerHasAnchor then
-        return (true, innerHtml)
+        Html.rawText innerStr
+        return true
       else
-        return (true, #[<a href={link}>[innerHtml]</a>])
-    -- For Phase 1 compatibility: treat keyword/string as plain content (no extra styling)
-    -- This matches the original infoFormatToHtml behavior
-    | .keyword => return (innerHasAnchor, innerHtml)
-    | .string => return (innerHasAnchor, innerHtml)
-    | .otherExpr => return (innerHasAnchor, fn innerHtml)
-where
-  fn (html : Array Html) : Array Html := #[<span class="fn">[html]</span>]
+        let link := s!"{← getRoot}foundational_types.html"
+        (<a href={link}>{Html.rawText innerStr}</a>)
+        return true
+    | .keyword =>
+      renderedCodeToHtmlAux inner
+    | .string =>
+      renderedCodeToHtmlAux inner
+    | .otherExpr =>
+      let (innerStr, innerHasAnchor) ← captureHtmlWith (renderedCodeToHtmlAux inner)
+      (<span class="fn">{Html.rawText innerStr}</span>)
+      return innerHasAnchor
 
 /--
-Convert RenderedCode to HTML with declaration links.
+Converts RenderedCode to HTML with declaration links.
 -/
-def renderedCodeToHtml (code : RenderedCode) : HtmlM (Array Html) :=
-  Prod.snd <$> renderedCodeToHtmlAux code
+def renderedCodeToHtml (code : RenderedCode) : HtmlM Unit := do
+  let _ ← renderedCodeToHtmlAux code
 
 /-
 Turns a `CodeWithInfos` object, that is basically a Lean syntax tree with
 information about what the identifiers mean, into an HTML object that links
 to as much information as possible.
 -/
-def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) :=
+def infoFormatToHtml (i : CodeWithInfos) : HtmlM Unit :=
   renderedCodeToHtml (renderTagged i)
 
-def baseHtmlHeadDeclarations : BaseHtmlM (Array Html) := do
-  return #[
-    <meta charset="UTF-8"/>,
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>,
-    <link rel="stylesheet" href={s!"{← getRoot}style.css"}/>,
-    <link rel="icon" href={s!"{← getRoot}favicon.svg"}/>,
-    <link rel="mask-icon" href={s!"{← getRoot}favicon.svg"} color="#000000"/>,
-    <link rel="prefetch" href={s!"{← getRoot}/declarations/declaration-data.bmp"} as="image"/>
-  ]
+def baseHtmlHeadDeclarations : BaseHtmlM Unit := do
+  (<meta charset="UTF-8"/>)
+  (<meta name="viewport" content="width=device-width, initial-scale=1"/>)
+  (<link rel="stylesheet" href={s!"{← getRoot}style.css"}/>)
+  (<link rel="icon" href={s!"{← getRoot}favicon.svg"}/>)
+  (<link rel="mask-icon" href={s!"{← getRoot}favicon.svg"} color="#000000"/>)
+  (<link rel="prefetch" href={s!"{← getRoot}/declarations/declaration-data.bmp"} as="image"/>)
 
 end DocGen4.Output

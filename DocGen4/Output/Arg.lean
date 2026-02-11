@@ -9,14 +9,15 @@ open scoped DocGen4.Jsx
 Render an `Arg` as HTML, adding opacity effects etc. depending on what
 type of binder it has.
 -/
-def argToHtml (arg : Process.Arg) : HtmlM Html := do
-  let node ← renderedCodeToHtml arg.binder
-  let inner := <span class="fn">[node]</span>
-  let html := Html.element "span" false #[("class", "decl_args")] #[inner]
+def argToHtml (arg : Process.Arg) : HtmlM Unit := do
+  let inner : HtmlM Unit :=
+    (<span class="decl_args">
+      <span class="fn">{renderedCodeToHtml arg.binder}</span>
+    </span>)
   if arg.implicit then
-    return <span class="impl_arg">{html}</span>
+    (<span class="impl_arg">{inner}</span>)
   else
-    return html
+    inner
 
 end Output
 end DocGen4
