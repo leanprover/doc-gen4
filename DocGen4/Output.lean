@@ -190,8 +190,30 @@ def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) :
 def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) : IO Unit := do
   htmlOutputSetup baseConfig
 
+  -- Build a set of module names we just generated (already in memory)
+  let freshModuleNames : Std.HashSet String := modules.foldl (init := {}) fun s m => s.insert m.name
+
+  -- Load per-module data from disk for modules NOT in the current task set.
+  -- This enables incremental builds: prior runs wrote declaration-data-{module}.bmp files,
+  -- and we merge them so the unified search index covers all modules.
+  let mut diskModules : Array JsonModule := #[]
+  for entry in ← System.FilePath.readDir (declarationsBasePath baseConfig.buildDir) do
+    if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
+      -- Extract module name from filename: "declaration-data-Foo.Bar.bmp" -> "Foo.Bar"
+      let modName := entry.fileName.drop "declaration-data-".length |>.dropEnd ".bmp".length |>.toString
+      if freshModuleNames.contains modName then continue
+      let fileContent ← FS.readFile entry.path
+      match Json.parse fileContent with
+      | .error _ => continue
+      | .ok jsonContent =>
+        match fromJson? jsonContent with
+        | .error _ => continue
+        | .ok (module : JsonModule) =>
+          diskModules := diskModules.push module
+
+  let allModules := modules ++ diskModules
   let mut index : JsonIndex := {}
-  for module in modules do
+  for module in allModules do
     index := index.addModule module |>.run baseConfig
 
   let finalJson := toJson index
