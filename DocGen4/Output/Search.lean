@@ -10,10 +10,9 @@ namespace DocGen4
 namespace Output
 
 open scoped DocGen4.Jsx
-open DocGen4 (Raw)
 
-def search : BaseHtmlM Unit := do
-  baseHtmlGenerator "Search" do
+def search : BaseHtmlM Html := do templateExtends (baseHtml "Search") <| do
+  pure
     <main>
       <h1> Search Results </h1>
       <label for="search_page_query">Query:</label>
@@ -39,7 +38,7 @@ def search : BaseHtmlM Unit := do
       </div>
 
       <script>
-        {Raw.mk "document.getElementById('search_page_query').value = new URL(window.location.href).searchParams.get('q')"}
+        {.raw "document.getElementById('search_page_query').value = new URL(window.location.href).searchParams.get('q')"}
       </script>
       <div id="search_results">
       </div>

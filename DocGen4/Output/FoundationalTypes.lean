@@ -5,8 +5,8 @@ namespace DocGen4.Output
 
 open scoped DocGen4.Jsx
 
-def foundationalTypes : BaseHtmlM Unit := do
-  baseHtmlGenerator "Foundational Types" do
+def foundationalTypes : BaseHtmlM Html := templateLiftExtends (baseHtml "Foundational Types") do
+  pure <|
     <main>
       <a id="top"></a>
       <h1>Foundational Types</h1>
@@ -18,15 +18,15 @@ def foundationalTypes : BaseHtmlM Unit := do
 
       <h2 id="codesort-ucode"><code>Sort u</code></h2>
       <p><code>Sort u</code> is the type of types in Lean, and <code>Sort u : Sort (u + 1)</code>.</p>
-      {instancesForToHtml `_builtin_sortu}
+      {← instancesForToHtml `_builtin_sortu}
 
       <h2 id="codetype-ucode"><code>Type u</code></h2>
       <p><code>Type u</code> is notation for <code>Sort (u + 1)</code>.</p>
-      {instancesForToHtml `_builtin_typeu}
+      {← instancesForToHtml `_builtin_typeu}
 
       <h2 id="codepropcode"><code>Prop</code></h2>
       <p><code>Prop</code> is notation for <code>Sort 0</code>.</p>
-      {instancesForToHtml `_builtin_prop}
+      {← instancesForToHtml `_builtin_prop}
 
       <h2 id="pi-types-codeπ-a--α-β-acode">Pi types, <code>{"(a : α) → β a"}</code></h2>
       <p>The type of dependent functions is known as a pi type.

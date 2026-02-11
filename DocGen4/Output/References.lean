@@ -62,35 +62,33 @@ def disableBibFile (buildDir : System.FilePath) : IO Unit := do
 namespace Output
 
 open scoped DocGen4.Jsx
-open DocGen4 (Raw)
 
-def refItem (ref : BibItem) (backrefs : Array BackrefItem) : BaseHtmlM Unit := do
+def refItem (ref : BibItem) (backrefs : Array BackrefItem) : BaseHtmlM Html := do
   let backrefs := backrefs.filter (fun x => x.citekey == ref.citekey)
-  let backrefLinks : BaseHtmlM Unit := do
-    if !backrefs.isEmpty then
-      (<small>
-        {do for i in [:backrefs.size] do
-          let backref := backrefs[i]!
-          let href := s!"{← moduleNameToLink backref.modName}#_backref_{backref.index}"
-          let title := s!"File: {backref.modName}" ++
-            if backref.funName.isEmpty then "" else s!"\nLocation: {backref.funName}"
-          Html.rawText " "
-          (<a href={href} title={title}>{s!"[{i + 1}]"}</a>)}
-      </small>)
-  (<li id={s!"ref_{ref.citekey}"}>
-    <a href={s!"#ref_{ref.citekey}"}>{ref.tag}</a>
-    {Raw.mk " "}
-    {Raw.mk ref.html}
-    {backrefLinks}
-  </li>)
+  let toHtml (i : Nat) (backref : BackrefItem) : BaseHtmlM (Array Html) := do
+    let href := s!"{← moduleNameToLink backref.modName}#_backref_{backref.index}"
+    let title := s!"File: {backref.modName}" ++
+      if backref.funName.isEmpty then "" else s!"\nLocation: {backref.funName}"
+    pure #[.raw " ", <a href={href} title={title}>{.text s!"[{i + 1}]"}</a>]
+  let backrefHtml : Html ← (do
+    if backrefs.isEmpty then
+      pure (.raw "")
+    else
+      pure <small>[(← backrefs.mapIdxM toHtml).foldl (· ++ ·) #[]]</small>)
+  pure <|
+    <li id={s!"ref_{ref.citekey}"}>
+      <a href={s!"#ref_{ref.citekey}"}>{.text ref.tag}</a>
+      {.raw " "}{.raw ref.html}{backrefHtml}
+    </li>
 
-def references (backrefs : Array BackrefItem) : BaseHtmlM Unit := do
-  baseHtmlGenerator "References" do
+def references (backrefs : Array BackrefItem) :
+    BaseHtmlM Html := templateLiftExtends (baseHtml "References") do
+  pure <|
     <main>
       <a id="top"></a>
       <h1>References</h1>
       <ul>
-        {(← read).refs.forM (refItem · backrefs)}
+      [← (← read).refs.mapM (refItem · backrefs)]
       </ul>
     </main>
 

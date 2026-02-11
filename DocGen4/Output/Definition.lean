@@ -8,8 +8,8 @@ namespace Output
 open scoped DocGen4.Jsx
 open Lean Widget
 
-def equationToHtml (c : RenderedCode) : HtmlM Unit := do
-  <li class="equation">{renderedCodeToHtml c}</li>
+def equationToHtml (c : RenderedCode) : HtmlM Html := do
+  return <li class="equation">[← renderedCodeToHtml c]</li>
 
 /--
 Attempt to render all `simp` equations for this definition. At a size
@@ -17,23 +17,31 @@ defined in `equationLimit` we stop trying since they:
 - are too ugly to read most of the time
 - take too long
 -/
-def equationsToHtml (i : Process.DefinitionInfo) : HtmlM Unit := do
+def equationsToHtml (i : Process.DefinitionInfo) : HtmlM (Array Html) := do
   if let some eqs := i.equations then
+    let equationsHtml ← eqs.mapM equationToHtml
     if i.equationsWereOmitted then
-      <details>
-        <summary>Equations</summary>
-        <ul class="equations">
-          <li class="equation">One or more equations did not get rendered due to their size.</li>
-          {eqs.forM equationToHtml}
-        </ul>
-      </details>
+      return #[
+        <details>
+          <summary>Equations</summary>
+          <ul class="equations">
+            <li class="equation">One or more equations did not get rendered due to their size.</li>
+            [equationsHtml]
+          </ul>
+        </details>
+      ]
     else
-      <details>
-        <summary>Equations</summary>
-        <ul class="equations">
-          {eqs.forM equationToHtml}
-        </ul>
-      </details>
+      return #[
+        <details>
+          <summary>Equations</summary>
+          <ul class="equations">
+            [equationsHtml]
+          </ul>
+        </details>
+      ]
+  else
+    return #[]
 
 end Output
 end DocGen4
+

@@ -7,19 +7,30 @@ Authors: Wojciech Nawrocki, Sebastian Ullrich, Henrik Böving
 import Lean.Data.Json
 import Lean.Data.Xml
 import Lean.Parser
-import Lean.Elab.Term
 
 /-! This module defines:
-- streaming HTML write helpers
-- a JSX-like DSL that expands to monadic writes -/
+- a representation of HTML trees
+- together with a JSX-like DSL for writing them
+- and widget support for visualizing any type as HTML. -/
 
 namespace DocGen4
 
 open Lean
 
-/-- A raw HTML string that should not be escaped. -/
-structure Raw where
-  html : String
+inductive Html where
+  -- TODO(WN): it's nameless for shorter JSON; re-add names when we have deriving strategies for From/ToJson
+  -- element (tag : String) (flatten : Bool) (attrs : Array HtmlAttribute) (children : Array Html)
+  | element : String → Bool → Array (String × String) → Array Html → Html
+  /-- A text node, which will be escaped in the output -/
+  | text : String → Html
+  /-- An arbitrary string containing HTML -/
+  | raw : String → Html
+  deriving Repr, BEq, Inhabited, FromJson, ToJson
+
+instance : Coe String Html :=
+  ⟨Html.text⟩
+
+namespace Html
 
 def escapePairs : Array (String × String) :=
   #[
@@ -32,15 +43,11 @@ def escapePairs : Array (String × String) :=
 def escape (s : String) : String :=
   escapePairs.foldl (fun acc (o, r) => acc.replace o r) s
 
-namespace Html
-def escape := @DocGen4.escape
-end Html
-
 -- TODO: remove the following 3 functions
 -- once <https://github.com/leanprover/lean4/issues/4411> is fixed
 
 def _root_.Lean.Xml.Attributes.toStringEscaped (as : Xml.Attributes) : String :=
-  as.foldl (fun s n v => s ++ s!" {n}=\"{DocGen4.escape v}\"") ""
+  as.foldl (fun s n v => s ++ s!" {n}=\"{Html.escape v}\"") ""
 
 mutual
 
@@ -50,7 +57,7 @@ partial def _root_.Lean.Xml.eToStringEscaped : Xml.Element → String
 partial def _root_.Lean.Xml.cToStringEscaped : Xml.Content → String
 | .Element e => eToStringEscaped e
 | .Comment c => s!"<!--{c}-->"
-| .Character c => DocGen4.escape c
+| .Character c => Html.escape c
 
 end
 
@@ -65,6 +72,31 @@ partial def _root_.Lean.Xml.cToPlaintext : Xml.Content → String
 | .Character c => c
 
 end
+
+def attributesToString (attrs : Array (String × String)) :String :=
+  attrs.foldl (fun acc (k, v) => acc ++ " " ++ k ++ "=\"" ++ escape v ++ "\"") ""
+
+-- TODO: Termination proof
+partial def toStringAux : Html → String
+| element tag false attrs #[text s] => s!"<{tag}{attributesToString attrs}>{escape s}</{tag}>\n"
+| element tag false attrs #[raw s] => s!"<{tag}{attributesToString attrs}>{s}</{tag}>\n"
+| element tag false attrs #[child] => s!"<{tag}{attributesToString attrs}>\n{child.toStringAux}</{tag}>\n"
+| element tag false attrs children => s!"<{tag}{attributesToString attrs}>\n{children.foldl (· ++ toStringAux ·) ""}</{tag}>\n"
+| element tag true attrs children => s!"<{tag}{attributesToString attrs}>{children.foldl (· ++ toStringAux ·) ""}</{tag}>"
+| text s => escape s
+| raw s => s
+
+def toString (html : Html) : String :=
+  html.toStringAux.trimAsciiEnd.copy
+
+partial def textLength : Html → Nat
+| raw s => s.length  -- measures lengths of escape sequences too!
+| text s => s.length
+| element _ _ _ children =>
+  let lengths := children.map textLength
+  lengths.foldl Nat.add 0
+
+end Html
 
 namespace Jsx
 open Parser PrettyPrinter
@@ -117,51 +149,35 @@ def translateAttrs (attrs : Array (TSyntax `DocGen4.Jsx.jsxAttr)) : MacroM (TSyn
     | _ => Macro.throwUnsupported
   return as
 
-private def mkN (s : String) : Lean.Ident :=
-  mkIdent (`DocGen4 ++ `Output ++ Name.mkSimple s)
-
-private def mkApp (fn : Ident) (args : Array (TSyntax `term)) : MacroM (TSyntax `term) := do
-  args.foldlM (fun acc arg => `($acc $arg)) (fn : TSyntax `term)
+private def htmlHelper (n : Syntax) (children : Array Syntax) (m : Syntax) : MacroM (String × (TSyntax `term)):= do
+  unless n.getId == m.getId do
+    withRef m <| Macro.throwError s!"Leading and trailing part of tags don't match: '{n}', '{m}'"
+  let mut cs ← `(#[])
+  for child in children do
+    cs ← match child with
+    | `(jsxChild|$t:jsxText)    => `(($cs).push (Html.text $(quote t.raw[0]!.getAtomVal)))
+    -- TODO(WN): elab as list of children if type is `t Html` where `Foldable t`
+    | `(jsxChild|{$t})          => `(($cs).push ($t : Html))
+    | `(jsxChild|[$t])          => `($cs ++ ($t : Array Html))
+    | `(jsxChild|$e:jsxElement) => `(($cs).push ($e:jsxElement : Html))
+    | _                         => Macro.throwUnsupported
+  let tag := toString n.getId
+  pure <| (tag, cs)
 
 macro_rules
   | `(<$n $attrs* />) => do
-    let tag : TSyntax `term := quote (toString n.getId)
-    let atSyn ← translateAttrs attrs
-    let pot := mkN "putOpenTag"
-    let pct := mkN "putCloseTag"
-    let openCall ← mkApp pot #[tag, atSyn]
-    let closeCall ← mkApp pct #[tag]
-    `(do ($openCall); ($closeCall))
+    let kind := quote (toString n.getId)
+    let attrs ← translateAttrs attrs
+    `(Html.element $kind true $attrs #[])
   | `(<$n $attrs* >$children*</$m>) => do
-    unless n.getId == m.getId do
-      withRef m <| Macro.throwError s!"Leading and trailing part of tags don't match: '{n}', '{m}'"
-    let atSyn ← translateAttrs attrs
-    let tag : TSyntax `term := quote (toString n.getId)
-    let pot := mkN "putOpenTag"
-    let pct := mkN "putCloseTag"
-    let pe := mkN "putEscaped"
-    let openCall ← mkApp pot #[tag, atSyn]
-    let closeCall ← mkApp pct #[tag]
-    let mut stmts : Array (TSyntax `Lean.Parser.Term.doSeqItem) := #[]
-    stmts := stmts.push (← `(Lean.Parser.Term.doSeqItem| ($openCall)))
-    for child in children do
-      let stmt ← match child with
-      | `(jsxChild|$t:jsxText)    =>
-        let s : TSyntax `term := quote t.raw[0]!.getAtomVal
-        let call ← mkApp pe #[s]
-        `(Lean.Parser.Term.doSeqItem| ($call))
-      | `(jsxChild|{$t})          =>
-        `(Lean.Parser.Term.doSeqItem| ($t))
-      | `(jsxChild|[$t])          =>
-        `(Lean.Parser.Term.doSeqItem| for _x in ($t : Array _) do _x)
-      | `(jsxChild|$e:jsxElement) =>
-        `(Lean.Parser.Term.doSeqItem| $e:jsxElement)
-      | _                         => Macro.throwUnsupported
-      stmts := stmts.push stmt
-    stmts := stmts.push (← `(Lean.Parser.Term.doSeqItem| ($closeCall)))
-    `(do $stmts*)
-
+    let (tag, children) ← htmlHelper n children m
+    `(Html.element $(quote tag) true $(← translateAttrs attrs) $children)
 
 end Jsx
+
+/-- A type which implements `ToHtmlFormat` will be visualized
+as the resulting HTML in editors which support it. -/
+class ToHtmlFormat (α : Type u) where
+  formatHtml : α → Html
 
 end DocGen4

@@ -7,9 +7,6 @@ open Lean DocGen4.Process
 namespace DocGen4
 namespace Output
 
-open scoped DocGen4.Jsx
-open DocGen4 (Raw escape)
-
 /-- Auxiliary function for `splitAround`. -/
 @[specialize] partial def splitAroundAux (s : String) (p : Char → Bool) (b i : String.Pos.Raw) (r : List String) : List String :=
   if String.Pos.Raw.atEnd s i then
@@ -156,23 +153,25 @@ def isLeanCode (lang : Array MD4Lean.AttrText) : Bool :=
 /--
 Automatically adds intra-documentation links for code content.
 -/
-def autoLinkInline (ss : Array String) : HtmlM Unit := do
+def autoLinkInline (ss : Array String) : HtmlM (Array Html) := do
+  let mut result : Array Html := #[]
   for s in ss do
     let parts := splitAround s unicodeToSplit
     for part in parts do
       match ← nameToLink? part with
       | some link =>
-        (<a href={link}>{part}</a>)
+        result := result.push <| Html.element "a" true #[("href", link)] #[Html.text part]
       | none =>
         let sHead := part.dropEndWhile (· != '.') |>.copy
         let sTail := part.takeEndWhile (· != '.') |>.copy
         match ← nameToLink? sTail with
         | some link =>
           if !sHead.isEmpty then
-            Html.text sHead
-          (<a href={link}>{sTail}</a>)
+            result := result.push <| Html.text sHead
+          result := result.push <| Html.element "a" true #[("href", link)] #[Html.text sTail]
         | none =>
-          Html.text part
+          result := result.push <| Html.text part
+  return result
   where
     unicodeToSplit (c : Char) : Bool :=
       -- separator (`Z`), other (`C`)
@@ -184,17 +183,25 @@ mutual
 Renders a single `MD4Lean.Text` inline element to HTML, while processing custom extensions such as
 bibliography items. `inLink` suppresses auto-linking inside `<a>` to avoid nested anchors.
 -/
-partial def renderText (t : MD4Lean.Text) (funName : String) (inLink : Bool := false) : HtmlM Unit := do
+partial def renderText (t : MD4Lean.Text) (funName : String) (inLink : Bool := false) : HtmlM (Array Html) := do
   match t with
-  | .normal s => Html.text s
-  | .nullchar => Html.rawText "\uFFFD"
-  | .br _ => Html.rawText "<br>\n" -- This avoids <br></br>, which is incorrect HTML5
-  | .softbr _ => Html.rawText "\n"
-  | .entity s => Html.rawText s
-  | .em ts => (<em>{renderTexts ts funName inLink}</em>)
-  | .strong ts => (<strong>{renderTexts ts funName inLink}</strong>)
-  | .u ts => (<u>{renderTexts ts funName inLink}</u>)
-  | .del ts => (<del>{renderTexts ts funName inLink}</del>)
+  | .normal s => return #[Html.text s]
+  | .nullchar => return #[Html.raw "\uFFFD"]
+  | .br _ => return #[Html.raw "<br>\n"] -- This avoids <br></br>, which is incorrect HTML5
+  | .softbr _ => return #[Html.raw "\n"]
+  | .entity s => return #[Html.raw s]
+  | .em ts =>
+    let inner ← renderTexts ts funName inLink
+    return #[Html.element "em" true #[] inner]
+  | .strong ts =>
+    let inner ← renderTexts ts funName inLink
+    return #[Html.element "strong" true #[] inner]
+  | .u ts =>
+    let inner ← renderTexts ts funName inLink
+    return #[Html.element "u" true #[] inner]
+  | .del ts =>
+    let inner ← renderTexts ts funName inLink
+    return #[Html.element "del" true #[] inner]
   | .a href title _isAuto children =>
     let hrefStr := attrTextToString href
     let titleStr := attrTextToString title
@@ -203,109 +210,138 @@ partial def renderText (t : MD4Lean.Text) (funName : String) (inLink : Bool := f
     match bibitem with
     | .some bibitem =>
       let newBackref ← addBackref bibitem.citekey funName
+      let childrenHtml ← renderTexts children funName (inLink := true)
       let changeName : Bool :=
         if let #[.normal s] := children then
           s == bibitem.citekey
         else
           false
-      (<a href={extHref} title={bibitem.plaintext} id={s!"_backref_{newBackref.index}"}>
-        {if changeName then Html.text bibitem.tag
-         else renderTexts children funName (inLink := true)}
-      </a>)
+      let newChildren : Array Html :=
+        if changeName then #[Html.text bibitem.tag] else childrenHtml
+      let mut attrs : Array (String × String) := #[("href", extHref)]
+      attrs := attrs.push ("title", bibitem.plaintext)
+      attrs := attrs.push ("id", s!"_backref_{newBackref.index}")
+      return #[Html.element "a" true attrs newChildren]
     | .none =>
+      let childrenHtml ← renderTexts children funName (inLink := true)
       let mut attrs : Array (String × String) := #[("href", extHref)]
       if !titleStr.isEmpty then
         attrs := attrs.push ("title", titleStr)
-      (<a [attrs]>{renderTexts children funName (inLink := true)}</a>)
+      return #[Html.element "a" true attrs childrenHtml]
   | .img src title alt =>
-    let srcStr := escape (attrTextToString src)
-    let titleStr := escape (attrTextToString title)
+    let srcStr := Html.escape (attrTextToString src)
+    let titleStr := Html.escape (attrTextToString title)
     let altTexts := alt.toList.map textToPlaintext
-    let altStr := escape (String.join altTexts)
+    let altStr := Html.escape (String.join altTexts)
     let mut s := s!"<img src=\"{srcStr}\" alt=\"{altStr}\""
     if !titleStr.isEmpty then
       s := s ++ s!" title=\"{titleStr}\""
     s := s ++ ">"
-    Html.rawText s
+    return #[Html.raw s]
   | .code ss =>
-    (<code>
-      {if inLink then Html.text (String.join ss.toList)
-       else autoLinkInline ss}
-    </code>)
+    let inner ← if inLink then
+        pure #[Html.text (String.join ss.toList)]
+      else
+        autoLinkInline ss
+    return #[Html.element "code" true #[] inner]
   -- Math is rendered with dollar signs because MathJax will later render them
   | .latexMath ss =>
     let content := String.join ss.toList
-    Html.rawText s!"${escape content}$"
+    return #[Html.raw s!"${Html.escape content}$"]
   -- Math is rendered with dollar signs because MathJax will later render them
   | .latexMathDisplay ss =>
     let content := String.join ss.toList
-    Html.rawText s!"$${escape content}$$"
+    return #[Html.raw s!"$${Html.escape content}$$"]
   | .wikiLink target children =>
+    let inner ← renderTexts children funName inLink
     let targetStr := attrTextToString target
-    Html.element "x-wikilink" #[("data-target", targetStr)] (renderTexts children funName inLink)
+    return #[Html.element "x-wikilink" true #[("data-target", targetStr)] inner]
 
 /-- Render an array of `MD4Lean.Text` inline elements to HTML. -/
-partial def renderTexts (texts : Array MD4Lean.Text) (funName : String) (inLink : Bool := false) : HtmlM Unit := do
+partial def renderTexts (texts : Array MD4Lean.Text) (funName : String) (inLink : Bool := false) : HtmlM (Array Html) := do
+  let mut result : Array Html := #[]
   for t in texts do
-    renderText t funName inLink
+    result := result ++ (← renderText t funName inLink)
+  return result
 
 /-- Render a single `MD4Lean.Block` element to HTML. -/
-partial def renderBlock (block : MD4Lean.Block) (funName : String) (tight : Bool := false) : HtmlM Unit := do
+partial def renderBlock (block : MD4Lean.Block) (funName : String) (tight : Bool := false) : HtmlM (Array Html) := do
   match block with
   | .p texts =>
+    let inner ← renderTexts texts funName
     if tight then
-      renderTexts texts funName
+      return inner
     else
-      (<p>{renderTexts texts funName}</p>)
+      return #[Html.element "p" true #[] inner]
   | .ul isTight _mark items =>
-    (<ul>{items.forM fun item => renderLi item funName isTight}</ul>)
+    let mut lis : Array Html := #[]
+    for item in items do
+      let liHtml ← renderLi item funName isTight
+      lis := lis ++ liHtml
+    return #[Html.element "ul" true #[] lis]
   | .ol isTight start _mark items =>
+    let mut lis : Array Html := #[]
+    for item in items do
+      let liHtml ← renderLi item funName isTight
+      lis := lis ++ liHtml
     let attrs : Array (String × String) :=
       if start != 1 then #[("start", toString start)] else #[]
-    (<ol [attrs]>{items.forM fun item => renderLi item funName isTight}</ol>)
-  | .hr => Html.rawText "<hr>\n"
+    return #[Html.element "ol" true attrs lis]
+  | .hr => return #[Html.raw "<hr>\n"]
   | .header level texts =>
-    -- Dynamic tag name requires Html.element
     let id := mdGetHeadingId texts
+    let inner ← renderTexts texts funName
+    let anchor := Html.element "a" true #[("class", "hover-link"), ("href", s!"#{id}")] #[Html.text "#"]
+    let children := inner.push (Html.text " ") |>.push anchor
     let tag := s!"h{level}"
-    Html.element tag #[("id", id), ("class", "markdown-heading")] do
-      renderTexts texts funName
-      Html.text " "
-      (<a class="hover-link" href={s!"#{id}"}>#</a>)
+    return #[Html.element tag true #[("id", id), ("class", "markdown-heading")] children]
   | .code _info lang _fenceChar content =>
+    let langStr := attrTextToString lang
     let codeAttrs : Array (String × String) :=
-      let langStr := attrTextToString lang
       if !langStr.isEmpty then #[("class", s!"language-{langStr}")] else #[]
-    (<pre><code [codeAttrs]>
-      {if isLeanCode lang then autoLinkInline content
-       else Html.text (String.join content.toList)}
-    </code></pre>)
+    let inner : Array Html ←
+      if isLeanCode lang then
+        autoLinkInline content
+      else
+        pure #[Html.text (String.join content.toList)]
+    let codeElem := Html.element "code" true codeAttrs inner
+    return #[Html.element "pre" true #[] #[codeElem]]
   | .html content =>
-    Html.rawText (String.join content.toList)
+    return #[Html.raw (String.join content.toList)]
   | .blockquote blocks =>
-    (<blockquote>{blocks.forM (renderBlock · funName)}</blockquote>)
+    let mut inner : Array Html := #[]
+    for b in blocks do
+      inner := inner ++ (← renderBlock b funName)
+    return #[Html.element "blockquote" true #[] inner]
   | .table head body =>
-    (<table>
-      <thead>
-        <tr>{head.forM fun cell => (<th>{renderTexts cell funName}</th>)}</tr>
-      </thead>
-      <tbody>
-        {body.forM fun row =>
-          (<tr>{row.forM fun cell => (<td>{renderTexts cell funName}</td>)}</tr>)}
-      </tbody>
-    </table>)
+    let mut headCells : Array Html := #[]
+    for cell in head do
+      let cellHtml ← renderTexts cell funName
+      headCells := headCells.push (Html.element "th" true #[] cellHtml)
+    let headRow := Html.element "tr" true #[] headCells
+    let thead := Html.element "thead" true #[] #[headRow]
+    let mut bodyRows : Array Html := #[]
+    for row in body do
+      let mut rowCells : Array Html := #[]
+      for cell in row do
+        let cellHtml ← renderTexts cell funName
+        rowCells := rowCells.push (Html.element "td" true #[] cellHtml)
+      bodyRows := bodyRows.push (Html.element "tr" true #[] rowCells)
+    let tbody := Html.element "tbody" true #[] bodyRows
+    return #[Html.element "table" true #[] #[thead, tbody]]
 
 /-- Render a list item to HTML. -/
-partial def renderLi (li : MD4Lean.Li MD4Lean.Block) (funName : String) (tight : Bool) : HtmlM Unit := do
-  (<li>
-    {do if li.isTask then
-          let checked := li.taskChar == some 'x' || li.taskChar == some 'X'
-          if checked then
-            Html.rawText "<input type=\"checkbox\" checked=\"\" disabled=\"\">"
-          else
-            Html.rawText "<input type=\"checkbox\" disabled=\"\">"}
-    {li.contents.forM fun b => renderBlock b funName tight}
-  </li>)
+partial def renderLi (li : MD4Lean.Li MD4Lean.Block) (funName : String) (tight : Bool) : HtmlM (Array Html) := do
+  let mut inner : Array Html := #[]
+  if li.isTask then
+    let checked := li.taskChar == some 'x' || li.taskChar == some 'X'
+    if checked then
+      inner := inner.push (Html.raw "<input type=\"checkbox\" checked=\"\" disabled=\"\">")
+    else
+      inner := inner.push (Html.raw "<input type=\"checkbox\" disabled=\"\">")
+  for b in li.contents do
+    inner := inner ++ (← renderBlock b funName tight)
+  return #[Html.element "li" true #[] inner]
 
 end
 
@@ -325,8 +361,8 @@ partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String
   else
     ret
 
-/-- Convert docstring to Html, writing directly to stream. -/
-def docStringToHtml (docString : String ⊕ VersoDocString) (funName : String) : HtmlM Unit := do
+/-- Convert docstring to Html. -/
+def docStringToHtml (docString : String ⊕ VersoDocString) (funName : String) : HtmlM (Array Html) := do
   let docString :=
     match docString with
     | .inl md => md
@@ -338,12 +374,12 @@ def docStringToHtml (docString : String ⊕ VersoDocString) (funName : String) :
   let flags := MD4Lean.MD_DIALECT_GITHUB ||| MD4Lean.MD_FLAG_LATEXMATHSPANS ||| MD4Lean.MD_FLAG_NOHTML
   match MD4Lean.parse (docString ++ refsMarkdown) flags with
   | .some doc =>
+    let mut result : Array Html := #[]
     for block in doc.blocks do
-      renderBlock block funName
+      result := result ++ (← renderBlock block funName)
+    return result
   | .none =>
     addError <| "Error: failed to parse markdown:\n" ++ docString
-    (<span style="color:red;">Error: failed to parse markdown: </span>)
-    Html.text docString
-
+    return #[.raw "<span style='color:red;'>Error: failed to parse markdown: </span>", .text docString]
 end Output
 end DocGen4

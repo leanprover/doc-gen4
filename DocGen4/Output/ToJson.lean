@@ -107,7 +107,8 @@ def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM Js
       | some i => pure i
       | none =>
         let impLink ← moduleNameToLink (String.toName imp)
-        pure { url := impLink, importedBy := #[] }
+        let indexedModule := { url := impLink, importedBy := #[] }
+        pure indexedModule
     index := { index with
       modules :=
         index.modules.insert
@@ -123,7 +124,7 @@ def DocInfo.toJson (sourceLinker : Option DeclarationRange → String) (info : P
   let docLink ← declNameToLink info.getName
   let sourceLink := sourceLinker info.getDeclarationRange
   let line := info.getDeclarationRange.pos.line
-  let header ← captureHtml (docInfoHeader info)
+  let header := (← docInfoHeader info).toString
   let info := { name, kind, doc, docLink, sourceLink, line }
   return { info, header }
 

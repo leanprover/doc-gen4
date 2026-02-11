@@ -84,7 +84,7 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
 
   -- Add `references` pseudo-module to hierarchy since references.html is always generated
   let hierarchy := Hierarchy.fromArray (targetModules.push `references)
-  let baseConfig ← getSimpleBaseConfig buildDir hierarchy
+  let baseConfig ← getSimpleBaseContext buildDir hierarchy
 
   -- Parallel HTML generation
   let outputs ← htmlOutputResultsParallel baseConfig dbPath linkCtx targetModules (sourceLinker? := some (dbSourceLinker linkCtx.sourceUrls))
