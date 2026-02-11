@@ -63,6 +63,12 @@ def dbSourceLinker (sourceUrls : Std.HashMap Name String) (_gitUrl? : Option Str
       -- Fallback for modules without source URL
       fun _ => "#"
 
+/-- Flush the WAL so the database file is self-contained. Connection is closed on return. -/
+def walCheckpoint (dbPath : String) : IO Unit := do
+  let db ← SQLite.open dbPath
+  db.exec "PRAGMA wal_checkpoint(TRUNCATE)"
+  db.exec "PRAGMA optimize"
+
 def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
@@ -70,6 +76,9 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let dbPath := p.positionalArg! "db" |>.as! String
   let manifestOutput? := (p.flag? "manifest").map (·.as! String)
   let moduleRoots := (p.variableArgsAs! String).map String.toName
+
+  -- Flush WAL so the database file is self-contained for concurrent readers
+  walCheckpoint dbPath
 
   -- Load linking context (module names, source URLs, declaration locations)
   let db ← DB.openForReading dbPath builtinDocstringValues

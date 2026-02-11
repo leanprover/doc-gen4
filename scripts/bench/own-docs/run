@@ -17,6 +17,8 @@ env DOCGEN_SRC="file" "$BENCH/measure.py" -t own-docs -m instructions -m maxrss 
 
 TAR_ARGS=(doc)
 if [ -f .lake/build/api-docs.db ]; then
+  # Compact the DB into a single portable file (removes WAL/journal dependency)
+  sqlite3 .lake/build/api-docs.db "VACUUM"
   TAR_ARGS+=(api-docs.db)
 fi
 tar cf - -C .lake/build "${TAR_ARGS[@]}" | zstd -o own-docs.tar.zst

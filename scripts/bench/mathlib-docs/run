@@ -52,6 +52,8 @@ env DOCGEN_SRC="file" "$REPO_ROOT/$BENCH/measure.py" -t mathlib-docs -m instruct
 
 TAR_ARGS=(doc)
 if [ -f "$TMPDIR/mathproject/.lake/build/api-docs.db" ]; then
+  # Compact the DB into a single portable file (removes WAL/journal dependency)
+  sqlite3 "$TMPDIR/mathproject/.lake/build/api-docs.db" "VACUUM"
   TAR_ARGS+=(api-docs.db)
 fi
 tar cf - -C "$TMPDIR/mathproject/.lake/build" "${TAR_ARGS[@]}" | zstd -o "$REPO_ROOT/mathlib-docs.tar.zst"
