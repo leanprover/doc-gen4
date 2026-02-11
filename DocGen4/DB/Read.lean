@@ -50,6 +50,7 @@ private structure ReadStmts where
   loadStructureParentsStmt : SQLite.Stmt
   loadFieldArgsStmt : SQLite.Stmt
   loadFieldsStmt : SQLite.Stmt
+  loadFieldsJoinedStmt : SQLite.Stmt
   lookupProjStmt : SQLite.Stmt
   lookupRenderStmt : SQLite.Stmt
   loadStructCtorStmt : SQLite.Stmt
@@ -84,6 +85,7 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
   let loadStructureParentsStmt ← sqlite.prepare "SELECT projection_fn, type FROM structure_parents WHERE module_name = ? AND position = ? ORDER BY sequence"
   let loadFieldArgsStmt ← sqlite.prepare "SELECT binder, is_implicit FROM structure_field_args WHERE module_name = ? AND position = ? AND field_sequence = ? ORDER BY arg_sequence"
   let loadFieldsStmt ← sqlite.prepare "SELECT sequence, proj_name, type, is_direct FROM structure_fields WHERE module_name = ? AND position = ? ORDER BY sequence"
+  let loadFieldsJoinedStmt ← sqlite.prepare "SELECT f.sequence, f.proj_name, f.type, f.is_direct, n.module_name, n.position, n.render, md.text, v.content, dr.start_line, dr.start_column, dr.start_utf16, dr.end_line, dr.end_column, dr.end_utf16 FROM structure_fields f LEFT JOIN name_info n ON n.name = f.proj_name LEFT JOIN markdown_docstrings md ON md.module_name = n.module_name AND md.position = n.position LEFT JOIN verso_docstrings v ON v.module_name = n.module_name AND v.position = n.position LEFT JOIN declaration_ranges dr ON dr.module_name = n.module_name AND dr.position = n.position WHERE f.module_name = ? AND f.position = ? ORDER BY f.sequence"
   let lookupProjStmt ← sqlite.prepare "SELECT module_name, position FROM name_info WHERE name = ? LIMIT 1"
   let lookupRenderStmt ← sqlite.prepare "SELECT render FROM name_info WHERE module_name = ? AND position = ?"
   let loadStructCtorStmt ← sqlite.prepare "SELECT name, type, ctor_position FROM structure_constructors WHERE module_name = ? AND position = ?"
@@ -108,7 +110,7 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
   pure {
     values, loadArgsStmt, loadAttrsStmt, readMdDocstringStmt, readVersoDocstringStmt,
     loadDeclRangeStmt, loadEqnsStmt, loadInstanceArgsStmt, loadStructureParentsStmt,
-    loadFieldArgsStmt, loadFieldsStmt, lookupProjStmt, lookupRenderStmt,
+    loadFieldArgsStmt, loadFieldsStmt, loadFieldsJoinedStmt, lookupProjStmt, lookupRenderStmt,
     loadStructCtorStmt, loadCtorPosStmt, loadCtorInfoStmt,
     readAxiomStmt, readOpaqueStmt, readDefinitionStmt, readInstanceStmt,
     readInductiveStmt, readStructureStmt, readClassInductiveStmt,
@@ -261,42 +263,52 @@ private def ReadStmts.loadStructureFieldArgs (s : ReadStmts) (moduleName : Strin
 
 open Lean SQLite.Blob in
 private def ReadStmts.loadStructureFields (s : ReadStmts) (moduleName : String) (position : Int64) : IO (Array Process.FieldInfo) := do
-  s.loadFieldsStmt.bind 1 moduleName
-  s.loadFieldsStmt.bind 2 position
+  let stmt := s.loadFieldsJoinedStmt
+  stmt.bind 1 moduleName
+  stmt.bind 2 position
   let mut fields := #[]
-  while (← s.loadFieldsStmt.step) do
-    let fieldSeq ← s.loadFieldsStmt.columnInt64 0
-    let name := (← s.loadFieldsStmt.columnText 1).toName
-    let typeBlob ← s.loadFieldsStmt.columnBlob 2
+  while (← stmt.step) do
+    let fieldSeq ← stmt.columnInt64 0
+    let name := (← stmt.columnText 1).toName
+    let typeBlob ← stmt.columnBlob 2
     let type ← readRenderedCode typeBlob
-    let isDirect := (← s.loadFieldsStmt.columnInt64 3) != 0
-    s.lookupProjStmt.bind 1 name.toString
-    let (doc, attrs, declRange, render) ← if (← s.lookupProjStmt.step) then do
-      let projModName ← s.lookupProjStmt.columnText 0
-      let projPos ← s.lookupProjStmt.columnInt64 1
-      done s.lookupProjStmt
-      let doc ← s.loadDocstring projModName projPos
-      let attrs ← s.loadAttrs projModName projPos
-      let declRange ← s.loadDeclarationRange projModName projPos
-      let render ← do
-        s.lookupRenderStmt.bind 1 projModName
-        s.lookupRenderStmt.bind 2 projPos
-        let r ← if (← s.lookupRenderStmt.step) then
-          pure ((← s.lookupRenderStmt.columnInt64 0) != 0)
+    let isDirect := (← stmt.columnInt64 3) != 0
+    -- Columns 4-14 come from LEFT JOINs on name_info, markdown_docstrings, verso_docstrings, declaration_ranges
+    let projFound := (← stmt.columnType 4) != .null
+    let (doc, attrs, declRange, render) ← if projFound then do
+      let projModName ← stmt.columnText 4
+      let projPos ← stmt.columnInt64 5
+      let render := (← stmt.columnInt64 6) != 0
+      let doc ← do
+        if (← stmt.columnType 7) != .null then
+          pure <| some <| Sum.inl (← stmt.columnText 7)
+        else if (← stmt.columnType 8) != .null then
+          let blob ← stmt.columnBlob 8
+          have := versoDocStringFromBinary s.values
+          match fromBinary blob with
+          | .ok doc => pure <| some <| Sum.inr doc
+          | .error e => throw <| IO.userError s!"Failed to deserialize VersoDocString: {e}"
         else
-          pure true
-        done s.lookupRenderStmt
-        pure r
+          pure none
+      let declRange ← if (← stmt.columnType 9) != .null then
+        pure <| some {
+          pos := ⟨(← stmt.columnInt64 9).toNatClampNeg, (← stmt.columnInt64 10).toNatClampNeg⟩
+          charUtf16 := (← stmt.columnInt64 11).toNatClampNeg
+          endPos := ⟨(← stmt.columnInt64 12).toNatClampNeg, (← stmt.columnInt64 13).toNatClampNeg⟩
+          endCharUtf16 := (← stmt.columnInt64 14).toNatClampNeg
+        }
+      else
+        pure none
+      let attrs ← s.loadAttrs projModName projPos
       pure (doc, attrs, declRange, render)
-    else do
-      done s.lookupProjStmt
+    else
       pure (none, #[], none, true)
     let args ← s.loadStructureFieldArgs moduleName position fieldSeq
     fields := fields.push {
       name, type, doc, args, declarationRange := declRange.getD default,
       attrs, render, isDirect
     }
-  done s.loadFieldsStmt
+  done stmt
   return fields
 
 open Lean SQLite.Blob in

@@ -154,6 +154,9 @@ CREATE TABLE IF NOT EXISTS name_info (
   FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
 );
 
+-- Index for lookups by declaration name (e.g. structure field projection lookups)
+CREATE INDEX IF NOT EXISTS idx_name_info_name ON name_info(name);
+
 CREATE TABLE IF NOT EXISTS axioms (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
