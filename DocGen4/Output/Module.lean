@@ -12,7 +12,6 @@ import DocGen4.Output.Instance
 import DocGen4.Output.ClassInductive
 import DocGen4.Output.DocString
 import DocGen4.Process
-import Lean.Data.Xml.Parser
 
 namespace DocGen4
 namespace Output
