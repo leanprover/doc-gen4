@@ -345,7 +345,8 @@ def generateHtmlDocs (rootMods : Array Module) (description : String) : FetchM (
     basePath / "find" / "index.html",
     basePath / "find" / "find.js"
   ]
-  let rootNames := rootMods.map (·.name)
+  let coreRoots := #[`Init, `Std, `Lake, `Lean]
+  let rootNames := rootMods.map (·.name) ++ coreRoots
   let manifestFile := buildDir / "doc-manifest.json"
   coreJob.bindM fun _ => do
     docInfoJobs.bindM fun _ => do
