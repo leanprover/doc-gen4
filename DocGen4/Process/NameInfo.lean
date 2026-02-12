@@ -56,14 +56,12 @@ def getDocString? (env : Environment) (name : Name) : IO (Option (String ⊕ Ver
   let name := alternativeOfTactic env name |>.getD name
   match (← findInternalDocString? env name) with
   | none => return none
-  | some (.inl markdown) =>
-    let exts := getTacticExtensionString env name
-    let spellings := getRecommendedSpellingString env name
-    return some <| .inl <| markdown ++ exts ++ spellings
   | some (.inr verso) =>
     let exts := getTacticExtensionText env name |>.map (#[·]) |>.getD #[]
     let spellings := getRecommendedSpellingText env name |>.map (#[·]) |>.getD #[]
     return some <| .inr <| { verso with text := verso.text ++ exts ++ spellings }
+  | some (.inl _) =>
+    return (·.map .inl) (← Lean.findDocString? env name)
 
 
 def NameInfo.ofTypedName (n : Name) (t : Expr) : MetaM NameInfo := do
