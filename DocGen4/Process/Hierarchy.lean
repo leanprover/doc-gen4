@@ -77,48 +77,5 @@ partial def insert! (h : Hierarchy) (n : Name) : Hierarchy := Id.run do
 partial def fromArray (names : Array Name) : Hierarchy :=
   names.foldl insert! (empty anonymous false)
 
-def baseDirBlackList : Std.HashSet String :=
-  Std.HashSet.ofList [
-    "404.html",
-    "color-scheme.js",
-    "declaration-data.js",
-    "declarations",
-    "expand-nav.js",
-    "find",
-    "foundational_types.html",
-    "how-about.js",
-    "index.html",
-    "jump-src.js",
-    "mathjax-config.js",
-    "navbar.html",
-    "nav.js",
-    "search.html",
-    "search.js",
-    "src",
-    "style.css",
-    "favicon.svg",
-    "tactics.html",
-  ]
-
-partial def fromDirectoryAux (dir : System.FilePath) (previous : Name) : IO (Array Name) := do
-  let mut children := #[]
-  for entry in ← System.FilePath.readDir dir do
-    if ← entry.path.isDir then
-      children := children ++ (← fromDirectoryAux entry.path (.str previous entry.fileName))
-    else if entry.path.extension = some "html" then
-      children := children.push <| .str previous (entry.fileName.dropEnd ".html".length).copy
-  return children
-
-def fromDirectory (dir : System.FilePath) : IO Hierarchy := do
-    let mut children := #[]
-    for entry in ← System.FilePath.readDir dir do
-      if baseDirBlackList.contains entry.fileName then
-        continue
-      else if ← entry.path.isDir then
-        children := children ++ (← fromDirectoryAux entry.path (.mkSimple entry.fileName))
-      else if entry.path.extension = some "html" then
-        children := children.push <| .mkSimple (entry.fileName.dropEnd ".html".length).copy
-    return Hierarchy.fromArray children
-
 end Hierarchy
 end DocGen4

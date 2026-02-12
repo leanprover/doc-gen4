@@ -22,13 +22,15 @@ open Lean.Elab.Tactic.Doc
 /-- Represents a non-verso docstring; these will be rendered using `Output.docStringToHtml`. -/
 abbrev MarkdownDocstring := String
 
+deriving instance Hashable for ModuleDoc
+
 /--
 Member of a module, either a declaration or some module doc string.
 -/
 inductive ModuleMember where
 | docInfo (info : DocInfo) : ModuleMember
 | modDoc (doc : ModuleDoc) : ModuleMember
-deriving Inhabited
+deriving Inhabited, Hashable
 
 /-- Information about a tactic declaration which will be rendered on the Tactics page.
 
@@ -47,7 +49,7 @@ structure TacticInfo (textType : Type) where
   docString : textType
   /-- Name of the module where the tactic is declared. -/
   definingModule : Name
-deriving FromJson, ToJson
+deriving FromJson, ToJson, Hashable
 
 /--
 A Lean module.
@@ -66,7 +68,7 @@ structure Module where
   Tactics declared in this module.
   -/
   tactics : Array (TacticInfo MarkdownDocstring)
-  deriving Inhabited
+  deriving Inhabited, Hashable
 
 /--
 The result of running a full doc-gen analysis on a project.
@@ -102,9 +104,9 @@ def getName : ModuleMember → Name
 | docInfo i => i.getName
 | modDoc _ => Name.anonymous
 
-def getDocString : ModuleMember → Option String
+def getDocString : ModuleMember → Option (String ⊕ VersoDocString)
 | docInfo i => i.getDocString
-| modDoc i => i.doc
+| modDoc i => some (.inl i.doc)
 
 def shouldRender : ModuleMember → Bool
 | docInfo i => i.shouldRender
@@ -160,7 +162,7 @@ def mkOptions : IO DocGenOptions := do
 Run the doc-gen analysis on all modules that are loaded into the `Environment`
 of this `MetaM` run and mentioned by the `AnalyzeTask`.
 -/
-def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
+def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
   let env ← getEnv
   let allModules := env.header.moduleNames
   let relevantModules :=
@@ -210,13 +212,11 @@ def process (task : AnalyzeTask) : MetaM (AnalyzerResult × Hierarchy) := do
   for (moduleName, module) in res.toArray do
     res := res.insert moduleName {module with members := module.members.qsort ModuleMember.order}
 
-  let hierarchy := Hierarchy.fromArray allModules
-  let analysis := {
+  return {
     name2ModIdx := env.const2ModIdx,
     moduleNames := allModules,
     moduleInfo := res,
   }
-  return (analysis, hierarchy)
 
 def filterDocInfo (ms : Array ModuleMember) : Array DocInfo :=
   ms.filterMap filter

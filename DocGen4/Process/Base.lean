@@ -5,6 +5,7 @@ Authors: Henrik Böving
 -/
 
 import Lean
+import DocGen4.RenderedCode
 
 namespace DocGen4.Process
 open Lean Widget Meta
@@ -13,6 +14,42 @@ structure DocGenOptions where
   genEquations : Bool := true
 
 abbrev AnalyzeM : Type → Type := ReaderT DocGenOptions MetaM
+
+-- BOGUS INSTANCE: good enough for here, though
+local instance : Hashable ElabInline := ⟨fun x => hash x.name⟩
+
+-- BOGUS INSTANCE: good enough for here, though
+local instance : Hashable ElabBlock := ⟨fun x => hash x.name⟩
+
+deriving instance Hashable for Doc.Inline
+
+deriving instance Hashable for Doc.ListItem
+
+deriving instance Hashable for Doc.DescItem
+
+deriving instance Hashable for Doc.Block
+
+deriving instance Hashable for Doc.Part
+
+instance : Hashable Empty := ⟨nofun⟩
+
+instance : Hashable VersoDocString where
+  hash x := mixHash (hash x.text) (hash x.subsections)
+
+deriving instance Hashable for Sum
+
+deriving instance Hashable for Position
+
+deriving instance Hashable for DeclarationRange
+
+def versoDocToMarkdown (v : VersoDocString) : String :=
+  let { text, subsections } := v
+  Doc.MarkdownM.run' do
+    for b in text do
+      Doc.ToMarkdown.toMarkdown b
+    for p in subsections do
+      Doc.ToMarkdown.toMarkdown p
+
 
 /--
 Stores information about a typed name.
@@ -25,12 +62,12 @@ structure NameInfo where
   /--
   The pretty printed type of this name.
   -/
-  type : CodeWithInfos
+  type : RenderedCode
   /--
   The doc string of the name if it exists.
   -/
-  doc : Option String
-  deriving Inhabited
+  doc : Option (String ⊕ VersoDocString)
+  deriving Inhabited, Hashable
 
 /--
 An argument to a declaration, e.g. the `(x : Nat)` in `def foo (x : Nat) := x`.
@@ -39,11 +76,12 @@ structure Arg where
   /--
   The pretty printed binder syntax itself.
   -/
-  binder : CodeWithInfos
+  binder : RenderedCode
   /--
   Whether the binder is implicit.
   -/
   implicit : Bool
+  deriving Hashable
 
 /--
 A base structure for information about a declaration.
@@ -69,20 +107,22 @@ structure Info extends NameInfo where
   Whether this info item should be rendered
   -/
   render : Bool := true
-  deriving Inhabited
+  deriving Inhabited, Hashable
 
 /--
 Information about an `axiom` declaration.
 -/
 structure AxiomInfo extends Info where
   isUnsafe : Bool
-  deriving Inhabited
+  deriving Inhabited, Hashable
 
 /--
 Information about a `theorem` declaration.
 -/
 structure TheoremInfo extends Info
-  deriving Inhabited
+  deriving Inhabited, Hashable
+
+deriving instance Hashable for DefinitionSafety
 
 /--
 Information about an `opaque` declaration.
@@ -93,7 +133,12 @@ structure OpaqueInfo extends Info where
   since the actual definition for a partial def is hidden behind an inaccessible value.
   -/
   definitionSafety : DefinitionSafety
-  deriving Inhabited
+  deriving Inhabited, Hashable
+
+deriving instance Hashable for ReducibilityHints
+
+/-- The maximum string length of equations before they are omitted from rendering. -/
+def equationLimit : Nat := 200
 
 /--
 Information about a `def` declaration, note that partial defs are handled by `OpaqueInfo`.
@@ -101,9 +146,10 @@ Information about a `def` declaration, note that partial defs are handled by `Op
 structure DefinitionInfo extends Info where
   isUnsafe : Bool
   hints : ReducibilityHints
-  equations : Option (Array CodeWithInfos)
+  equations : Option (Array RenderedCode)
+  equationsWereOmitted : Bool := false
   isNonComputable : Bool
-  deriving Inhabited
+  deriving Inhabited, Hashable
 
 /--
 Information about an `instance` declaration.
@@ -111,7 +157,7 @@ Information about an `instance` declaration.
 structure InstanceInfo extends DefinitionInfo where
   className : Name
   typeNames : Array Name
-  deriving Inhabited
+  deriving Inhabited, Hashable
 
 /--
 Information about a constructor of an inductive type
@@ -127,7 +173,7 @@ structure InductiveInfo extends Info where
   -/
   ctors : List ConstructorInfo
   isUnsafe : Bool
-  deriving Inhabited
+  deriving Inhabited, Hashable
 
 /--
 Stores information about a structure field.
@@ -137,6 +183,7 @@ structure FieldInfo extends Info where
   Whether or not this field is new to this structure, or instead whether it was inherited from a parent.
   -/
   isDirect : Bool
+  deriving Hashable
 
 /--
 Information about a `structure` parent.
@@ -145,7 +192,8 @@ structure StructureParentInfo where
   /-- Name of the projection function. -/
   projFn : Name
   /-- Pretty printed type. -/
-  type : CodeWithInfos
+  type : RenderedCode
+  deriving Hashable
 
 /--
 Information about a `structure` declaration.
@@ -163,7 +211,7 @@ structure StructureInfo extends Info where
   The constructor of the structure.
   -/
   ctor : NameInfo
-  deriving Inhabited
+  deriving Inhabited, Hashable
 
 /--
 Information about a `class` declaration.
@@ -190,12 +238,24 @@ inductive DocInfo where
 | classInfo (info : ClassInfo) : DocInfo
 | classInductiveInfo (info : ClassInductiveInfo) : DocInfo
 | ctorInfo (info : ConstructorInfo) : DocInfo
-  deriving Inhabited
+  deriving Inhabited, Hashable
+
+def DocInfo.toInfo : DocInfo → Info
+  | .axiomInfo info => info.toInfo
+  | .theoremInfo info => info.toInfo
+  | .opaqueInfo info => info.toInfo
+  | .definitionInfo info => info.toInfo
+  | .instanceInfo info => info.toInfo
+  | .inductiveInfo info => info.toInfo
+  | .structureInfo info => info.toInfo
+  | .classInfo info => info.toInfo
+  | .classInductiveInfo info => info.toInfo
+  | .ctorInfo info => info
 
 /--
-Turns an `Expr` into a pretty printed `CodeWithInfos`.
+Turns an `Expr` into a pretty printed `RenderedCode`.
 -/
-def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
+def prettyPrintTerm (expr : Expr) : MetaM RenderedCode := do
   let ⟨fmt, infos⟩ ← PrettyPrinter.ppExprWithInfos expr
   let tt := TaggedText.prettyTagged fmt
   let ctx := {
@@ -207,7 +267,7 @@ def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
     fileMap := default,
     ngen := ← getNGen
   }
-  tagCodeInfos ctx infos tt
+  return renderTagged (← tagCodeInfos ctx infos tt)
 
 def isInstance (declName : Name) : MetaM Bool := do
   return (instanceExtension.getState (← getEnv)).instanceNames.contains declName

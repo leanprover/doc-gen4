@@ -57,7 +57,7 @@ def getKind : DocInfo → String
 | classInductiveInfo _ => "class"
 | ctorInfo _ => "ctor" -- TODO: kind ctor support in js
 
-def getType : DocInfo → CodeWithInfos
+def getType : DocInfo → RenderedCode
 | axiomInfo i => i.type
 | theoremInfo i => i.type
 | opaqueInfo i => i.type
@@ -105,7 +105,7 @@ def getAttrs : DocInfo → Array String
 | classInductiveInfo i => i.attrs
 | ctorInfo i => i.attrs
 
-def getDocString : DocInfo → Option String
+def getDocString : DocInfo → Option (String ⊕ VersoDocString)
 | axiomInfo i => i.doc
 | theoremInfo i => i.doc
 | opaqueInfo i => i.doc
@@ -117,6 +117,11 @@ def getDocString : DocInfo → Option String
 | classInductiveInfo i => i.doc
 | ctorInfo i => i.doc
 
+def getMarkdownDocString (i : DocInfo) : Option String :=
+  i.getDocString.map fun
+    | .inl md => md
+    | .inr v => versoDocToMarkdown v
+
 def shouldRender : DocInfo → Bool
 | axiomInfo i => i.render
 | theoremInfo i => i.render
@@ -127,9 +132,26 @@ def shouldRender : DocInfo → Bool
 | structureInfo i => i.render
 | classInfo i => i.render
 | classInductiveInfo i => i.render
-| ctorInfo i => i.render
+| ctorInfo _ => false  -- Constructors are rendered as part of their parent inductive
+
+def isCtorInfo : DocInfo → Bool
+| ctorInfo _ => true
+| _ => false
+
+/-- Returns `true` if `declName` is a field projection or a parent projection for a structure. -/
+def isProjFn (declName : Name) : MetaM Bool := do
+  let env ← getEnv
+  match declName with
+  | Name.str parent name =>
+    let some si := getStructureInfo? env parent | return false
+    return getProjFnForField? env parent (Name.mkSimple name) == declName
+      || (si.parentInfo.any fun pi => pi.projFn == declName)
+  | _ => return false
 
 def isBlackListed (declName : Name) : MetaM Bool := do
+  -- Don't blacklist projection functions - we need them for structure field references
+  if ← isProjFn declName then
+    return false
   match ← findDeclarationRanges? declName with
   | some _ =>
     let env ← getEnv
@@ -141,16 +163,6 @@ def isBlackListed (declName : Name) : MetaM Bool := do
     <||> isMatcher declName
   -- TODO: Evaluate whether filtering out declarations without range is sensible
   | none => return true
-
-/-- Returns `true` if `declName` is a field projection or a parent projection for a structure. -/
-def isProjFn (declName : Name) : MetaM Bool := do
-  let env ← getEnv
-  match declName with
-  | Name.str parent name =>
-    let some si := getStructureInfo? env parent | return false
-    return getProjFnForField? env parent (Name.mkSimple name) == declName
-      || (si.parentInfo.any fun pi => pi.projFn == declName)
-  | _ => return false
 
 def ofConstant : (Name × ConstantInfo) → AnalyzeM (Option DocInfo) :=
   fun (name, info) => do

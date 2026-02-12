@@ -31,7 +31,7 @@ def structureInfoHeader (s : Process.StructureInfo) : HtmlM (Array Html) := do
     for parent in s.parents, i in [0:s.parents.size] do
       if i > 0 then
         parents := parents.push (Html.text ", ")
-      parents := parents ++ (← infoFormatToHtml parent.type)
+      parents := parents ++ (← renderedCodeToHtml parent.type)
     nodes := nodes ++ parents
   return nodes
 
@@ -56,7 +56,7 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   | _ => nodes := nodes
 
   nodes := nodes.push <| Html.element "span" true #[("class", "decl_args")] #[" :"]
-  nodes := nodes.push <div class="decl_type">[← infoFormatToHtml doc.getType]</div>
+  nodes := nodes.push <div class="decl_type">[← renderedCodeToHtml doc.getType]</div>
   return <div class="decl_header"> [nodes] </div>
 
 /--
@@ -116,7 +116,7 @@ as HTML.
 def modDocToHtml (mdoc : ModuleDoc) : HtmlM Html := do
   pure
     <div class="mod_doc">
-      [← docStringToHtml mdoc.doc ""]
+      [← docStringToHtml (.inl mdoc.doc) ""]
     </div>
 
 /--
