@@ -377,6 +377,7 @@ def openForReading (dbFile : System.FilePath) (values : DocstringValues) : IO DB
     getModuleSourceUrls := readOps.getModuleSourceUrls,
     getModuleImports := readOps.getModuleImports,
     buildName2ModIdx := readOps.buildName2ModIdx,
+    buildRenderedNames := readOps.buildRenderedNames,
     loadModule := readOps.loadModule,
     loadAllTactics := readOps.loadAllTactics,
   }
@@ -391,13 +392,15 @@ structure LinkingContext where
   moduleNames : Array Name
   sourceUrls : Std.HashMap Name String
   name2ModIdx : Std.HashMap Name ModuleIdx
+  renderedNames : Std.HashSet Name
 
 /-- Load the linking context from the database. -/
 def DB.loadLinkingContext (db : DB) : IO LinkingContext := do
   let moduleNames ← db.getModuleNames
   let sourceUrls ← db.getModuleSourceUrls
   let name2ModIdx ← db.buildName2ModIdx moduleNames
-  return { moduleNames, sourceUrls, name2ModIdx }
+  let renderedNames ← db.buildRenderedNames
+  return { moduleNames, sourceUrls, name2ModIdx, renderedNames }
 
 /--
 Get transitive closure of imports for given modules using recursive CTE.
