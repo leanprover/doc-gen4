@@ -179,7 +179,7 @@ The main entry point to rendering the HTML for an entire module.
 def moduleToHtml (module : Process.Module) : HtmlM Html := withTheReader SiteBaseContext (setCurrentName module.name) do
   let relevantMembers := module.members.filter Process.ModuleMember.shouldRender
   let memberDocs ← relevantMembers.mapM (moduleMemberToHtml module.name)
-  let memberNames := filterDocInfo relevantMembers |>.map DocInfo.getName
+  let memberNames := filterDocInfo relevantMembers.iter |>.map DocInfo.getName |>.toArray
   templateLiftExtends (baseHtmlGenerator module.name.toString) <| pure #[
     ← internalNav memberNames module.name,
     Html.element "main" false #[] memberDocs

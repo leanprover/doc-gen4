@@ -218,10 +218,10 @@ def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
     moduleInfo := res,
   }
 
-def filterDocInfo (ms : Array ModuleMember) : Array DocInfo :=
-  ms.filterMap filter
-  where
-    filter : ModuleMember → Option DocInfo
+open Std (Iterator Iter)
+
+def filterDocInfo [Iterator α Id ModuleMember] (ms : @Iter α ModuleMember) :=
+  ms.filterMap fun
     | ModuleMember.docInfo i => some i
     | _ => none
 

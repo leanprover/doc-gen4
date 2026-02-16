@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import json
 import re
+import sqlite3
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -263,6 +265,17 @@ def allow_unwrap_broken_link(ctx: DiffContext) -> str | None:
     return None
 
 
+def _lean_file_hrefs_equivalent(href1: str, href2: str) -> bool:
+    """Check if two file:/// .lean hrefs are equivalent up to temp dir prefix."""
+    if not href1.startswith("file:///") or not href2.startswith("file:///"):
+        return False
+    if not href1.endswith(".lean") or not href2.endswith(".lean"):
+        return False
+    if "/.lake/" not in href1 or "/.lake/" not in href2:
+        return False
+    return href1[href1.find("/.lake/"):] == href2[href2.find("/.lake/"):]
+
+
 def _check_href_valid(href: str, file_path: str, targets: set[str]) -> bool:
     """Check if an href target exists in the given target set."""
     if not href:
@@ -347,6 +360,157 @@ def allow_span_fn_to_link(ctx: DiffContext) -> str | None:
     return None
 
 
+def allow_lean_file_href_change(ctx: DiffContext) -> str | None:
+    """Allow href changes on file:/// URLs to .lean files if they match from .lake onwards."""
+    if ctx.diff_type != "attribute" or ctx.attribute_name != "href":
+        return None
+    old_val = str(ctx.old_value or "")
+    new_val = str(ctx.new_value or "")
+    if not old_val.startswith("file:///") or not new_val.startswith("file:///"):
+        return None
+    if not old_val.endswith(".lean") or not new_val.endswith(".lean"):
+        return None
+    # Compare from .lake onwards
+    old_suffix = old_val[old_val.find("/.lake/"):] if "/.lake/" in old_val else old_val
+    new_suffix = new_val[new_val.find("/.lake/"):] if "/.lake/" in new_val else new_val
+    if old_suffix == new_suffix:
+        return "file:/// .lean href differs only in temp directory prefix"
+    return None
+
+
+# DB-backed declaration source position data, loaded via --db flag.
+# Maps (module_name, decl_name) → (start_line, start_column).
+_db_decl_positions: dict[tuple[str, str], tuple[int, int]] = {}
+
+
+def load_db_decl_positions(db_path: Path) -> dict[tuple[str, str], tuple[int, int]]:
+    """Load declaration source positions from the doc-gen4 SQLite database."""
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.execute(
+        "SELECT n.module_name, n.name, r.start_line, r.start_column "
+        "FROM name_info n JOIN declaration_ranges r "
+        "USING (module_name, position)"
+    )
+    result = {}
+    for module_name, name, start_line, start_column in cursor:
+        result[(module_name, name)] = (start_line, start_column)
+    conn.close()
+    return result
+
+
+def _file_path_to_module(file_path: str) -> str:
+    """Convert HTML file path to Lean module name (e.g. 'Init/Core.html' → 'Init.Core')."""
+    return file_path.removesuffix(".html").replace("/", ".")
+
+
+def _find_enclosing_decl(elem: Tag | None, ancestors: list[Tag]) -> Tag | None:
+    """Find the enclosing <div class='decl'> from an element or its ancestors."""
+    if elem and isinstance(elem, Tag) and elem.name == "div" and "decl" in elem.get("class", []):
+        return elem
+    for a in ancestors:
+        if isinstance(a, Tag) and a.name == "div" and "decl" in a.get("class", []):
+            return a
+    return None
+
+
+def _extract_decl_name_from_context(elem: Tag | None, ancestors: list[Tag]) -> str | None:
+    """Extract declaration name from either a <div class='decl'> or an <a href='#name'> context."""
+    # Check for enclosing <div class='decl'>
+    decl = _find_enclosing_decl(elem, ancestors)
+    if decl is not None:
+        return decl.get("id")
+
+    # Check if the element itself is (or contains) a link with a fragment-only href
+    if elem and isinstance(elem, Tag):
+        a = elem if elem.name == "a" else elem.find("a")
+        if a:
+            href = a.get("href", "")
+            if isinstance(href, str) and href.startswith("#"):
+                return href[1:]
+
+    # Check ancestors for <a> with fragment href (handles children of nav links)
+    for a in ancestors:
+        if isinstance(a, Tag) and a.name == "a":
+            href = a.get("href", "")
+            if isinstance(href, str) and href.startswith("#"):
+                return href[1:]
+
+    return None
+
+
+def allow_reorder_same_source_position(ctx: DiffContext) -> str | None:
+    """Accept diffs caused by reordering declarations that share the same source position.
+
+    Uses the doc-gen4 database (loaded via --db) to look up the actual source line/column
+    for each declaration. If two swapped declarations originate from the same source position,
+    their ordering is non-deterministic and the diff is acceptable.
+
+    Handles both declaration bodies (<div class='decl'>) and navigation links (<a href='#name'>).
+    """
+    if not _db_decl_positions:
+        return None
+
+    old_name = _extract_decl_name_from_context(ctx.old_elem, ctx.old_ancestors)
+    new_name = _extract_decl_name_from_context(ctx.new_elem, ctx.new_ancestors)
+
+    if not old_name or not new_name:
+        return None
+
+    # Same declaration, not a reordering
+    if old_name == new_name:
+        return None
+
+    module = _file_path_to_module(ctx.file_path)
+    old_pos = _db_decl_positions.get((module, str(old_name)))
+    new_pos = _db_decl_positions.get((module, str(new_name)))
+
+    if old_pos and new_pos and old_pos == new_pos:
+        return f"reordering of declarations at same source position (line {old_pos[0]})"
+
+    return None
+
+
+def allow_empty_equations_removal(ctx: DiffContext) -> str | None:
+    """Accept diffs caused by removal of empty equations sections (no equation items).
+
+    The empty <details><summary>Equations</summary><ul class="equations"></ul></details>
+    gets removed in the new version. Because the diff tool matches elements positionally,
+    this shows up as attribute/text diffs (old Equations paired with next sibling) rather
+    than a clean element_removed.
+    """
+
+    def is_empty_equations_details(elem: Tag) -> bool:
+        """Check if elem is <details> with Equations summary and no <li> items."""
+        if not isinstance(elem, Tag) or elem.name != "details":
+            return False
+        summary = elem.find("summary")
+        if not summary or summary.get_text(strip=True) != "Equations":
+            return False
+        eq_list = elem.find("ul", class_="equations")
+        if eq_list is None:
+            return True  # No list at all
+        return len(eq_list.find_all("li", recursive=False)) == 0
+
+    # Check old element and its ancestors for an empty equations <details>
+    if ctx.old_elem and is_empty_equations_details(ctx.old_elem):
+        return "removal of empty equations section"
+    for ancestor in ctx.old_ancestors:
+        if is_empty_equations_details(ancestor):
+            return "removal of empty equations section"
+
+    # Handle cascading positional shift: when an empty equations <details> is removed,
+    # the next sibling shifts position and appears as "element_removed" at the end.
+    # Check if any sibling in the old parent was an empty equations <details>.
+    if ctx.diff_type == "element_removed" and ctx.old_ancestors:
+        old_parent = ctx.old_ancestors[0]
+        if isinstance(old_parent, Tag):
+            for sibling in old_parent.children:
+                if isinstance(sibling, Tag) and is_empty_equations_details(sibling):
+                    return "cascading from removal of empty equations section"
+
+    return None
+
+
 def allow_duplicate_li_removal_in_imports(ctx: DiffContext) -> str | None:
     """Allow changes inside <div class='imports'> that remove duplicate <li> elements."""
     if not ctx.has_ancestor("div.imports"):
@@ -389,12 +553,15 @@ def allow_duplicate_li_removal_in_imports(ctx: DiffContext) -> str | None:
 # Note: <code> elements are handled specially by compare_code_elements() in compare_trees()
 # These rules handle differences outside of <code> elements
 RULES: list[Rule] = [
+    allow_lean_file_href_change,
     allow_href_change_if_old_broken,
     allow_a_to_span_if_broken,
     allow_span_fn_to_link,
     allow_unwrap_broken_link,
     allow_added_link_with_valid_target,
+    allow_empty_equations_removal,
     allow_duplicate_li_removal_in_imports,
+    allow_reorder_same_source_position,
 ]
 
 
@@ -458,8 +625,12 @@ def compare_directories(
 # Regex patterns for extracting link targets (faster than full HTML parsing)
 # Require attributes to be inside complete HTML tags: <tagname ... id="value" ...>
 # Use non-greedy [^>]*? to match the first id/name attribute in the tag
-ID_PATTERN = re.compile(r'<\w[^>]*?\bid=["\']([^"\']+)["\'][^>]*>', re.IGNORECASE)
-NAME_PATTERN = re.compile(r'<\w[^>]*?\bname=["\']([^"\']+)["\'][^>]*>', re.IGNORECASE)
+# Two patterns per attribute: one for double-quoted, one for single-quoted values,
+# so that a ' inside id="foo'" is captured correctly.
+ID_PATTERN_DQ = re.compile(r'<\w[^>]*?\bid="([^"]+)"[^>]*>', re.IGNORECASE)
+ID_PATTERN_SQ = re.compile(r"<\w[^>]*?\bid='([^']+)'[^>]*>", re.IGNORECASE)
+NAME_PATTERN_DQ = re.compile(r'<\w[^>]*?\bname="([^"]+)"[^>]*>', re.IGNORECASE)
+NAME_PATTERN_SQ = re.compile(r"<\w[^>]*?\bname='([^']+)'[^>]*>", re.IGNORECASE)
 
 
 def extract_targets_from_file(directory: Path, rel_path: str) -> set[str]:
@@ -471,11 +642,15 @@ def extract_targets_from_file(directory: Path, rel_path: str) -> set[str]:
         content = file_path.read_text(encoding="utf-8", errors="replace")
 
         # Extract id attributes
-        for match in ID_PATTERN.finditer(content):
+        for match in ID_PATTERN_DQ.finditer(content):
+            targets.add(f"{rel_path}#{match.group(1)}")
+        for match in ID_PATTERN_SQ.finditer(content):
             targets.add(f"{rel_path}#{match.group(1)}")
 
         # Extract name attributes
-        for match in NAME_PATTERN.finditer(content):
+        for match in NAME_PATTERN_DQ.finditer(content):
+            targets.add(f"{rel_path}#{match.group(1)}")
+        for match in NAME_PATTERN_SQ.finditer(content):
             targets.add(f"{rel_path}#{match.group(1)}")
 
     except Exception as e:
@@ -551,6 +726,9 @@ def compare_code_elements(
                     old_href = str(old_w.get('href', ''))
                     new_href = str(new_w.get('href', ''))
                     if old_href == new_href:
+                        return True
+                    # Allow file:/// .lean hrefs that match from .lake onwards
+                    if _lean_file_hrefs_equivalent(old_href, new_href):
                         return True
                     # Allow href change if new link is valid (old can be valid or broken)
                     return _check_href_valid(new_href, file_path, new_targets)
@@ -636,24 +814,23 @@ def compare_code_elements(
 
     # Main loop: consume text from both sides, verifying wrappers match
     while True:
-        # Get more text if needed
+        # Strip leading whitespace, then get more text if needed.
+        # We loop because fetched text may be whitespace-only (e.g., " " between tags).
+        old_text = old_text.lstrip()
         while not old_text and old_stack:
             text, tag, done = advance(old_stack)
             if text:
-                old_text = text
+                old_text = text.lstrip()
             elif done:
                 break
 
+        new_text = new_text.lstrip()
         while not new_text and new_stack:
             text, tag, done = advance(new_stack)
             if text:
-                new_text = text
+                new_text = text.lstrip()
             elif done:
                 break
-
-        # Strip leading whitespace from both
-        old_text = old_text.lstrip()
-        new_text = new_text.lstrip()
 
         # Check for completion
         if not old_text and not new_text:
@@ -949,6 +1126,144 @@ def compare_trees(
     return differences
 
 
+def compare_tactics_page(
+    old_soup: BeautifulSoup,
+    new_soup: BeautifulSoup,
+    file_path: str,
+    old_targets: set[str],
+    new_targets: set[str],
+) -> list[Difference] | None:
+    """Semantic comparison for tactics.html.
+
+    Instead of positional comparison (which produces spurious diffs when
+    same-userName tactics are reordered), this:
+    1. Matches tactic entries by internalName (the div id)
+    2. Compares matched pairs with normal tree comparison + rules
+    3. Verifies both pages are sorted by userName
+    4. Ignores ordering within the same userName group
+
+    Returns a list of Differences, or None to fall through to normal comparison.
+    """
+    old_main = (old_soup.body or old_soup).find("main")
+    new_main = (new_soup.body or new_soup).find("main")
+    if old_main is None or new_main is None:
+        return None
+
+    def extract_tactic_divs(main_elem: Tag) -> dict[str, Tag]:
+        """Extract {internalName: div} from tactic divs."""
+        result: dict[str, Tag] = {}
+        for div in main_elem.find_all("div", id=True, recursive=False):
+            if div.find("h2") is not None:
+                result[div.get("id", "")] = div
+        return result
+
+    def get_user_names_in_order(main_elem: Tag) -> list[str]:
+        """Get userName sequence from tactic divs."""
+        return [h2.get_text(strip=True)
+                for div in main_elem.find_all("div", id=True, recursive=False)
+                if (h2 := div.find("h2")) is not None]
+
+    old_divs = extract_tactic_divs(old_main)
+    new_divs = extract_tactic_divs(new_main)
+
+    # Must have the same set of tactic entries
+    if set(old_divs.keys()) != set(new_divs.keys()):
+        return None
+
+    # Both must be sorted by userName (ignoring order within same userName)
+    old_names = get_user_names_in_order(old_main)
+    new_names = get_user_names_in_order(new_main)
+    if sorted(old_names) != old_names or sorted(new_names) != new_names:
+        return None
+
+    # Compare matched tactic entries by internalName using normal tree comparison
+    differences: list[Difference] = []
+    for internal_name, old_div in old_divs.items():
+        new_div = new_divs[internal_name]
+        diffs = compare_trees(
+            old_div, new_div, file_path,
+            [old_main], [new_main],
+            old_targets, new_targets,
+        )
+        differences.extend(diffs)
+
+    # Compare non-tactic children of <main> (the intro paragraph etc.) positionally
+    old_non_tactic = [c for c in get_significant_children(old_main)
+                      if not (isinstance(c, Tag) and c.name == "div" and c.get("id") and c.find("h2"))]
+    new_non_tactic = [c for c in get_significant_children(new_main)
+                      if not (isinstance(c, Tag) and c.name == "div" and c.get("id") and c.find("h2"))]
+    for i in range(max(len(old_non_tactic), len(new_non_tactic))):
+        old_child = old_non_tactic[i] if i < len(old_non_tactic) else None
+        new_child = new_non_tactic[i] if i < len(new_non_tactic) else None
+        differences.extend(compare_trees(
+            old_child, new_child, file_path,
+            [old_main], [new_main],
+            old_targets, new_targets,
+        ))
+
+    # Compare nav section: match nav links by href target rather than position
+    old_nav = (old_soup.body or old_soup).find("nav", class_="internal_nav")
+    new_nav = (new_soup.body or new_soup).find("nav", class_="internal_nav")
+    if old_nav and new_nav:
+        def extract_nav_entries(nav: Tag) -> dict[str, Tag]:
+            """Extract {href: <p> element} from nav links."""
+            result: dict[str, Tag] = {}
+            for p in nav.find_all("p", recursive=False):
+                a = p.find("a")
+                if a and a.get("href", "").startswith("#"):
+                    result[a["href"]] = p
+            return result
+
+        old_nav_entries = extract_nav_entries(old_nav)
+        new_nav_entries = extract_nav_entries(new_nav)
+
+        # Compare matched nav entries
+        for href in old_nav_entries:
+            if href in new_nav_entries:
+                diffs = compare_trees(
+                    old_nav_entries[href], new_nav_entries[href], file_path,
+                    [old_nav], [new_nav],
+                    old_targets, new_targets,
+                )
+                differences.extend(diffs)
+
+        # Report any entries only in one side
+        for href in set(old_nav_entries) - set(new_nav_entries):
+            differences.append(Difference(
+                file_path=file_path, diff_type="element_removed",
+                old_elem=old_nav_entries[href], new_elem=None,
+                old_ancestors=[old_nav], new_ancestors=[new_nav],
+            ))
+        for href in set(new_nav_entries) - set(old_nav_entries):
+            differences.append(Difference(
+                file_path=file_path, diff_type="element_added",
+                old_elem=None, new_elem=new_nav_entries[href],
+                old_ancestors=[old_nav], new_ancestors=[new_nav],
+            ))
+
+        # Compare the "return to top" link and any other non-<p> children
+        old_other = [c for c in get_significant_children(old_nav) if not (isinstance(c, Tag) and c.name == "p" and c.find("a"))]
+        new_other = [c for c in get_significant_children(new_nav) if not (isinstance(c, Tag) and c.name == "p" and c.find("a"))]
+        for i in range(max(len(old_other), len(new_other))):
+            oc = old_other[i] if i < len(old_other) else None
+            nc = new_other[i] if i < len(new_other) else None
+            differences.extend(compare_trees(oc, nc, file_path, [old_nav], [new_nav], old_targets, new_targets))
+
+    # Compare everything outside main and nav (rest of body)
+    old_body = old_soup.body or old_soup
+    new_body = new_soup.body or new_soup
+    old_rest = [c for c in get_significant_children(old_body)
+                if not (isinstance(c, Tag) and (c.name == "main" or (c.name == "nav" and "internal_nav" in c.get("class", []))))]
+    new_rest = [c for c in get_significant_children(new_body)
+                if not (isinstance(c, Tag) and (c.name == "main" or (c.name == "nav" and "internal_nav" in c.get("class", []))))]
+    for i in range(max(len(old_rest), len(new_rest))):
+        oc = old_rest[i] if i < len(old_rest) else None
+        nc = new_rest[i] if i < len(new_rest) else None
+        differences.extend(compare_trees(oc, nc, file_path, [], [], old_targets, new_targets))
+
+    return differences
+
+
 def compare_html_files(
     file_path: str,
     dir1: Path,
@@ -966,6 +1281,14 @@ def compare_html_files(
 
         old_soup = BeautifulSoup(old_content, PARSER)
         new_soup = BeautifulSoup(new_content, PARSER)
+
+        # Semantic comparison for tactics.html
+        if file_path == "tactics.html":
+            tactics_result = compare_tactics_page(old_soup, new_soup, file_path, old_targets, new_targets)
+            if tactics_result is not None:
+                result.differences = tactics_result
+                result.elapsed_ms = (time.perf_counter() - start_time) * 1000
+                return result
 
         # Compare from body if exists, otherwise from root
         old_body = old_soup.body or old_soup
@@ -1254,155 +1577,6 @@ def print_summary(
     log(f"  Files only in dir2: {files_only_in_dir2}")
 
 
-# =============================================================================
-# Main
-# =============================================================================
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Compare two HTML documentation directories",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument("dir1", type=Path, help="First documentation directory (old)")
-    parser.add_argument("dir2", type=Path, help="Second documentation directory (new)")
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Show accepted differences too"
-    )
-    parser.add_argument(
-        "-j",
-        "--jobs",
-        type=int,
-        default=8,
-        help="Number of parallel jobs (default: 8)",
-    )
-
-    args = parser.parse_args()
-
-    if not args.dir1.is_dir():
-        print(f"Error: {args.dir1} is not a directory", file=sys.stderr)
-        return 1
-
-    if not args.dir2.is_dir():
-        print(f"Error: {args.dir2} is not a directory", file=sys.stderr)
-        return 1
-
-    total_start = time.perf_counter()
-    log(f"Comparing {args.dir1} vs {args.dir2}")
-
-    # Step 1: Compare directory contents
-    step_start = time.perf_counter()
-    html_only_dir1, html_only_dir2, html_both, other_only_dir1, other_only_dir2 = compare_directories(
-        args.dir1, args.dir2
-    )
-    step_elapsed = (time.perf_counter() - step_start) * 1000
-
-    log(f"Scanning directories... ({step_elapsed:.1f}ms)")
-    log(f"  HTML files in both: {len(html_both)}")
-    log(f"  HTML files only in dir1: {len(html_only_dir1)}")
-    log(f"  HTML files only in dir2: {len(html_only_dir2)}")
-
-    # Step 2: Extract link targets
-    step_start = time.perf_counter()
-    all_html_dir1 = html_both | html_only_dir1
-    all_html_dir2 = html_both | html_only_dir2
-    old_targets = extract_link_targets(args.dir1, all_html_dir1, args.jobs)
-    new_targets = extract_link_targets(args.dir2, all_html_dir2, args.jobs)
-    step_elapsed = (time.perf_counter() - step_start) * 1000
-
-    log(f"Extracting link targets... ({step_elapsed:.1f}ms)")
-    log(f"  Targets in dir1: {len(old_targets)}")
-    log(f"  Targets in dir2: {len(new_targets)}")
-
-    # Report HTML files only in one directory (skip non-HTML files)
-    has_errors = False
-    files_only_dir1 = sorted(html_only_dir1)
-    files_only_dir2 = sorted(html_only_dir2)
-
-    if files_only_dir1:
-        log("\n" + "=" * 60)
-        log("FILES ONLY IN DIR1:")
-        log("=" * 60)
-        for f in files_only_dir1:
-            log(f"  {f}")
-        has_errors = True
-
-    if files_only_dir2:
-        log("\n" + "=" * 60)
-        log("FILES ONLY IN DIR2:")
-        log("=" * 60)
-        for f in files_only_dir2:
-            log(f"  {f}")
-        has_errors = True
-
-    # Step 3: Compare HTML files in parallel, printing results in deterministic order
-    log(f"\nComparing {len(html_both)} HTML files...")
-
-    total_rejected = 0
-    total_accepted = 0
-    files_with_diffs = 0
-    files_compared = 0
-
-    # Sort file paths for deterministic output order
-    sorted_files = sorted(html_both)
-    results_by_path: dict[str, FileComparisonResult] = {}
-    next_to_print = 0  # Index into sorted_files of next file to print
-
-    try:
-        with ThreadPoolExecutor(max_workers=args.jobs) as executor:
-            futures = {
-                executor.submit(
-                    compare_html_files, file_path, args.dir1, args.dir2, old_targets, new_targets
-                ): file_path
-                for file_path in sorted_files
-            }
-
-            for future in as_completed(futures):
-                file_path = futures[future]
-                result = future.result()
-                # Evaluate rules
-                result.differences = evaluate_rules(
-                    result.differences, RULES, old_targets, new_targets
-                )
-                results_by_path[file_path] = result
-
-                # Print all consecutive results that are ready, in sorted order
-                while next_to_print < len(sorted_files):
-                    next_path = sorted_files[next_to_print]
-                    if next_path not in results_by_path:
-                        break  # Next file in order isn't ready yet
-
-                    res = results_by_path.pop(next_path)
-                    rejected, accepted, has_error = print_file_report(res, args.verbose)
-                    total_rejected += rejected
-                    total_accepted += accepted
-                    if rejected or has_error:
-                        has_errors = True
-                    if rejected or accepted:
-                        files_with_diffs += 1
-                    files_compared += 1
-                    next_to_print += 1
-
-    except KeyboardInterrupt:
-        log("\n\nInterrupted! Cancelling pending tasks...")
-        executor.shutdown(wait=False, cancel_futures=True)
-        log(f"Processed {files_compared} of {len(sorted_files)} files before interrupt.")
-        return 130  # Standard exit code for SIGINT
-
-    # Step 4: Print summary
-    total_elapsed = (time.perf_counter() - total_start) * 1000
-    print_summary(
-        total_files=len(html_both),
-        files_with_diffs=files_with_diffs,
-        total_rejected=total_rejected,
-        total_accepted=total_accepted,
-        files_only_in_dir1=len(files_only_dir1),
-        files_only_in_dir2=len(files_only_dir2),
-        total_elapsed_ms=total_elapsed,
-    )
-
-    return 1 if has_errors else 0
-
 
 # =============================================================================
 # Tests for compare_code_elements
@@ -1651,6 +1825,15 @@ def run_tests() -> int:
         old_targets={"Valid.html#foo"},  # Link was valid
     )
 
+    # Test 23: Multiple words becoming links (e.g., "forget₂ CommMonCat MonCat")
+    test(
+        "multiple words wrapped in links",
+        "<code>forget₂ CommMonCat MonCat</code>",
+        '<code>forget₂ <a href="CommMonCat.html#CommMonCat">CommMonCat</a> <a href="MonCat.html#MonCat">MonCat</a></code>',
+        expected_ok=True,
+        new_targets={"CommMonCat.html#CommMonCat", "MonCat.html#MonCat"},
+    )
+
     log(f"\n{passed} passed, {failed} failed")
     return 0 if failed == 0 else 1
 
@@ -1683,6 +1866,24 @@ def main_cli() -> int:
         type=int,
         default=8,
         help="Number of parallel jobs (default: 8)",
+    )
+    compare_parser.add_argument(
+        "--restrict",
+        type=str,
+        default=None,
+        help="Only compare HTML files under this subdirectory (link targets still use full dirs)",
+    )
+    compare_parser.add_argument(
+        "--cache-link-targets",
+        type=Path,
+        default=None,
+        help="Cache file for link targets (loads if exists, creates otherwise)",
+    )
+    compare_parser.add_argument(
+        "--db",
+        type=Path,
+        default=None,
+        help="doc-gen4 SQLite database for source position lookups (enables reorder acceptance)",
     )
 
     # Test command
@@ -1718,6 +1919,24 @@ def main(args: argparse.Namespace | None = None) -> int:
             default=8,
             help="Number of parallel jobs (default: 8)",
         )
+        parser.add_argument(
+            "--restrict",
+            type=str,
+            default=None,
+            help="Only compare HTML files under this subdirectory (link targets still use full dirs)",
+        )
+        parser.add_argument(
+            "--cache-link-targets",
+            type=Path,
+            default=None,
+            help="Cache file for link targets (loads if exists, creates otherwise)",
+        )
+        parser.add_argument(
+            "--db",
+            type=Path,
+            default=None,
+            help="doc-gen4 SQLite database for source position lookups (enables reorder acceptance)",
+        )
         args = parser.parse_args()
 
     if not args.dir1.is_dir():
@@ -1727,6 +1946,16 @@ def main(args: argparse.Namespace | None = None) -> int:
     if not args.dir2.is_dir():
         print(f"Error: {args.dir2} is not a directory", file=sys.stderr)
         return 1
+
+    # Load DB declaration positions if provided
+    global _db_decl_positions
+    db_path = getattr(args, "db", None)
+    if db_path:
+        if not db_path.exists():
+            print(f"Error: database {db_path} not found", file=sys.stderr)
+            return 1
+        _db_decl_positions = load_db_decl_positions(db_path)
+        log(f"Loaded {len(_db_decl_positions)} declaration positions from {db_path}")
 
     total_start = time.perf_counter()
     log(f"Comparing {args.dir1} vs {args.dir2}")
@@ -1743,17 +1972,41 @@ def main(args: argparse.Namespace | None = None) -> int:
     log(f"  HTML files only in dir1: {len(html_only_dir1)}")
     log(f"  HTML files only in dir2: {len(html_only_dir2)}")
 
-    # Step 2: Extract link targets
+    # Step 2: Extract link targets (or load from cache)
     step_start = time.perf_counter()
-    all_html_dir1 = html_both | html_only_dir1
-    all_html_dir2 = html_both | html_only_dir2
-    old_targets = extract_link_targets(args.dir1, all_html_dir1, args.jobs)
-    new_targets = extract_link_targets(args.dir2, all_html_dir2, args.jobs)
-    step_elapsed = (time.perf_counter() - step_start) * 1000
+    cache_file = getattr(args, "cache_link_targets", None)
+    if cache_file and cache_file.exists():
+        import pickle
+        with open(cache_file, "rb") as f:
+            cached = pickle.load(f)
+        old_targets = cached["old"]
+        new_targets = cached["new"]
+        step_elapsed = (time.perf_counter() - step_start) * 1000
+        log(f"Loaded link targets from cache '{cache_file}' ({step_elapsed:.1f}ms)")
+    else:
+        all_html_dir1 = html_both | html_only_dir1
+        all_html_dir2 = html_both | html_only_dir2
+        old_targets = extract_link_targets(args.dir1, all_html_dir1, args.jobs)
+        new_targets = extract_link_targets(args.dir2, all_html_dir2, args.jobs)
+        step_elapsed = (time.perf_counter() - step_start) * 1000
+        log(f"Extracting link targets... ({step_elapsed:.1f}ms)")
+        if cache_file:
+            import pickle
+            with open(cache_file, "wb") as f:
+                pickle.dump({"old": old_targets, "new": new_targets}, f)
+            log(f"Saved link targets to cache '{cache_file}'")
 
-    log(f"Extracting link targets... ({step_elapsed:.1f}ms)")
     log(f"  Targets in dir1: {len(old_targets)}")
     log(f"  Targets in dir2: {len(new_targets)}")
+
+    # Restrict comparison to subdirectory if requested
+    restrict = getattr(args, "restrict", None)
+    if restrict:
+        prefix = restrict.rstrip("/") + "/"
+        html_both = {f for f in html_both if f.startswith(prefix) or f == restrict}
+        html_only_dir1 = {f for f in html_only_dir1 if f.startswith(prefix) or f == restrict}
+        html_only_dir2 = {f for f in html_only_dir2 if f.startswith(prefix) or f == restrict}
+        log(f"Restricted to '{restrict}': {len(html_both)} files to compare")
 
     # Report HTML files only in one directory (skip non-HTML files)
     has_errors = False

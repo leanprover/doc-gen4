@@ -38,7 +38,7 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
     return (← getRoot) ++ s.dropEnd 5 ++ ".html"
   else if let some name := Lean.Syntax.decodeNameLit ("`" ++ s) then
     -- with exactly the same name
-    if res.name2ModIdx.contains name then
+    if res.name2ModIdx.contains name && !isPrivateName name then
       declNameToLink name
     -- module name
     else if res.moduleNames.contains name then
@@ -47,10 +47,14 @@ def nameToLink? (s : String) : HtmlM (Option String) := do
     else
       match (← getCurrentName) with
       | some currentName =>
-        match res.moduleInfo[currentName]! |>.members |> filterDocInfo |>.find? (sameEnd ·.getName name) with
-        | some info =>
+        let info? :=
+          res.moduleInfo[currentName]! |>.members |>.iter
+            |> filterDocInfo
+            |>.filter (!isPrivateName ·.getName)
+            |>.find? (sameEnd ·.getName name)
+        if let some info := info? then
           declNameToLink info.getName
-        | _ => return none
+        else return none
       | _ => return none
   else
     return none
