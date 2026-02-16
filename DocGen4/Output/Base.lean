@@ -313,10 +313,9 @@ partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM (Bool × Array H
     match tag with
     | .const name =>
       let name2ModIdx := (← getResult).name2ModIdx
-      if name2ModIdx.contains name then
+      if name2ModIdx.contains name && (Lean.privatePrefix? name).isNone then
         let link ← declNameToLink name
         -- Avoid nested anchors: if inner content already has anchors, don't wrap again
-        -- Match original behavior: no fn wrapper when const is in name2ModIdx
         if innerHasAnchor then
           return (true, innerHtml)
         else
@@ -339,7 +338,7 @@ partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM (Bool × Array H
           match Lean.privatePrefix? name with
           | some pfx =>
             let modName := moduleFromPrivatePrefix pfx
-            if modName != .anonymous then
+            if modName != Name.anonymous then
               let link ← moduleNameToLink modName
               if innerHasAnchor then
                 return (true, innerHtml)
