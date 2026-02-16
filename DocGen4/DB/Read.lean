@@ -103,7 +103,7 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
   let getModuleNamesStmt ← sqlite.prepare "SELECT name FROM modules ORDER BY name"
   let getModuleSourceUrlsStmt ← sqlite.prepare "SELECT name, source_url FROM modules WHERE source_url IS NOT NULL"
   let getModuleImportsStmt ← sqlite.prepare "SELECT imported FROM module_imports WHERE importer = ?"
-  let buildNameInfoStmt ← sqlite.prepare "SELECT name, module_name FROM name_info WHERE render = 1"
+  let buildNameInfoStmt ← sqlite.prepare "SELECT name, module_name FROM name_info"
   let buildInternalNamesStmt ← sqlite.prepare "SELECT name, target_module FROM internal_names"
   let loadModuleMembersStmt ← sqlite.prepare
     "SELECT position, kind, name, type, sorried, render, NULL as mod_doc \
