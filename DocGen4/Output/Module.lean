@@ -31,7 +31,9 @@ def structureInfoHeader (s : Process.StructureInfo) : HtmlM (Array Html) := do
     for parent in s.parents, i in [0:s.parents.size] do
       if i > 0 then
         parents := parents.push (Html.text ", ")
-      parents := parents ++ (← renderedCodeToHtml parent.type)
+      let parentHtml ← renderedCodeToHtml parent.type
+      parents := parents.push
+        <span id={parent.projFn.toString}>[parentHtml]</span>
     nodes := nodes ++ parents
   return nodes
 
