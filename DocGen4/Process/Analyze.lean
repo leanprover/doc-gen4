@@ -86,11 +86,6 @@ structure AnalyzerResult where
   A map from module names to information about these modules.
   -/
   moduleInfo : Std.HashMap Name Module
-  /--
-  Names that have rendered declarations (i.e., will have a `<div id="name">` anchor).
-  Used to decide whether to generate a direct link or fall through to redirect logic.
-  -/
-  renderedNames : Std.HashSet Name
   deriving Inhabited
 
 namespace ModuleMember
@@ -221,9 +216,6 @@ def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
     name2ModIdx := env.const2ModIdx,
     moduleNames := allModules,
     moduleInfo := res,
-    -- This field is used during HTML rendering, but not while populating the DB, so it can be empty
-    -- here:
-    renderedNames := {}
   }
 
 def filterDocInfo (ms : Array ModuleMember) : Array DocInfo :=

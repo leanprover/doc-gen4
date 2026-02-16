@@ -261,23 +261,21 @@ def declNameToHtmlBreakWithinLink (name : Name) : HtmlM Html := do
 
 /--
 For a name, try to find a linkable target by stripping suffix components
-that are numeric or start with `_`. Returns the first name found in `targets`,
+that are numeric or start with `_`. Returns the first name found in name2ModIdx,
 or none if nothing is found.
 -/
-private def findLinkableParent (name : Name) (targets : Std.HashSet Name) : Option Name :=
-  go name
-where
-  isLinkable n := targets.contains n
-  go : Name → Option Name
+private def findLinkableParent (name2ModIdx : Std.HashMap Name ModuleIdx) (name : Name) : Option Name :=
+  match name with
   | .str parent s =>
+    -- If this component starts with _ or is numeric-like, try the parent
     if s.startsWith "_" then
-      go parent
-    else if isLinkable (.str parent s) then
-      some (.str parent s)
+      findLinkableParent name2ModIdx parent
+    else if name2ModIdx.contains name then
+      some name
     else
-      go parent
+      findLinkableParent name2ModIdx parent
   | .num parent _ =>
-    go parent
+    findLinkableParent name2ModIdx parent
   | .anonymous => none
 
 /--
@@ -314,23 +312,22 @@ partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM (Bool × Array H
     let (innerHasAnchor, innerHtml) ← renderedCodeToHtmlAux inner
     match tag with
     | .const name =>
-      let { renderedNames, .. } ← getResult
-      let hasAnchor := renderedNames.contains name
-      if hasAnchor then
+      let name2ModIdx := (← getResult).name2ModIdx
+      if name2ModIdx.contains name then
         let link ← declNameToLink name
         -- Avoid nested anchors: if inner content already has anchors, don't wrap again
+        -- Match original behavior: no fn wrapper when const is in name2ModIdx
         if innerHasAnchor then
           return (true, innerHtml)
         else
           return (true, #[<a href={link}>[innerHtml]</a>])
       else
-        -- Name not rendered - find an appropriate rendered target.
-        -- This handles:
+        -- Name not in name2ModIdx - try to find a linkable parent
+        -- This handles both:
         -- 1. Private names like `_private.Init.Prelude.0.Lean.Name.hash._proof_1`
         -- 2. Auxiliary names like `Std.Do.Option.instWPMonad._proof_2`
-        -- 3. Constructors, projection functions, and other non-rendered declarations
         let nameToSearch := Lean.privateToUserName? name |>.getD name
-        match findLinkableParent nameToSearch renderedNames with
+        match findLinkableParent name2ModIdx nameToSearch with
         | some target =>
           let link ← declNameToLink target
           if innerHasAnchor then
