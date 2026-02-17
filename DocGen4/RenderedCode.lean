@@ -217,7 +217,7 @@ partial def renderTagged (doc : CodeWithInfos) : RenderedCode := Id.run do
     let {ctx := _, info, children := _} := i.info.val
     match info with
     | .ofTermInfo termInfo =>
-      match termInfo.expr with
+      match termInfo.expr.consumeMData with
       | .const n _ =>
         -- TODO replicate blacklist logic
         match t with
