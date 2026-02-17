@@ -13,9 +13,35 @@ The main function is `DocGen4.Bibtex.process`.
 
 -/
 
-open Lean Xml DocGen4 Output BibtexQuery
+open DocGen4 Output BibtexQuery BibtexQuery.Xml
 
 namespace DocGen4.Bibtex
+
+mutual
+
+partial def eToStringEscaped : Element → String
+  | .Element n a c =>
+    let attrs := a.foldl (fun s n v => s ++ s!" {n}=\"{Html.escape v}\"") ""
+    s!"<{n}{attrs}>{c.map cToStringEscaped |>.foldl (· ++ ·) ""}</{n}>"
+
+partial def cToStringEscaped : Content → String
+  | .Element e => eToStringEscaped e
+  | .Comment c => s!"<!--{c}-->"
+  | .Character c => Html.escape c
+
+end
+
+mutual
+
+partial def eToPlaintext : Element → String
+  | .Element _ _ c => s!"{c.map cToPlaintext |>.foldl (· ++ ·) ""}"
+
+partial def cToPlaintext : Content → String
+  | .Element e => eToPlaintext e
+  | .Comment _ => ""
+  | .Character c => c
+
+end
 
 /-- Process the contents of bib file. -/
 def process' (contents : String) : Except String (Array BibItem) := do
