@@ -5,7 +5,6 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Wojciech Nawrocki, Sebastian Ullrich, Henrik Böving
 -/
 import Lean.Data.Json
-import Lean.Data.Xml
 import Lean.Parser
 
 /-! This module defines:
@@ -43,35 +42,6 @@ def escapePairs : Array (String × String) :=
 def escape (s : String) : String :=
   escapePairs.foldl (fun acc (o, r) => acc.replace o r) s
 
--- TODO: remove the following 3 functions
--- once <https://github.com/leanprover/lean4/issues/4411> is fixed
-
-def _root_.Lean.Xml.Attributes.toStringEscaped (as : Xml.Attributes) : String :=
-  as.foldl (fun s n v => s ++ s!" {n}=\"{Html.escape v}\"") ""
-
-mutual
-
-partial def _root_.Lean.Xml.eToStringEscaped : Xml.Element → String
-| .Element n a c => s!"<{n}{a.toStringEscaped}>{c.map cToStringEscaped |>.foldl (· ++ ·) ""}</{n}>"
-
-partial def _root_.Lean.Xml.cToStringEscaped : Xml.Content → String
-| .Element e => eToStringEscaped e
-| .Comment c => s!"<!--{c}-->"
-| .Character c => Html.escape c
-
-end
-
-mutual
-
-partial def _root_.Lean.Xml.eToPlaintext : Xml.Element → String
-| .Element _ _ c => s!"{c.map cToPlaintext |>.foldl (· ++ ·) ""}"
-
-partial def _root_.Lean.Xml.cToPlaintext : Xml.Content → String
-| .Element e => eToPlaintext e
-| .Comment _ => ""
-| .Character c => c
-
-end
 
 def attributesToString (attrs : Array (String × String)) :String :=
   attrs.foldl (fun acc (k, v) => acc ++ " " ++ k ++ "=\"" ++ escape v ++ "\"") ""
