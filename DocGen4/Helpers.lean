@@ -11,8 +11,8 @@ structure ChunkArray α where
   chunkSize_gt_zero : chunkSize > 0 := by grind
   curr_valid : curr ≤ array.size := by grind
 
-def chunked (xs : Array α) (n : Nat) (ok : n > 0 := by grind) :=
-  IterM.mk (ChunkArray.mk xs n 0) Id (Subarray α)
+def chunked (xs : Array α) (n : Nat) (ok : n > 0 := by grind) : Iter (α := ChunkArray α) (Subarray α) :=
+  Iter.mk (ChunkArray.mk xs n 0)
 
 def ChunkArray.PlausibleStep (it : IterM (α := ChunkArray α) m (Subarray α)) :
     (step : IterStep (IterM (α := ChunkArray α) m (Subarray α)) (Subarray α)) → Prop

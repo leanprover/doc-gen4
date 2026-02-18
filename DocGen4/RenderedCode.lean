@@ -132,8 +132,8 @@ responsible for.
 def splitWhitespaces (s : String) : String × String × String :=
   let length := s.length
   let s := s.trimAsciiStart
-  let front := "".pushn ' ' (length - s.positions.count)
-  let length := s.positions.count
+  let front := "".pushn ' ' (length - s.positions.length)
+  let length := s.positions.length
   let s := s.trimAsciiEnd.copy
   let back := "".pushn ' ' (length - s.length)
   (front, s, back)
