@@ -22,6 +22,9 @@ structure ReadOps where
   buildName2ModIdx : Array Lean.Name → IO (Std.HashMap Lean.Name Lean.ModuleIdx)
   loadModule : Lean.Name → IO Process.Module
   loadAllTactics : IO (Array (Process.TacticInfo Process.MarkdownDocstring))
+  /-- For a module, return a map from each rendered declaration to the set of names
+      whose declaration ranges are contained within it. -/
+  getContainedNames : Lean.Name → IO (Std.HashMap Lean.Name (Std.HashSet Lean.Name))
 
 private def done (stmt : SQLite.Stmt) : IO Unit := do
   stmt.reset
@@ -74,6 +77,7 @@ private structure ReadStmts where
   loadTacticTagsStmt : SQLite.Stmt
   loadAllTacticsStmt : SQLite.Stmt
   loadAllTacticTagsStmt : SQLite.Stmt
+  getContainedNamesStmt : SQLite.Stmt
 
 open Lean SQLite.Blob in
 private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO ReadStmts := do
@@ -118,6 +122,15 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
     "SELECT module_name, internal_name, user_name, doc_string FROM tactics \
      ORDER BY user_name, module_name, internal_name"
   let loadAllTacticTagsStmt ← sqlite.prepare "SELECT tag FROM tactic_tags WHERE module_name = ? AND internal_name = ?"
+  let getContainedNamesStmt ← sqlite.prepare
+    "SELECT p.name, c.name \
+     FROM name_info p \
+     JOIN declaration_ranges pr ON p.module_name = pr.module_name AND p.position = pr.position \
+     JOIN name_info c ON c.module_name = p.module_name AND c.position != p.position \
+     JOIN declaration_ranges cr ON c.module_name = cr.module_name AND c.position = cr.position \
+     WHERE p.module_name = ? AND p.render = 1 \
+     AND (cr.start_line > pr.start_line OR (cr.start_line = pr.start_line AND cr.start_column >= pr.start_column)) \
+     AND (cr.end_line < pr.end_line OR (cr.end_line = pr.end_line AND cr.end_column <= pr.end_column))"
   pure {
     values, loadArgsStmt, loadAttrsStmt, readMdDocstringStmt, readVersoDocstringStmt,
     loadDeclRangeStmt, loadEqnsStmt, loadInstanceArgsStmt, loadStructureParentsStmt,
@@ -128,7 +141,7 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
     getModuleNamesStmt, getModuleSourceUrlsStmt, getModuleImportsStmt,
     buildNameInfoStmt, buildInternalNamesStmt,
     loadModuleMembersStmt, loadTacticsStmt, loadTacticTagsStmt,
-    loadAllTacticsStmt, loadAllTacticTagsStmt
+    loadAllTacticsStmt, loadAllTacticTagsStmt, getContainedNamesStmt
   }
 
 open Lean SQLite.Blob in
@@ -580,6 +593,19 @@ private def ReadStmts.loadAllTactics (s : ReadStmts) : IO (Array (Process.Tactic
   done s.loadAllTacticsStmt
   return tactics
 
+open Lean in
+private def ReadStmts.getContainedNames (s : ReadStmts) (moduleName : Name) : IO (Std.HashMap Name (Std.HashSet Name)) := withDbContext "read:contained_names" do
+  s.getContainedNamesStmt.bind 1 moduleName.toString
+  let mut result : Std.HashMap Name (Std.HashSet Name) := {}
+  while (← s.getContainedNamesStmt.step) do
+    let parentName := (← s.getContainedNamesStmt.columnText 0).toName
+    let childName := (← s.getContainedNamesStmt.columnText 1).toName
+    result := result.alter parentName fun
+      | some set => some (set.insert childName)
+      | none => some {childName}
+  done s.getContainedNamesStmt
+  return result
+
 def mkReadOps (sqlite : SQLite) (values : DocstringValues) : IO ReadOps := do
   let s ← ReadStmts.prepare sqlite values
   pure {
@@ -589,6 +615,7 @@ def mkReadOps (sqlite : SQLite) (values : DocstringValues) : IO ReadOps := do
     buildName2ModIdx := s.buildName2ModIdx
     loadModule := s.loadModule
     loadAllTactics := s.loadAllTactics
+    getContainedNames := s.getContainedNames
   }
 
 end DocGen4.DB

@@ -110,12 +110,14 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
     let db ← DB.openForReading dbPath builtinDocstringValues
     mods.mapM fun modName => do
       let module ← db.loadModule modName
+      let containedNames ← db.getContainedNames modName
 
       -- Build a minimal AnalyzerResult with just this module's info
       let result : AnalyzerResult := {
         name2ModIdx := linkCtx.name2ModIdx
         moduleNames := linkCtx.moduleNames
         moduleInfo := ({} : Std.HashMap Name Process.Module).insert modName module
+        containedNames
       }
 
       let config : SiteContext := {

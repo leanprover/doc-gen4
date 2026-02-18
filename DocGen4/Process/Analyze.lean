@@ -86,6 +86,14 @@ structure AnalyzerResult where
   A map from module names to information about these modules.
   -/
   moduleInfo : Std.HashMap Name Module
+  /--
+  For each rendered declaration, the set of names whose declaration ranges are contained within it.
+  Used to determine whether auto-generated projections should receive anchor IDs in the HTML output.
+
+  This field is only populated when the result is read from the database. Prior to that, it is
+  empty.
+  -/
+  containedNames : Std.HashMap Name (Std.HashSet Name) := {}
   deriving Inhabited
 
 namespace ModuleMember

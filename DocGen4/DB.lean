@@ -379,6 +379,7 @@ def openForReading (dbFile : System.FilePath) (values : DocstringValues) : IO DB
     buildName2ModIdx := readOps.buildName2ModIdx,
     loadModule := readOps.loadModule,
     loadAllTactics := readOps.loadAllTactics,
+    getContainedNames := readOps.getContainedNames,
   }
 
 /-! ## DB Reading -/
