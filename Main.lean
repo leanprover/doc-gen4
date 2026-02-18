@@ -91,9 +91,11 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
     else
       db.getTransitiveImports moduleRoots
 
-  -- Add `references` pseudo-module to hierarchy since references.html is always generated
-  let hierarchy := Hierarchy.fromArray (targetModules.push `references)
-  let baseConfig ← getSimpleBaseContext buildDir hierarchy
+  let baseConfig ← getSimpleBaseContext buildDir (Hierarchy.fromArray targetModules)
+  -- Add `references` pseudo-module to hierarchy only when bibliography data exists
+  let hierarchy := Hierarchy.fromArray
+    (if baseConfig.refs.isEmpty then targetModules else targetModules.push `references)
+  let baseConfig := { baseConfig with hierarchy }
 
   -- Parallel HTML generation
   let (outputs, jsonModules) ← htmlOutputResultsParallel baseConfig dbPath linkCtx targetModules (sourceLinker? := some (dbSourceLinker linkCtx.sourceUrls))

@@ -297,10 +297,6 @@ def updateNavbarFromDisk (buildDir : System.FilePath) : IO Unit := do
   let docDir := basePath buildDir
   -- Scan for all existing module HTML files
   let existingModules ← scanModuleHtmlFiles docDir
-  -- Add `references` pseudo-module for navbar
-  let allModules := existingModules.push `references
-  -- Build hierarchy from all found modules
-  let hierarchy := Hierarchy.fromArray allModules
   -- Load references for base context
   let contents ← FS.readFile (declarationsBasePath buildDir / "references.json") <|> (pure "[]")
   let refs : Array BibItem ← match Json.parse contents with
@@ -309,6 +305,9 @@ def updateNavbarFromDisk (buildDir : System.FilePath) : IO Unit := do
       match fromJson? jsonContent with
       | .error _ => pure #[]
       | .ok refs => pure refs
+  -- Add `references` pseudo-module to hierarchy only when bibliography data exists
+  let allModules := if refs.isEmpty then existingModules else existingModules.push `references
+  let hierarchy := Hierarchy.fromArray allModules
   let baseConfig : SiteBaseContext := {
     buildDir := buildDir
     depthToRoot := 0
