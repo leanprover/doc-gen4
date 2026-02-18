@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import html
 import json
 import re
 import sqlite3
@@ -50,6 +51,51 @@ def log(msg: str = "") -> None:
 
 
 # =============================================================================
+# URL Resolution
+# =============================================================================
+
+
+def _resolve_href(href: str, file_path: str) -> str:
+    """Resolve an href relative to the given file path.
+
+    Returns the resolved target as a normalized path, possibly with a fragment.
+    Special URLs (external, javascript:, mailto:, data:) are returned as-is.
+    Fragment-only hrefs are resolved against file_path.
+    """
+    if not href or href.startswith(("javascript:", "mailto:", "data:")):
+        return href
+
+    # Fragment-only: resolve against current file
+    if href.startswith("#"):
+        return f"{file_path}{href}"
+
+    # External URLs
+    if href.startswith(("http://", "https://", "//")):
+        return href
+
+    # Resolve relative path
+    resolved = urljoin(file_path, href)
+
+    # Normalize the path
+    resolved = unquote(resolved)
+    parts = resolved.split("#", 1)
+    path_part = parts[0]
+
+    # Normalize path (resolve .. and .)
+    try:
+        normalized = str(Path(path_part).as_posix())
+        # Handle paths that go above root
+        if normalized.startswith(".."):
+            normalized = path_part
+    except Exception:
+        normalized = path_part
+
+    if len(parts) > 1:
+        return f"{normalized}#{parts[1]}"
+    return normalized
+
+
+# =============================================================================
 # Data Classes
 # =============================================================================
 
@@ -72,40 +118,7 @@ class DiffContext:
 
     def _resolve_href(self, href: str) -> str:
         """Resolve an href relative to the current file path."""
-        if not href or href.startswith(("#", "javascript:", "mailto:", "data:")):
-            # Fragment-only or special URLs
-            if href.startswith("#"):
-                return f"{self.file_path}{href}"
-            return href
-
-        # Handle external URLs
-        if href.startswith(("http://", "https://", "//")):
-            return href
-
-        # Resolve relative path
-        current_dir = str(Path(self.file_path).parent)
-        if current_dir == ".":
-            resolved = href
-        else:
-            resolved = urljoin(self.file_path, href)
-
-        # Normalize the path
-        resolved = unquote(resolved)
-        parts = resolved.split("#", 1)
-        path_part = parts[0]
-
-        # Normalize path (resolve .. and .)
-        try:
-            normalized = str(Path(path_part).as_posix())
-            # Handle paths that go above root
-            if normalized.startswith(".."):
-                normalized = path_part
-        except Exception:
-            normalized = path_part
-
-        if len(parts) > 1:
-            return f"{normalized}#{parts[1]}"
-        return normalized
+        return _resolve_href(href, self.file_path)
 
     def old_href_is_broken(self) -> bool:
         """Check if old element's href pointed to nonexistent target."""
@@ -119,21 +132,7 @@ class DiffContext:
         if str(href).startswith(("http://", "https://", "//", "javascript:", "mailto:")):
             return False
 
-        resolved = self._resolve_href(str(href))
-
-        # Check if target exists
-        if resolved in self.old_targets:
-            return False
-
-        # Check file without fragment
-        path_only = resolved.split("#")[0]
-        if path_only in self.old_targets:
-            # File exists, but fragment might not
-            if "#" in resolved:
-                return resolved not in self.old_targets
-            return False
-
-        return True
+        return self._resolve_href(str(href)) not in self.old_targets
 
     def new_href_is_broken(self) -> bool:
         """Check if new element's href points to nonexistent target."""
@@ -147,20 +146,7 @@ class DiffContext:
         if str(href).startswith(("http://", "https://", "//", "javascript:", "mailto:")):
             return False
 
-        resolved = self._resolve_href(str(href))
-
-        # Check if target exists
-        if resolved in self.new_targets:
-            return False
-
-        # Check file without fragment
-        path_only = resolved.split("#")[0]
-        if path_only in self.new_targets:
-            if "#" in resolved:
-                return resolved not in self.new_targets
-            return False
-
-        return True
+        return self._resolve_href(str(href)) not in self.new_targets
 
     def has_ancestor(self, selector: str) -> bool:
         """Check if any ancestor in old tree matches CSS selector (simple matching)."""
@@ -240,6 +226,45 @@ def allow_href_change_if_old_broken(ctx: DiffContext) -> str | None:
     return None
 
 
+def allow_href_change_from_private(ctx: DiffContext) -> str | None:
+    """Allow href changes where the old target was a private name and new target is valid.
+
+    Covers cases like private-name redirects (#_private.X.Y → #X) where the old
+    link pointed to a private name but the new link points to the public declaration.
+    """
+    if ctx.diff_type != "attribute" or ctx.attribute_name != "href":
+        return None
+    old_href = str(ctx.old_value or "")
+    # Check that old href contains a private name fragment
+    if "_private." not in old_href:
+        return None
+    if not ctx.new_href_is_broken():
+        return "href changed from private name to valid target"
+    return None
+
+
+def allow_href_change_same_anchor_valid_target(ctx: DiffContext) -> str | None:
+    """Allow href changes where only the module path changed but the anchor ID is the same.
+
+    Covers cases like duplicate declarations mapped to different modules, where
+    both targets are valid and point to the same declaration name.
+    """
+    if ctx.diff_type != "attribute" or ctx.attribute_name != "href":
+        return None
+    old_href = str(ctx.old_value or "")
+    new_href = str(ctx.new_value or "")
+    # Extract fragment (anchor) from both hrefs
+    old_frag = old_href.split("#", 1)[1] if "#" in old_href else None
+    new_frag = new_href.split("#", 1)[1] if "#" in new_href else None
+    if old_frag is None or new_frag is None:
+        return None
+    if old_frag != new_frag:
+        return None
+    if not ctx.new_href_is_broken():
+        return "href changed module but same anchor, new target valid"
+    return None
+
+
 def allow_a_to_span_if_broken(ctx: DiffContext) -> str | None:
     """Allow <a> to be replaced by <span class='fn'> if link was broken."""
     if ctx.diff_type != "element_replaced":
@@ -280,44 +305,9 @@ def _check_href_valid(href: str, file_path: str, targets: set[str]) -> bool:
     """Check if an href target exists in the given target set."""
     if not href:
         return False
-    # Skip external links
-    if href.startswith(("http://", "https://", "//", "javascript:", "mailto:", "#")):
-        return True  # External/anchor links are considered valid
-
-    # Resolve relative path
-    from urllib.parse import unquote, urljoin
-
-    current_dir = str(Path(file_path).parent)
-    if current_dir == ".":
-        resolved = href
-    else:
-        resolved = urljoin(file_path, href)
-
-    resolved = unquote(resolved)
-    parts = resolved.split("#", 1)
-    path_part = parts[0]
-
-    try:
-        normalized = str(Path(path_part).as_posix())
-        if normalized.startswith(".."):
-            normalized = path_part
-    except Exception:
-        normalized = path_part
-
-    if len(parts) > 1:
-        resolved = f"{normalized}#{parts[1]}"
-    else:
-        resolved = normalized
-
-    # Check if target exists
-    if resolved in targets:
+    if href.startswith(("http://", "https://", "//", "javascript:", "mailto:")):
         return True
-    # If there's a fragment, the exact target must exist
-    # (don't fall back to just the file)
-    if "#" in resolved:
-        return False
-    # No fragment - check if file exists
-    return resolved in targets
+    return _resolve_href(href, file_path) in targets
 
 
 def allow_added_link_with_valid_target(ctx: DiffContext) -> str | None:
@@ -464,10 +454,21 @@ def allow_reorder_same_source_position(ctx: DiffContext) -> str | None:
     old_pos = _db_decl_positions.get((module, str(old_name)))
     new_pos = _db_decl_positions.get((module, str(new_name)))
 
-    if old_pos and new_pos and old_pos == new_pos:
-        return f"reordering of declarations at same source position (line {old_pos[0]})"
+    if not old_pos or not new_pos or old_pos != new_pos:
+        return None
 
-    return None
+    # Verify both declarations exist in both old and new HTML.
+    # A genuine reorder means A and B both appear in old and new, just at
+    # different positions. Without this check the rule would also accept
+    # content changes or additions/deletions that happen to share a position.
+    old_target = f"{ctx.file_path}#{old_name}"
+    new_target = f"{ctx.file_path}#{new_name}"
+    if old_target not in ctx.old_targets or new_target not in ctx.old_targets:
+        return None
+    if old_target not in ctx.new_targets or new_target not in ctx.new_targets:
+        return None
+
+    return f"reordering of declarations at same source position (line {old_pos[0]})"
 
 
 def allow_empty_equations_removal(ctx: DiffContext) -> str | None:
@@ -549,19 +550,104 @@ def allow_duplicate_li_removal_in_imports(ctx: DiffContext) -> str | None:
     return None
 
 
+def allow_extends_id_wrapper(ctx: DiffContext) -> str | None:
+    """Accept diffs caused by new <span id='...'>  wrappers around extends clause parents.
+
+    The extends clause now wraps each parent type in <span id="StructName.toParent">
+    to create link targets for parent projection names. The wrapper <span> is a
+    child of <div class="decl_header">, as a sibling of <span class="decl_extends">.
+    """
+    def in_decl_header(ancestors: list[Tag]) -> bool:
+        return any(
+            isinstance(a, Tag) and a.name == "div" and "decl_header" in a.get("class", [])
+            for a in ancestors
+        )
+
+    def has_projection_id_ancestor(ancestors: list[Tag]) -> bool:
+        """Check if any ancestor is a <span id='...'> projection wrapper."""
+        return any(
+            isinstance(a, Tag) and a.name == "span" and a.get("id")
+            and in_decl_header(ancestors[i+1:])
+            for i, a in enumerate(ancestors)
+        )
+
+    if not in_decl_header(ctx.old_ancestors) and not in_decl_header(ctx.new_ancestors):
+        return None
+
+    # Find enclosing decl_headers and verify the overall text is preserved.
+    # This gates all acceptance paths — without it, a buggy wrapper insertion
+    # that changes header text would be silently accepted.
+    def find_header(ancestors: list[Tag]) -> Tag | None:
+        for a in ancestors:
+            if isinstance(a, Tag) and a.name == "div" and "decl_header" in a.get("class", []):
+                return a
+        return None
+
+    old_header = find_header(ctx.old_ancestors)
+    new_header = find_header(ctx.new_ancestors)
+    if old_header is None or new_header is None:
+        return None
+    if old_header.find("span", class_="decl_extends") is None:
+        return None
+    if old_header.get_text() != new_header.get_text():
+        return None
+
+    # The new <span id="..."> wrapper element itself
+    if ctx.new_elem and isinstance(ctx.new_elem, Tag) and ctx.new_elem.name == "span" and ctx.new_elem.get("id"):
+        return "extends clause parent projection id wrapper"
+
+    # Any diff inside the new wrapper span
+    if has_projection_id_ancestor(ctx.new_ancestors):
+        return "inside extends clause parent projection id wrapper"
+
+    # Positional shifts in decl_header caused by the wrapper insertion
+    if in_decl_header(ctx.old_ancestors) and in_decl_header(ctx.new_ancestors):
+        return "positional shift from extends clause id wrapper"
+
+    return None
+
+
+def allow_inherited_field_id(ctx: DiffContext) -> str | None:
+    """Accept new id attributes on inherited structure field <li> elements.
+
+    Inherited fields now get id attributes so they can be link targets,
+    matching direct fields which already had them.
+    """
+    if ctx.diff_type != "attribute" or ctx.attribute_name != "id":
+        return None
+    # New element should be an <li> with class "inherited_field"
+    if (
+        ctx.new_elem
+        and isinstance(ctx.new_elem, Tag)
+        and ctx.new_elem.name == "li"
+        and "inherited_field" in ctx.new_elem.get("class", [])
+    ):
+        return "inherited field now has id for linking"
+    return None
+
+
 # Default rules list
 # Note: <code> elements are handled specially by compare_code_elements() in compare_trees()
 # These rules handle differences outside of <code> elements
+#
+# Link insertion in doc-gen4 is heuristic — the same declaration text may
+# legitimately resolve to different targets between the old and new pipelines.
+# Rules and code comparison therefore validate that new link targets *exist*,
+# not that they point to the *same* declaration as before.
 RULES: list[Rule] = [
     allow_lean_file_href_change,
     allow_href_change_if_old_broken,
+    allow_href_change_from_private,
+    allow_href_change_same_anchor_valid_target,
     allow_a_to_span_if_broken,
     allow_span_fn_to_link,
     allow_unwrap_broken_link,
     allow_added_link_with_valid_target,
+    allow_extends_id_wrapper,
     allow_empty_equations_removal,
     allow_duplicate_li_removal_in_imports,
     allow_reorder_same_source_position,
+    allow_inherited_field_id,
 ]
 
 
@@ -593,7 +679,7 @@ def collect_files(directory: Path) -> tuple[set[str], set[str]]:
 
 def compare_directories(
     dir1: Path, dir2: Path
-) -> tuple[set[str], set[str], set[str], set[str], set[str]]:
+) -> tuple[set[str], set[str], set[str], set[str], set[str], set[str]]:
     """
     Compare file inventories of two directories.
 
@@ -604,6 +690,7 @@ def compare_directories(
         - HTML files in both
         - Other files only in dir1
         - Other files only in dir2
+        - Other files in both
     """
     html1, other1 = collect_files(dir1)
     html2, other2 = collect_files(dir2)
@@ -614,6 +701,7 @@ def compare_directories(
         html1 & html2,
         other1 - other2,
         other2 - other1,
+        other1 & other2,
     )
 
 
@@ -622,7 +710,10 @@ def compare_directories(
 # =============================================================================
 
 
-# Regex patterns for extracting link targets (faster than full HTML parsing)
+# Regex patterns for extracting link targets (faster than full HTML parsing).
+# Note: these can match inside HTML comments, <script>, or <style> blocks,
+# producing phantom targets. This is acceptable for doc-gen4 output which
+# doesn't use id/name attributes in those contexts.
 # Require attributes to be inside complete HTML tags: <tagname ... id="value" ...>
 # Use non-greedy [^>]*? to match the first id/name attribute in the tag
 # Two patterns per attribute: one for double-quoted, one for single-quoted values,
@@ -1166,10 +1257,6 @@ def compare_tactics_page(
     old_divs = extract_tactic_divs(old_main)
     new_divs = extract_tactic_divs(new_main)
 
-    # Must have the same set of tactic entries
-    if set(old_divs.keys()) != set(new_divs.keys()):
-        return None
-
     # Both must be sorted by userName (ignoring order within same userName)
     old_names = get_user_names_in_order(old_main)
     new_names = get_user_names_in_order(new_main)
@@ -1178,10 +1265,25 @@ def compare_tactics_page(
 
     # Compare matched tactic entries by internalName using normal tree comparison
     differences: list[Difference] = []
-    for internal_name, old_div in old_divs.items():
-        new_div = new_divs[internal_name]
+
+    old_keys = set(old_divs.keys())
+    new_keys = set(new_divs.keys())
+    for key in sorted(old_keys - new_keys):
+        differences.append(Difference(
+            file_path=file_path, diff_type="element_removed",
+            old_elem=old_divs[key], new_elem=None,
+            old_ancestors=[old_main], new_ancestors=[new_main],
+        ))
+    for key in sorted(new_keys - old_keys):
+        differences.append(Difference(
+            file_path=file_path, diff_type="element_added",
+            old_elem=None, new_elem=new_divs[key],
+            old_ancestors=[old_main], new_ancestors=[new_main],
+        ))
+
+    for internal_name in sorted(old_keys & new_keys):
         diffs = compare_trees(
-            old_div, new_div, file_path,
+            old_divs[internal_name], new_divs[internal_name], file_path,
             [old_main], [new_main],
             old_targets, new_targets,
         )
@@ -1282,20 +1384,28 @@ def compare_html_files(
         old_soup = BeautifulSoup(old_content, PARSER)
         new_soup = BeautifulSoup(new_content, PARSER)
 
+        # Compare <head> sections
+        old_head = old_soup.head
+        new_head = new_soup.head
+        if old_head or new_head:
+            result.differences.extend(
+                compare_trees(old_head, new_head, file_path, [], [], old_targets, new_targets)
+            )
+
         # Semantic comparison for tactics.html
         if file_path == "tactics.html":
             tactics_result = compare_tactics_page(old_soup, new_soup, file_path, old_targets, new_targets)
             if tactics_result is not None:
-                result.differences = tactics_result
+                result.differences.extend(tactics_result)
                 result.elapsed_ms = (time.perf_counter() - start_time) * 1000
                 return result
 
-        # Compare from body if exists, otherwise from root
+        # Compare <body>
         old_body = old_soup.body or old_soup
         new_body = new_soup.body or new_soup
 
-        result.differences = compare_trees(
-            old_body, new_body, file_path, [], [], old_targets, new_targets
+        result.differences.extend(
+            compare_trees(old_body, new_body, file_path, [], [], old_targets, new_targets)
         )
 
     except Exception as e:
@@ -1556,6 +1666,171 @@ def print_file_report(
     return len(rejected), len(accepted), len(rejected) > 0
 
 
+def compare_declaration_data(old_data: dict, new_data: dict) -> tuple[list[str], list[str]]:
+    """Compare two declaration-data JSON structures with domain-specific rules.
+
+    - modules: keys must match; 'url' compared by equality; 'importedBy' compared as sets.
+    - declarations: keys must match; values compared by field equality.
+    - instances: keys must match; values (lists) compared as sets.
+    - instancesFor: keys must match; values (lists) compared as sets.
+
+    Returns (summary_lines, detail_lines).
+    """
+    summary: list[str] = []
+    detail: list[str] = []
+
+    for section in ("declarations", "instances", "instancesFor", "modules"):
+        old_sec = old_data.get(section, {})
+        new_sec = new_data.get(section, {})
+        old_keys = set(old_sec.keys())
+        new_keys = set(new_sec.keys())
+
+        only_old = sorted(old_keys - new_keys)
+        only_new = sorted(new_keys - old_keys)
+        if only_old:
+            summary.append(f"{section}: {len(only_old)} keys only in old")
+            for k in only_old[:10]:
+                detail.append(f"  {section} only in old: {k}")
+            if len(only_old) > 10:
+                detail.append(f"  ... and {len(only_old) - 10} more")
+        if only_new:
+            summary.append(f"{section}: {len(only_new)} keys only in new")
+            for k in only_new[:10]:
+                detail.append(f"  {section} only in new: {k}")
+            if len(only_new) > 10:
+                detail.append(f"  ... and {len(only_new) - 10} more")
+
+        # Compare shared keys
+        mismatches: list[str] = []
+        for k in sorted(old_keys & new_keys):
+            old_val = old_sec[k]
+            new_val = new_sec[k]
+
+            if section == "modules":
+                # url: equality
+                if old_val.get("url") != new_val.get("url"):
+                    mismatches.append(f"  {k}: url differs")
+                # importedBy: set equivalence
+                old_ib = set(old_val.get("importedBy", []))
+                new_ib = set(new_val.get("importedBy", []))
+                if old_ib != new_ib:
+                    added = new_ib - old_ib
+                    removed = old_ib - new_ib
+                    parts = []
+                    if added:
+                        parts.append(f"+{len(added)}")
+                    if removed:
+                        parts.append(f"-{len(removed)}")
+                    mismatches.append(f"  {k}: importedBy {', '.join(parts)}")
+
+            elif section in ("instances", "instancesFor"):
+                # Compare as sets
+                if set(old_val) != set(new_val):
+                    added = set(new_val) - set(old_val)
+                    removed = set(old_val) - set(new_val)
+                    parts = []
+                    if added:
+                        parts.append(f"+{len(added)}")
+                    if removed:
+                        parts.append(f"-{len(removed)}")
+                    mismatches.append(f"  {k}: {', '.join(parts)}")
+
+            else:
+                # declarations: field equality
+                if old_val != new_val:
+                    mismatches.append(f"  {k}: {old_val} != {new_val}")
+
+        if mismatches:
+            summary.append(f"{section}: {len(mismatches)} values differ")
+            for m in mismatches[:20]:
+                detail.append(m)
+            if len(mismatches) > 20:
+                detail.append(f"  ... and {len(mismatches) - 20} more")
+
+    # Check for unknown top-level keys
+    for k in sorted(set(old_data.keys()) | set(new_data.keys())):
+        if k not in ("declarations", "instances", "instancesFor", "modules"):
+            summary.append(f"unknown top-level key: {k}")
+
+    return summary, detail
+
+
+def compare_data_files(
+    dir1: Path, dir2: Path, shared_files: set[str]
+) -> tuple[int, list[tuple[str, str, str]]]:
+    """Compare JSON/BMP data files between directories.
+
+    declaration-data.bmp gets domain-specific comparison.
+    Other JSON files are compared by structural equality of their parsed
+    Python representations.
+
+    Returns (identical_count, list_of_(path, summary, verbose_detail)_tuples).
+    """
+    identical = 0
+    different: list[tuple[str, str, str]] = []
+
+    for f in sorted(shared_files):
+        content1 = (dir1 / f).read_bytes()
+        content2 = (dir2 / f).read_bytes()
+
+        if content1 == content2:
+            identical += 1
+            continue
+
+        try:
+            j1 = json.loads(content1)
+            j2 = json.loads(content2)
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            different.append((f, "not valid JSON", ""))
+            continue
+
+        if j1 == j2:
+            identical += 1
+            continue
+
+        # Domain-specific comparison for declaration-data files
+        if Path(f).name == "declaration-data.bmp":
+            summary_lines, detail_lines = compare_declaration_data(j1, j2)
+            if summary_lines or detail_lines:
+                summary = "; ".join(summary_lines) if summary_lines else "differs"
+                verbose = "\n".join(detail_lines)
+                different.append((f, summary, verbose))
+            else:
+                identical += 1
+        else:
+            different.append((f, "content differs", ""))
+
+    return identical, different
+
+
+def run_declaration_census(
+    db_path: Path, new_targets: set[str]
+) -> tuple[int, list[tuple[str, str]]]:
+    """Verify every rendered declaration in the DB has an HTML anchor in dir2.
+
+    Checks that for each (module_name, name) with render=1 in the database,
+    the target "Module/Path.html#name" exists in new_targets.
+
+    Returns (total_checked, list_of_missing_(module, name)_pairs).
+    """
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.execute(
+        "SELECT module_name, name FROM name_info WHERE render = 1"
+    )
+    total = 0
+    missing: list[tuple[str, str]] = []
+    for module_name, name in cursor:
+        total += 1
+        file_path = module_name.replace(".", "/") + ".html"
+        # HTML id attributes have <, >, & escaped; DB stores them raw
+        escaped_name = html.escape(name, quote=False)
+        target = f"{file_path}#{escaped_name}"
+        if target not in new_targets:
+            missing.append((module_name, name))
+    conn.close()
+    return total, missing
+
+
 def print_summary(
     total_files: int,
     files_with_diffs: int,
@@ -1564,6 +1839,12 @@ def print_summary(
     files_only_in_dir1: int,
     files_only_in_dir2: int,
     total_elapsed_ms: float,
+    data_files_identical: int = 0,
+    data_files_different: int = 0,
+    data_only_in_dir1: int = 0,
+    data_only_in_dir2: int = 0,
+    census_total: int = 0,
+    census_missing: int = 0,
 ) -> None:
     """Print the final summary."""
     log("\n" + "=" * 60)
@@ -1575,6 +1856,12 @@ def print_summary(
     log(f"  Total accepted differences: {total_accepted}")
     log(f"  Files only in dir1: {files_only_in_dir1}")
     log(f"  Files only in dir2: {files_only_in_dir2}")
+    log(f"  Data files compared: {data_files_identical + data_files_different}")
+    log(f"  Data files identical: {data_files_identical}")
+    log(f"  Data files different: {data_files_different}")
+    log(f"  Data files only in dir1: {data_only_in_dir1}")
+    log(f"  Data files only in dir2: {data_only_in_dir2}")
+    log(f"  Declaration census: {census_total} checked, {census_missing} missing")
 
 
 
@@ -1841,7 +2128,7 @@ def run_tests() -> int:
 def main_cli() -> int:
     """Main CLI entry point with subcommand support."""
     # If first arg is not a known command or flag, assume it's a directory and prepend "compare"
-    if len(sys.argv) > 1 and sys.argv[1] not in ("compare", "test", "-h", "--help"):
+    if len(sys.argv) > 1 and sys.argv[1] not in ("compare", "test", "json", "-h", "--help"):
         sys.argv.insert(1, "compare")
 
     parser = argparse.ArgumentParser(
@@ -1882,9 +2169,16 @@ def main_cli() -> int:
     compare_parser.add_argument(
         "--db",
         type=Path,
-        default=None,
-        help="doc-gen4 SQLite database for source position lookups (enables reorder acceptance)",
+        required=True,
+        help="doc-gen4 SQLite database for source position lookups and declaration census",
     )
+
+    # JSON comparison command
+    json_parser = subparsers.add_parser(
+        "json", help="Compare only JSON/BMP data files (fast iteration)"
+    )
+    json_parser.add_argument("dir1", type=Path, help="First documentation directory (old)")
+    json_parser.add_argument("dir2", type=Path, help="Second documentation directory (new)")
 
     # Test command
     subparsers.add_parser("test", help="Run unit tests for compare_code_elements")
@@ -1893,11 +2187,60 @@ def main_cli() -> int:
 
     if args.command == "test":
         return run_tests()
+    elif args.command == "json":
+        return run_json_compare(args)
     elif args.command == "compare":
         return main(args)
     else:
         parser.print_help()
         return 0
+
+
+def run_json_compare(args: argparse.Namespace) -> int:
+    """Compare only JSON/BMP data files between two directories."""
+    if not args.dir1.is_dir():
+        print(f"Error: {args.dir1} is not a directory", file=sys.stderr)
+        return 1
+    if not args.dir2.is_dir():
+        print(f"Error: {args.dir2} is not a directory", file=sys.stderr)
+        return 1
+
+    start = time.perf_counter()
+    log(f"Comparing JSON/BMP files in {args.dir1} vs {args.dir2}")
+
+    _, _, _, other_only_dir1, other_only_dir2, other_both = compare_directories(args.dir1, args.dir2)
+    data_exts = {".json", ".bmp"}
+    other_only_dir1 = {f for f in other_only_dir1 if Path(f).suffix in data_exts}
+    other_only_dir2 = {f for f in other_only_dir2 if Path(f).suffix in data_exts}
+    other_both = {f for f in other_both if Path(f).suffix in data_exts}
+
+    has_errors = False
+
+    if other_only_dir1:
+        log(f"\nData files only in dir1: {len(other_only_dir1)}")
+        for f in sorted(other_only_dir1):
+            log(f"  {f}")
+        has_errors = True
+
+    if other_only_dir2:
+        log(f"\nData files only in dir2: {len(other_only_dir2)}")
+        for f in sorted(other_only_dir2):
+            log(f"  {f}")
+        has_errors = True
+
+    data_identical, data_different = compare_data_files(args.dir1, args.dir2, other_both)
+    elapsed = (time.perf_counter() - start) * 1000
+    log(f"\nCompared {len(other_both)} data files ({elapsed:.1f}ms)")
+    log(f"  Identical: {data_identical}")
+    log(f"  Different: {len(data_different)}")
+    if data_different:
+        has_errors = True
+        for f, summary, verbose in data_different:
+            log(f"\n  {f}: {summary}")
+            for line in verbose.splitlines():
+                log(f"    {line}")
+
+    return 1 if has_errors else 0
 
 
 def main(args: argparse.Namespace | None = None) -> int:
@@ -1934,8 +2277,8 @@ def main(args: argparse.Namespace | None = None) -> int:
         parser.add_argument(
             "--db",
             type=Path,
-            default=None,
-            help="doc-gen4 SQLite database for source position lookups (enables reorder acceptance)",
+            required=True,
+            help="doc-gen4 SQLite database for source position lookups and declaration census",
         )
         args = parser.parse_args()
 
@@ -1947,30 +2290,37 @@ def main(args: argparse.Namespace | None = None) -> int:
         print(f"Error: {args.dir2} is not a directory", file=sys.stderr)
         return 1
 
-    # Load DB declaration positions if provided
+    if not args.db.exists():
+        print(f"Error: database {args.db} not found", file=sys.stderr)
+        return 1
+
+    # Load DB declaration positions for reorder acceptance
     global _db_decl_positions
-    db_path = getattr(args, "db", None)
-    if db_path:
-        if not db_path.exists():
-            print(f"Error: database {db_path} not found", file=sys.stderr)
-            return 1
-        _db_decl_positions = load_db_decl_positions(db_path)
-        log(f"Loaded {len(_db_decl_positions)} declaration positions from {db_path}")
+    _db_decl_positions = load_db_decl_positions(args.db)
+    log(f"Loaded {len(_db_decl_positions)} declaration positions from {args.db}")
 
     total_start = time.perf_counter()
     log(f"Comparing {args.dir1} vs {args.dir2}")
 
     # Step 1: Compare directory contents
     step_start = time.perf_counter()
-    html_only_dir1, html_only_dir2, html_both, other_only_dir1, other_only_dir2 = compare_directories(
+    html_only_dir1, html_only_dir2, html_both, other_only_dir1, other_only_dir2, other_both = compare_directories(
         args.dir1, args.dir2
     )
+    # Only track JSON-like data files (.json, .bmp), not build artifacts (.hash, .trace, etc.)
+    data_exts = {".json", ".bmp"}
+    other_only_dir1 = {f for f in other_only_dir1 if Path(f).suffix in data_exts}
+    other_only_dir2 = {f for f in other_only_dir2 if Path(f).suffix in data_exts}
+    other_both = {f for f in other_both if Path(f).suffix in data_exts}
     step_elapsed = (time.perf_counter() - step_start) * 1000
 
     log(f"Scanning directories... ({step_elapsed:.1f}ms)")
     log(f"  HTML files in both: {len(html_both)}")
     log(f"  HTML files only in dir1: {len(html_only_dir1)}")
     log(f"  HTML files only in dir2: {len(html_only_dir2)}")
+    log(f"  Data files in both: {len(other_both)}")
+    log(f"  Data files only in dir1: {len(other_only_dir1)}")
+    log(f"  Data files only in dir2: {len(other_only_dir2)}")
 
     # Step 2: Extract link targets (or load from cache)
     step_start = time.perf_counter()
@@ -2008,14 +2358,14 @@ def main(args: argparse.Namespace | None = None) -> int:
         html_only_dir2 = {f for f in html_only_dir2 if f.startswith(prefix) or f == restrict}
         log(f"Restricted to '{restrict}': {len(html_both)} files to compare")
 
-    # Report HTML files only in one directory (skip non-HTML files)
+    # Report files only in one directory
     has_errors = False
     files_only_dir1 = sorted(html_only_dir1)
     files_only_dir2 = sorted(html_only_dir2)
 
     if files_only_dir1:
         log("\n" + "=" * 60)
-        log("FILES ONLY IN DIR1:")
+        log("HTML FILES ONLY IN DIR1:")
         log("=" * 60)
         for f in files_only_dir1:
             log(f"  {f}")
@@ -2023,13 +2373,59 @@ def main(args: argparse.Namespace | None = None) -> int:
 
     if files_only_dir2:
         log("\n" + "=" * 60)
-        log("FILES ONLY IN DIR2:")
+        log("HTML FILES ONLY IN DIR2:")
         log("=" * 60)
         for f in files_only_dir2:
             log(f"  {f}")
         has_errors = True
 
-    # Step 3: Compare HTML files in parallel, printing results in deterministic order
+    if other_only_dir1:
+        log("\n" + "=" * 60)
+        log("DATA FILES ONLY IN DIR1:")
+        log("=" * 60)
+        for f in sorted(other_only_dir1):
+            log(f"  {f}")
+        has_errors = True
+
+    if other_only_dir2:
+        log("\n" + "=" * 60)
+        log("DATA FILES ONLY IN DIR2:")
+        log("=" * 60)
+        for f in sorted(other_only_dir2):
+            log(f"  {f}")
+        has_errors = True
+
+    # Step 3: Compare data files
+    step_start = time.perf_counter()
+    data_identical, data_different = compare_data_files(args.dir1, args.dir2, other_both)
+    step_elapsed = (time.perf_counter() - step_start) * 1000
+    log(f"\nComparing {len(other_both)} data files... ({step_elapsed:.1f}ms)")
+    log(f"  Identical: {data_identical}")
+    log(f"  Different: {len(data_different)}")
+    if data_different:
+        for f, summary, verbose in data_different:
+            log(f"\n  {f}: {summary}")
+            for line in verbose.splitlines():
+                log(f"    {line}")
+
+    # Step 4: Declaration census
+    step_start = time.perf_counter()
+    census_total, census_missing = run_declaration_census(args.db, new_targets)
+    step_elapsed = (time.perf_counter() - step_start) * 1000
+    log(f"\nDeclaration census... ({step_elapsed:.1f}ms)")
+    log(f"  Declarations checked: {census_total}")
+    log(f"  Missing from HTML: {len(census_missing)}")
+    if census_missing:
+        has_errors = True
+        log("\n" + "=" * 60)
+        log("MISSING DECLARATIONS:")
+        log("=" * 60)
+        for module_name, name in census_missing[:50]:
+            log(f"  {module_name}: {name}")
+        if len(census_missing) > 50:
+            log(f"  ... and {len(census_missing) - 50} more")
+
+    # Step 5: Compare HTML files in parallel, printing results in deterministic order
     log(f"\nComparing {len(html_both)} HTML files...")
 
     total_rejected = 0
@@ -2083,7 +2479,7 @@ def main(args: argparse.Namespace | None = None) -> int:
         log(f"Processed {files_compared} of {len(sorted_files)} files before interrupt.")
         return 130  # Standard exit code for SIGINT
 
-    # Step 4: Print summary
+    # Step 6: Print summary
     total_elapsed = (time.perf_counter() - total_start) * 1000
     print_summary(
         total_files=len(html_both),
@@ -2093,6 +2489,12 @@ def main(args: argparse.Namespace | None = None) -> int:
         files_only_in_dir1=len(files_only_dir1),
         files_only_in_dir2=len(files_only_dir2),
         total_elapsed_ms=total_elapsed,
+        data_files_identical=data_identical,
+        data_files_different=len(data_different),
+        data_only_in_dir1=len(other_only_dir1),
+        data_only_in_dir2=len(other_only_dir2),
+        census_total=census_total,
+        census_missing=len(census_missing),
     )
 
     return 1 if has_errors else 0
