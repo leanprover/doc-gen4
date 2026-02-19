@@ -132,8 +132,8 @@ def moduleToJsonModule (module : Process.Module) : HtmlM JsonModule := do
     let mut jsonDecls := []
     let mut instances := #[]
     let sourceLinker := (← read).sourceLinker module.name
-    let relevantMembers := module.members.iter.filter Process.ModuleMember.shouldRender
-    let declInfo := Process.filterDocInfo relevantMembers
+    let declInfo := Process.filterDocInfo module.members.iter
+      |>.filter (!isPrivateName ·.getName)
     for decl in declInfo do
       jsonDecls := (← DocInfo.toJson sourceLinker decl) :: jsonDecls
       if let .instanceInfo i := decl then
