@@ -109,10 +109,13 @@ structure OpaqueInfo extends Info where
 /--
 The maximum string length of equations before they are omitted from rendering.
 
+This is an arbitrary cutoff that seems to work well in practice. Very long equations are unreadable
+in documentation and slow down page generation and rendering, so we drop them and show a notice
+instead. The number 200 has no deeper justification.
+
 Equations exceeding this limit are stored as NULL blobs in the database (only `text_length` is
-preserved). This means oversized equations cannot be recovered by re-rendering from the DB.
-The `equationsWereOmitted` field in `DefinitionInfo` is set when any equation exceeds this limit,
-causing the rendering code in `DocGen4/Output/Definition.lean` to show a notice to the user.
+preserved). The `equationsWereOmitted` field in `DefinitionInfo` is set when any equation exceeds
+this limit, causing the rendering code in `DocGen4/Output/Definition.lean` to show a notice.
 -/
 def equationLimit : Nat := 200
 

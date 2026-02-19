@@ -1,4 +1,8 @@
-
+/-
+Copyright (c) 2026 Lean FRO, LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: David Thrane Christiansen
+-/
 import DocGen4.RenderedCode
 import SQLite
 import DocGen4.Helpers
@@ -6,11 +10,50 @@ import DocGen4.DB.VersoDocString
 import DocGen4.DB.Schema
 import DocGen4.DB.Read
 
-namespace DocGen4.DB
+/-!
+# Database Write Interface
 
--- ReadDB is defined in DocGen4.DB.Read and is the read-only database interface.
--- WriteDB (below) is the write-only interface. The two types are completely disjoint,
--- enforcing at compile time that read and write paths cannot be mixed.
+This file defines `WriteDB`, the interface for populating the database. Lake runs one `single`
+command per module (and `genCore` for Init/Std/Lake/Lean), each of which writes to the shared
+SQLite database through `WriteDB`. Later, the `fromDb` command reads everything back via `ReadDB`
+(defined in `DocGen4.DB.Read`) and generates HTML.
+
+`WriteDB` and `ReadDB` are separate types because writers and readers have different needs.
+The database schema lives in `DocGen4.DB.Schema`.
+
+## Module Item Positions
+
+Within a module, each item (declaration, module doc, constructor) is assigned a sequential `Int64`
+position starting from 0. This position serves as the item's identity within the module: the
+composite key `(module_name, position)` is the primary key for most tables. Positions are assigned
+in the order items appear in the module's `members` array, with constructors and structure fields
+interleaved between their parent declarations. For example, a module containing a module doc,
+a definition, and an inductive with two constructors might have positions:
+
+  0: module doc
+  1: definition
+  2: inductive
+  3: constructor 1 (of the inductive at position 2)
+  4: constructor 2 (of the inductive at position 2)
+
+The position counter is a mutable `Int64` in `updateModuleDb`. Structures consume extra positions
+for their constructor and fields. The read side reconstructs module members by querying
+`name_info` and `module_docs_markdown` ordered by position.
+
+## Changing the Schema
+
+When adding a new column or table:
+  1. Add the DDL in `DocGen4.DB.Schema` (the `ddl` string in `getDb`).
+  2. Add a prepared statement to `WriteStmts` and its `prepare` method below.
+  3. Add a `WriteStmts.saveXxx` method with positional `bind` calls matching the SQL.
+  4. Expose it through `WriteDB` (the structure at the top of this file) and the mutex wrapper
+     in `ensureWriteDb`.
+  5. Add a prepared statement and loader to `ReadStmts` in `DocGen4.DB.Read`.
+  6. If the change affects serialized blob types, update `serializedCodeTypeDefs` in
+     `DocGen4.DB.Schema` so the type hash invalidates stale databases.
+-/
+
+namespace DocGen4.DB
 
 /-- A write-only database handle. Used during the analysis phase to populate the database. -/
 structure WriteDB where
@@ -77,6 +120,10 @@ instance : SQLite.QueryParam RenderedCode where
     let str := ToBinary.serializer code .empty
     SQLite.QueryParam.bind stmt index str
 
+-- Each `WriteStmts` field is a prepared SQLite statement. The corresponding `WriteStmts.funName`
+-- function binds parameters by position (1-indexed, matching the `?` placeholders in the SQL).
+-- The SQLite bindings don't check that bind positions match the SQL at compile time, so be
+-- careful when adding or reordering columns.
 private structure WriteStmts where
   values : DocstringValues
   deleteModuleStmt : SQLite.Stmt
@@ -460,6 +507,9 @@ def updateModuleDb (values : DocstringValues)
           db.saveModule modNameStr sourceUrl?
           for imported in modInfo.imports do
             db.saveImport modNameStr imported
+          -- Position counter: each item gets a unique sequential position within the module.
+          -- Constructors and structure metadata consume positions between their parent and the
+          -- next top-level member. See "Module Item Positions" in the module docstring.
           let mut i : Int64 := 0
           for mem in modInfo.members do
             let pos := i

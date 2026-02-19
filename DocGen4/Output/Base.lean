@@ -297,9 +297,23 @@ where
     | _ => .anonymous
 
 /--
-Convert RenderedCode to HTML with declaration links.
-Returns (hasAnchor, html) where hasAnchor indicates if the result contains an anchor tag.
-This is used to avoid creating nested anchors (invalid HTML).
+Converts `RenderedCode` to HTML with declaration links.
+
+Returns `(hasAnchor, html)` where `hasAnchor` indicates if the result contains an `<a>` tag. This is
+tracked to avoid creating nested anchors (which is invalid HTML).
+
+For `.const name` tags, it first checks whether the name is a valid link target (that is, a
+non-private name in `name2ModIdx`). If so, it links directly to that name. If not, it applies
+`Lean.privateToUserName?` to convert internal private names to user-facing names (e.g.,
+`_private.Init.Prelude.0.Foo.helper` → `Foo.helper`) and then tries:
+
+1. **Auxiliary name removal** (`findLinkableParent`): Strip trailing components that start with `_`
+   or are numeric (e.g., `Foo.bar._proof_2` → `Foo.bar`). This handles auto-generated auxiliary
+   names like match discriminant functions (`Foo.bar.match_1` → `Foo.bar`).
+2. **Module link**: For private names where no declaration was found, extract the module name from
+   the private prefix and link to the module page (e.g., `_private.Init.Prelude.0.Foo` → module
+   `Init.Prelude`).
+3. **Give up**: Wrap in `<span class="fn">` with no link.
 -/
 partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM (Bool × Array Html) := do
   match code with
@@ -313,19 +327,17 @@ partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM (Bool × Array H
     match tag with
     | .const name =>
       let name2ModIdx := (← getResult).name2ModIdx
+      -- Direct match: non-private name in name2ModIdx
       if name2ModIdx.contains name && (Lean.privatePrefix? name).isNone then
         let link ← declNameToLink name
-        -- Avoid nested anchors: if inner content already has anchors, don't wrap again
         if innerHasAnchor then
           return (true, innerHtml)
         else
           return (true, #[<a href={link}>[innerHtml]</a>])
       else
-        -- Name not in name2ModIdx - try to find a linkable parent
-        -- This handles both:
-        -- 1. Private names like `_private.Init.Prelude.0.Lean.Name.hash._proof_1`
-        -- 2. Auxiliary names like `Std.Do.Option.instWPMonad._proof_2`
+        -- Resolve private names, then try the remaining steps
         let nameToSearch := Lean.privateToUserName? name |>.getD name
+        -- Step 1: Auxiliary name removal
         match findLinkableParent name2ModIdx nameToSearch with
         | some target =>
           let link ← declNameToLink target
@@ -334,7 +346,7 @@ partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM (Bool × Array H
           else
             return (true, #[<a href={link}>[innerHtml]</a>])
         | none =>
-          -- For private names, fall back to linking to the module itself (no anchor)
+          -- Step 2: Module link
           match Lean.privatePrefix? name with
           | some pfx =>
             let modName := moduleFromPrivatePrefix pfx
@@ -345,8 +357,10 @@ partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM (Bool × Array H
               else
                 return (true, #[<a href={link}>[innerHtml]</a>])
             else
+              -- Step 3: Give up
               return (innerHasAnchor, fn innerHtml)
           | none =>
+            -- Step 3: Give up
             return (innerHasAnchor, fn innerHtml)
     | .sort _ =>
       let link := s!"{← getRoot}foundational_types.html"

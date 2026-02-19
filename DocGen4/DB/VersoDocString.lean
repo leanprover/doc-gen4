@@ -1,19 +1,48 @@
+/-
+Copyright (c) 2026 Lean FRO, LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: David Thrane Christiansen
+-/
 import DocGen4.Process
 import DocGen4.RenderedCode
 import SQLite
 import DocGen4.Helpers
+
+/-!
+# Verso Docstring Serialization
+
+Verso docstrings (`VersoDocString`) contain a tree of `Doc.Block`/`Doc.Inline` nodes, which can
+include *extension points* (`ElabInline`/`ElabBlock`) which are opaque `Dynamic` values identified
+by `Name`. Different Lean packages can register their own extension types, so we can't know all
+possible types at compile time.
+
+The serialization strategy is:
+* For each `ElabInline`/`ElabBlock`, look up a handler by name in `DocstringValues`.
+* If a handler exists, serialize the payload with it (tag byte `1`, then name, then length-prefixed
+  payload). On deserialization, the same handler reconstructs the value.
+* If no handler exists (the extension type is unknown), serialize just the name (tag byte `0`). On
+  deserialization, unknown extensions are replaced with an `Unknown` sentinel value and their
+  payload bytes are skipped. This means the database remains readable even if extension types are
+  added or removed between versions. In Verso docstrings, the content underneath a custom inline or
+  block node represents an alternative plain representation.
+
+`builtinDocstringValues` (defined at the bottom of this file) registers the handlers for extension
+types that ship with Lean. If a downstream package defines custom Verso extensions, it would need to
+provide its own `DocstringValues` with additional handlers. There's presently no API for this, but
+the code is designed to allow plugins that provide handlers in the future.
+-/
 
 namespace DocGen4.DB
 
 open Lean
 open SQLite.Blob
 
-
-
+/-- Serializer/deserializer pair for a single Verso extension type. -/
 structure DocstringDataHandler where
   serialize : Serializer Dynamic
   deserialize : Deserializer Dynamic
 
+/-- Registry of known Verso extension types, keyed by `Name`. -/
 structure DocstringValues where
   handlers : NameMap DocstringDataHandler := {}
 

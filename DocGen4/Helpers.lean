@@ -1,3 +1,8 @@
+/-
+Copyright (c) 2026 Lean FRO, LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: David Thrane Christiansen
+-/
 import Std.Data.Iterators
 
 namespace DocGen4
@@ -39,11 +44,3 @@ instance [Pure m] : Iterator (ChunkArray α) m (Subarray α) where
       pure <| .deflate <| .yield it' (array[curr...curr'']) (by grind [ChunkArray.PlausibleStep])
 
 instance [Pure m] [Monad n] : IteratorLoop (ChunkArray α) (β := Subarray α) m n := IteratorLoop.defaultImplementation
-
-def chunksOf (xs : Array α) (chunkSize : Nat) (_ok : chunkSize > 0 := by grind) : Array (Array α) := Id.run do
-  let mut out := #[]
-  let mut n := 0
-  while n < xs.size do
-    out := out.push <| xs.extract n (n + chunkSize)
-    n := n + chunkSize
-  return out

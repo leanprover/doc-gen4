@@ -1,7 +1,27 @@
-
+/-
+Copyright (c) 2026 Lean FRO, LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: David Thrane Christiansen
+-/
 import DocGen4.RenderedCode
 import SQLite
 import DocGen4.DB.VersoDocString
+
+/-!
+# Database Read Interface
+
+The read side of the database layer. `ReadDB` is a structure of closures (like `WriteDB`) that
+load module data from a SQLite database. Each closure wraps a prepared statement from `ReadStmts`.
+
+`ReadDB` is constructed via `mkReadDB` (called from `openForReading` in `DocGen4.DB`). A single
+`ReadDB` can be shared across tasks (reads are mutex-protected), but for parallel workloads each
+task should call `openForReading` to get its own connection — see `htmlOutputResultsParallel` in
+`DocGen4.Output`.
+
+Column access in the read methods uses positional indices (e.g., `stmt.columnInt64 3`) that must
+match the column order in the corresponding SQL query. When modifying a query, update the column
+indices in the reader method to match.
+-/
 
 namespace DocGen4.DB
 

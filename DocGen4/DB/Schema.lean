@@ -1,6 +1,25 @@
-
+/-
+Copyright (c) 2026 Lean FRO, LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: David Thrane Christiansen
+-/
 import DocGen4.RenderedCode
 import SQLite
+
+/-!
+# Database Schema and Initialization
+
+Defines the SQLite DDL (table definitions) and handles database creation, including schema
+versioning. The schema is versioned by two hashes:
+- **DDL hash**: detects changes to table definitions (column additions, new tables, etc.).
+- **Type hash**: detects changes to Lean types that are serialized as blobs in the database (e.g.,
+  `RenderedCode`, `RenderedCode.Tag`). Computed at compile time via `inductiveRepr!`.
+
+If either hash doesn't match, the database is rejected with an error message asking the user to
+rebuild. This prevents silent corruption from reading blobs with a stale deserializer. Note that
+changes to the serialization procedures that don't change the datatypes will not invalidate the
+hashes, so this measure is not perfect.
+-/
 
 namespace DocGen4.DB
 

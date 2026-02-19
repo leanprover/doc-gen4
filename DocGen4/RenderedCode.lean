@@ -6,6 +6,24 @@ Authors: Henrik Böving
 import Lean
 import SQLite
 
+/-!
+# Rendered Code
+
+Lean's pretty printer produces `CodeWithInfos` (a `TaggedText SubexprInfo`), which carries rich
+metadata — expression types, universe levels, elaboration state, etc. This is too large to serialize
+to disk.
+
+`RenderedCode` is a `TaggedText RenderedCode.Tag` that keeps only the information needed for HTML
+rendering: which tokens are declaration references (for linking), which are sorts (for linking to
+the foundational types page), and which are keywords or strings (for syntax highlighting). The
+conversion from `CodeWithInfos` to `RenderedCode` happens in `renderTagged` at the bottom of this
+file. The reverse direction is not possible — `RenderedCode` is a lossy projection.
+
+`RenderedCode` is serialized to the database as a binary blob via `ToBinary`/`FromBinary` instances.
+If the `RenderedCode.Tag` or `TaggedText` types change, the type hash in `DocGen4.DB.Schema` will
+detect the mismatch and require a rebuild.
+-/
+
 namespace DocGen4
 
 open Lean Widget Elab
@@ -176,6 +194,16 @@ where
       else go (i.next h)
   termination_by i
 
+/--
+Tokenizes plain text for basic syntax highlighting. This only runs on untagged `.text` nodes from
+`CodeWithInfos`: tokens that the pretty printer did not associate with any semantic information.
+Lean keywords like `let`, `fun`, `match`, etc. commonly appear as untagged text in pretty-printed
+output, so we tag them here so the HTML renderer can style them.
+
+The keyword list is intentionally conservative (common expression-level keywords only) and doesn't
+attempt to cover all Lean syntax. For new keywords that occur in terms, this list may need updating,
+but missing a keyword only means it won't be highlighted. Linking is unaffected.
+-/
 private def tokenize (txt : String) : RenderedCode := Id.run do
   let mut todo := txt.drop 0
   let mut toks : RenderedCode := .empty
