@@ -18,6 +18,7 @@ import argparse
 import difflib
 import html
 import json
+import random
 import re
 import sqlite3
 import sys
@@ -197,6 +198,8 @@ class Difference:
     new_value: Any = None
     accepted: bool = False
     reason: str | None = None
+    rule_name: str | None = None
+    section: str = "body"
 
 
 @dataclass
@@ -984,16 +987,23 @@ def compare_code_elements(
 # =============================================================================
 
 
-def get_significant_children(elem: Tag) -> list[Tag | NavigableString]:
-    """Get children that are significant for comparison (elements and non-whitespace text)."""
+def get_significant_children(elem: Tag, in_pre: bool = False) -> list[Tag | NavigableString]:
+    """Get children that are significant for comparison (elements and non-whitespace text).
+
+    Inside <pre> blocks, all text (including whitespace-only) is preserved since
+    whitespace is significant for code formatting.
+    """
     result = []
     for child in elem.children:
         if isinstance(child, Tag):
             result.append(child)
         elif isinstance(child, NavigableString):
-            text = str(child).strip()
-            if text:
+            if in_pre:
                 result.append(child)
+            else:
+                text = str(child).strip()
+                if text:
+                    result.append(child)
     return result
 
 
@@ -1005,7 +1015,9 @@ def normalize_text(text: str) -> str:
 def normalize_attr_value(value: Any) -> Any:
     """Normalize attribute value for comparison."""
     if isinstance(value, list):
-        # Class lists - sort for comparison
+        # Class lists — sort for order-independent comparison.
+        # CSS specificity doesn't depend on class attribute order; doc-gen4
+        # JS also does not inspect classList ordering, so this is safe.
         return sorted(value)
     if isinstance(value, str):
         return normalize_text(value)
@@ -1059,6 +1071,7 @@ def compare_trees(
     new_ancestors: list[Tag],
     old_targets: set[str],
     new_targets: set[str],
+    in_pre: bool = False,
 ) -> list[Difference]:
     """Recursively compare two DOM trees."""
     differences = []
@@ -1101,8 +1114,12 @@ def compare_trees(
 
     # Text vs Text
     if not old_is_tag and not new_is_tag:
-        old_text = normalize_text(str(old_node))
-        new_text = normalize_text(str(new_node))
+        if in_pre:
+            old_text = str(old_node)
+            new_text = str(new_node)
+        else:
+            old_text = normalize_text(str(old_node))
+            new_text = normalize_text(str(new_node))
         if old_text != new_text:
             differences.append(
                 Difference(
@@ -1188,6 +1205,7 @@ def compare_trees(
                     new_ancestors=new_ancestors.copy(),
                     accepted=True,
                     reason=reason,
+                    rule_name="compare_code_elements",
                 )
                 differences.append(diff)
             return differences
@@ -1202,8 +1220,9 @@ def compare_trees(
     # Compare children
     next_old_ancestors = [old_node] + old_ancestors
     next_new_ancestors = [new_node] + new_ancestors
-    old_children = get_significant_children(old_node)
-    new_children = get_significant_children(new_node)
+    next_in_pre = in_pre or old_node.name == "pre"
+    old_children = get_significant_children(old_node, next_in_pre)
+    new_children = get_significant_children(new_node, next_in_pre)
 
     # Simple alignment: compare by index
     max_len = max(len(old_children), len(new_children))
@@ -1211,7 +1230,7 @@ def compare_trees(
         old_child = old_children[i] if i < len(old_children) else None
         new_child = new_children[i] if i < len(new_children) else None
         differences.extend(
-            compare_trees(old_child, new_child, file_path, next_old_ancestors, next_new_ancestors, old_targets, new_targets)
+            compare_trees(old_child, new_child, file_path, next_old_ancestors, next_new_ancestors, old_targets, new_targets, in_pre=next_in_pre)
         )
 
     return differences
@@ -1384,13 +1403,15 @@ def compare_html_files(
         old_soup = BeautifulSoup(old_content, PARSER)
         new_soup = BeautifulSoup(new_content, PARSER)
 
-        # Compare <head> sections
+        # Compare <head> sections — no acceptance rules are applied to <head>
+        # diffs, so any difference here is reported as a rejection.
         old_head = old_soup.head
         new_head = new_soup.head
         if old_head or new_head:
-            result.differences.extend(
-                compare_trees(old_head, new_head, file_path, [], [], old_targets, new_targets)
-            )
+            head_diffs = compare_trees(old_head, new_head, file_path, [], [], old_targets, new_targets)
+            for d in head_diffs:
+                d.section = "head"
+            result.differences.extend(head_diffs)
 
         # Semantic comparison for tactics.html
         if file_path == "tactics.html":
@@ -1426,8 +1447,15 @@ def evaluate_rules(
     old_targets: set[str],
     new_targets: set[str],
 ) -> list[Difference]:
-    """Evaluate rules against differences, marking accepted ones."""
+    """Evaluate rules against differences, marking accepted ones.
+
+    Diffs with section='head' are not evaluated — acceptance rules are designed
+    for <body> content, so any <head> difference is reported as-is.
+    """
     for diff in differences:
+        if diff.section == "head":
+            continue
+
         ctx = DiffContext(
             file_path=diff.file_path,
             old_elem=diff.old_elem,
@@ -1448,6 +1476,7 @@ def evaluate_rules(
                 if reason is not None:
                     diff.accepted = True
                     diff.reason = reason
+                    diff.rule_name = rule.__name__
                     break
             except Exception as e:
                 print(f"Warning: Rule {rule.__name__} raised exception: {e}", file=sys.stderr)
@@ -1724,15 +1753,25 @@ def compare_declaration_data(old_data: dict, new_data: dict) -> tuple[list[str],
                     mismatches.append(f"  {k}: importedBy {', '.join(parts)}")
 
             elif section in ("instances", "instancesFor"):
-                # Compare as sets
-                if set(old_val) != set(new_val):
-                    added = set(new_val) - set(old_val)
-                    removed = set(old_val) - set(new_val)
+                # Compare as sorted lists to detect both membership and duplicate changes
+                old_sorted = sorted(str(x) for x in old_val)
+                new_sorted = sorted(str(x) for x in new_val)
+                if old_sorted != new_sorted:
+                    old_set = set(str(x) for x in old_val)
+                    new_set = set(str(x) for x in new_val)
+                    added = new_set - old_set
+                    removed = old_set - new_set
+                    old_dupes = len(old_val) - len(old_set)
+                    new_dupes = len(new_val) - len(new_set)
                     parts = []
                     if added:
                         parts.append(f"+{len(added)}")
                     if removed:
                         parts.append(f"-{len(removed)}")
+                    if old_dupes != new_dupes:
+                        parts.append(f"dupes: {old_dupes}\u2192{new_dupes}")
+                    if not parts:
+                        parts.append("duplicate count changed")
                     mismatches.append(f"  {k}: {', '.join(parts)}")
 
             else:
@@ -1831,6 +1870,47 @@ def run_declaration_census(
     return total, missing
 
 
+def render_sample_diff(diff: Difference) -> list[str]:
+    """Render a sample difference for the per-rule summary.
+
+    Returns a list of lines (without indentation prefix).
+    For reorder diffs, shows the reordered element names.
+    For other diffs, shows the diff view as if the difference were rejected.
+    """
+    if diff.rule_name == "allow_reorder_same_source_position":
+        old_name = _extract_decl_name_from_context(diff.old_elem, diff.old_ancestors)
+        new_name = _extract_decl_name_from_context(diff.new_elem, diff.new_ancestors)
+        line_info = ""
+        if diff.reason and "line " in diff.reason:
+            m = re.search(r"line (\d+)", diff.reason)
+            if m:
+                line_info = f" (line {m.group(1)})"
+        return [f"{diff.file_path}: {old_name} \u2194 {new_name}{line_info}"]
+
+    # Same format as print_difference for rejected diffs
+    attr_str = f" '{diff.attribute_name}'" if diff.attribute_name else ""
+    lines = [f"{diff.file_path}: {diff.diff_type}{attr_str}"]
+
+    old_parent = diff.old_ancestors[0] if diff.old_ancestors else None
+    new_parent = diff.new_ancestors[0] if diff.new_ancestors else None
+    old_html = str(old_parent) if old_parent else "(root)"
+    new_html = str(new_parent) if new_parent else "(root)"
+
+    if old_html != new_html and old_html != "(root)" and new_html != "(root)":
+        diff_lines = format_unified_diff(old_html, new_html)
+        if diff_lines:
+            for dl in diff_lines:
+                lines.append(dl)
+        else:
+            lines.append(f"Old: {format_parent_with_children(old_parent)}")
+            lines.append(f"New: {format_parent_with_children(new_parent)}")
+    else:
+        lines.append(f"Old: {format_parent_with_children(old_parent)}")
+        lines.append(f"New: {format_parent_with_children(new_parent)}")
+
+    return lines
+
+
 def print_summary(
     total_files: int,
     files_with_diffs: int,
@@ -1845,6 +1925,8 @@ def print_summary(
     data_only_in_dir2: int = 0,
     census_total: int = 0,
     census_missing: int = 0,
+    rule_stats: dict[str, int] | None = None,
+    rule_samples: dict[str, list[list[str]]] | None = None,
 ) -> None:
     """Print the final summary."""
     log("\n" + "=" * 60)
@@ -1862,6 +1944,15 @@ def print_summary(
     log(f"  Data files only in dir1: {data_only_in_dir1}")
     log(f"  Data files only in dir2: {data_only_in_dir2}")
     log(f"  Declaration census: {census_total} checked, {census_missing} missing")
+    if rule_stats:
+        log(f"\n  Accepted differences by rule:")
+        for rule_name, count in sorted(rule_stats.items(), key=lambda x: -x[1]):
+            log(f"    {rule_name}: {count:,}")
+            if rule_samples and rule_name in rule_samples:
+                for sample_lines in rule_samples[rule_name]:
+                    for i, line in enumerate(sample_lines):
+                        prefix = "      e.g. " if i == 0 else "           "
+                        log(f"{prefix}{line}")
 
 
 
@@ -2432,6 +2523,8 @@ def main(args: argparse.Namespace | None = None) -> int:
     total_accepted = 0
     files_with_diffs = 0
     files_compared = 0
+    rule_stats: dict[str, int] = {}
+    rule_samples: dict[str, list[list[str]]] = {}
 
     # Sort file paths for deterministic output order
     sorted_files = sorted(html_both)
@@ -2471,6 +2564,22 @@ def main(args: argparse.Namespace | None = None) -> int:
                     if rejected or accepted:
                         files_with_diffs += 1
                     files_compared += 1
+                    # Collect per-rule acceptance stats
+                    for diff in res.differences:
+                        if diff.accepted and diff.rule_name:
+                            rn = diff.rule_name
+                            rule_stats[rn] = rule_stats.get(rn, 0) + 1
+                            if rn not in rule_samples:
+                                rule_samples[rn] = []
+                            # Reservoir sampling: keep 5 uniformly random samples per rule.
+                            # Render immediately to avoid keeping soup objects alive.
+                            n = rule_stats[rn]
+                            if len(rule_samples[rn]) < 5:
+                                rule_samples[rn].append(render_sample_diff(diff))
+                            else:
+                                j = random.randint(0, n - 1)
+                                if j < 5:
+                                    rule_samples[rn][j] = render_sample_diff(diff)
                     next_to_print += 1
 
     except KeyboardInterrupt:
@@ -2495,6 +2604,8 @@ def main(args: argparse.Namespace | None = None) -> int:
         data_only_in_dir2=len(other_only_dir2),
         census_total=census_total,
         census_missing=len(census_missing),
+        rule_stats=rule_stats,
+        rule_samples=rule_samples,
     )
 
     return 1 if has_errors else 0
