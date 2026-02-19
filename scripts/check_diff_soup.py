@@ -391,6 +391,23 @@ def load_db_decl_positions(db_path: Path) -> dict[tuple[str, str], tuple[int, in
     return result
 
 
+def load_db_targets(db_path: Path) -> set[str]:
+    """Build a set of valid link targets from the doc-gen4 SQLite database.
+
+    Each target is "Module/Path.html#escaped_name", matching the format used
+    by extract_link_targets and docLink values in declaration-data.bmp.
+    """
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.execute("SELECT module_name, name FROM name_info")
+    targets: set[str] = set()
+    for module_name, name in cursor:
+        file_path = module_name.replace(".", "/") + ".html"
+        escaped_name = html.escape(name, quote=False)
+        targets.add(f"{file_path}#{escaped_name}")
+    conn.close()
+    return targets
+
+
 def _file_path_to_module(file_path: str) -> str:
     """Convert HTML file path to Lean module name (e.g. 'Init/Core.html' → 'Init.Core')."""
     return file_path.removesuffix(".html").replace("/", ".")
@@ -545,12 +562,16 @@ def allow_duplicate_li_removal_in_imports(ctx: DiffContext) -> str | None:
     if len(old_lis) == len(old_unique):
         return None  # No duplicates in old
 
-    # Check if new is the deduplicated version of old
+    # Verify new is strictly a deduplication of old:
     new_unique = set(new_lis)
-    if old_unique == new_unique and len(new_lis) == len(new_unique):
-        return "duplicate <li> removed from imports"
+    if not new_unique.issubset(old_unique):
+        return None  # new has entries that weren't in old
+    if not old_unique.issubset(new_unique):
+        return None  # old entries were removed entirely, not just deduplicated
+    if len(new_lis) != len(new_unique):
+        return None  # new still has duplicates
 
-    return None
+    return "duplicate <li> removed from imports"
 
 
 def allow_extends_id_wrapper(ctx: DiffContext) -> str | None:
@@ -1695,17 +1716,26 @@ def print_file_report(
     return len(rejected), len(accepted), len(rejected) > 0
 
 
-def compare_declaration_data(old_data: dict, new_data: dict) -> tuple[list[str], list[str]]:
+def compare_declaration_data(
+    old_data: dict, new_data: dict,
+    old_targets: set[str] | None = None, new_targets: set[str] | None = None,
+) -> tuple[list[str], list[str], list[str]]:
     """Compare two declaration-data JSON structures with domain-specific rules.
 
     - modules: keys must match; 'url' compared by equality; 'importedBy' compared as sets.
     - declarations: keys must match; values compared by field equality.
+      When docLink differs but both targets are valid HTML anchors, the difference
+      is reported as a benign multi-module assignment rather than an error.
     - instances: keys must match; values (lists) compared as sets.
     - instancesFor: keys must match; values (lists) compared as sets.
 
-    Returns (summary_lines, detail_lines).
+    Returns (error_lines, info_lines, detail_lines).
+    error_lines: real problems (missing keys, true mismatches)
+    info_lines: benign differences (multi-module assignments with both valid)
+    detail_lines: verbose details for both
     """
-    summary: list[str] = []
+    errors: list[str] = []
+    info: list[str] = []
     detail: list[str] = []
 
     for section in ("declarations", "instances", "instancesFor", "modules"):
@@ -1717,13 +1747,13 @@ def compare_declaration_data(old_data: dict, new_data: dict) -> tuple[list[str],
         only_old = sorted(old_keys - new_keys)
         only_new = sorted(new_keys - old_keys)
         if only_old:
-            summary.append(f"{section}: {len(only_old)} keys only in old")
+            errors.append(f"{section}: {len(only_old)} keys only in old")
             for k in only_old[:10]:
                 detail.append(f"  {section} only in old: {k}")
             if len(only_old) > 10:
                 detail.append(f"  ... and {len(only_old) - 10} more")
         if only_new:
-            summary.append(f"{section}: {len(only_new)} keys only in new")
+            errors.append(f"{section}: {len(only_new)} keys only in new")
             for k in only_new[:10]:
                 detail.append(f"  {section} only in new: {k}")
             if len(only_new) > 10:
@@ -1731,6 +1761,7 @@ def compare_declaration_data(old_data: dict, new_data: dict) -> tuple[list[str],
 
         # Compare shared keys
         mismatches: list[str] = []
+        benign: list[str] = []
         for k in sorted(old_keys & new_keys):
             old_val = old_sec[k]
             new_val = new_sec[k]
@@ -1777,36 +1808,68 @@ def compare_declaration_data(old_data: dict, new_data: dict) -> tuple[list[str],
             else:
                 # declarations: field equality
                 if old_val != new_val:
-                    mismatches.append(f"  {k}: {old_val} != {new_val}")
+                    # Check if this is just a multi-module docLink difference
+                    # where both targets are valid HTML anchors
+                    old_link = old_val.get("docLink", "") if isinstance(old_val, dict) else ""
+                    new_link = new_val.get("docLink", "") if isinstance(new_val, dict) else ""
+                    both_valid = False
+                    if (
+                        old_link and new_link and old_link != new_link
+                        and old_targets is not None and new_targets is not None
+                    ):
+                        # docLink values look like "./Module/Path.html#Name"
+                        # Targets are stored as "Module/Path.html#Name" (no leading ./)
+                        old_normalized = old_link.lstrip("./")
+                        new_normalized = new_link.lstrip("./")
+                        if old_normalized in old_targets and new_normalized in new_targets:
+                            # Check that the only difference is docLink
+                            old_rest = {kk: vv for kk, vv in old_val.items() if kk != "docLink"}
+                            new_rest = {kk: vv for kk, vv in new_val.items() if kk != "docLink"}
+                            if old_rest == new_rest:
+                                both_valid = True
+                    if both_valid:
+                        benign.append(f"      {k}: multi-module (both valid)\n        old: {old_link}\n        new: {new_link}")
+                    else:
+                        mismatches.append(f"      {k}:\n        old: {old_val}\n        new: {new_val}")
 
         if mismatches:
-            summary.append(f"{section}: {len(mismatches)} values differ")
+            errors.append(f"{section}: {len(mismatches)} values differ")
             for m in mismatches[:20]:
                 detail.append(m)
             if len(mismatches) > 20:
                 detail.append(f"  ... and {len(mismatches) - 20} more")
+        if benign:
+            info.append(f"{section}: {len(benign)} multi-module (both valid)")
+            for m in benign[:10]:
+                detail.append(m)
+            if len(benign) > 10:
+                detail.append(f"  ... and {len(benign) - 10} more")
 
     # Check for unknown top-level keys
     for k in sorted(set(old_data.keys()) | set(new_data.keys())):
         if k not in ("declarations", "instances", "instancesFor", "modules"):
-            summary.append(f"unknown top-level key: {k}")
+            errors.append(f"unknown top-level key: {k}")
 
-    return summary, detail
+    return errors, info, detail
 
 
 def compare_data_files(
-    dir1: Path, dir2: Path, shared_files: set[str]
-) -> tuple[int, list[tuple[str, str, str]]]:
+    dir1: Path, dir2: Path, shared_files: set[str],
+    old_targets: set[str] | None = None, new_targets: set[str] | None = None,
+) -> tuple[int, list[tuple[str, str, str]], list[tuple[str, str, str]]]:
     """Compare JSON/BMP data files between directories.
 
     declaration-data.bmp gets domain-specific comparison.
     Other JSON files are compared by structural equality of their parsed
     Python representations.
 
-    Returns (identical_count, list_of_(path, summary, verbose_detail)_tuples).
+    Returns (identical_count, error_tuples, info_tuples) where each tuple list
+    contains (path, summary, verbose_detail) entries.  Error tuples are real
+    differences; info tuples are benign (e.g. multi-module docLink).
     """
     identical = 0
     different: list[tuple[str, str, str]] = []
+    info_items: list[tuple[str, str, str]] = []
 
     for f in sorted(shared_files):
         content1 = (dir1 / f).read_bytes()
@@ -1829,17 +1892,21 @@ def compare_data_files(
 
         # Domain-specific comparison for declaration-data files
         if Path(f).name == "declaration-data.bmp":
-            summary_lines, detail_lines = compare_declaration_data(j1, j2)
-            if summary_lines or detail_lines:
-                summary = "; ".join(summary_lines) if summary_lines else "differs"
+            error_lines, info_lines, detail_lines = compare_declaration_data(j1, j2, old_targets, new_targets)
+            if error_lines:
+                summary = "; ".join(error_lines)
                 verbose = "\n".join(detail_lines)
                 different.append((f, summary, verbose))
+            elif info_lines:
+                summary = "; ".join(info_lines)
+                verbose = "\n".join(detail_lines)
+                info_items.append((f, summary, verbose))
             else:
                 identical += 1
         else:
             different.append((f, "content differs", ""))
 
-    return identical, different
+    return identical, different, info_items
 
 
 def run_declaration_census(
@@ -1868,6 +1935,47 @@ def run_declaration_census(
             missing.append((module_name, name))
     conn.close()
     return total, missing
+
+
+# Extensions for static assets that should be compared byte-for-byte.
+STATIC_ASSET_EXTS = {".css", ".js", ".svg", ".png", ".ico", ".woff", ".woff2"}
+
+
+def compare_static_assets(
+    dir1: Path, dir2: Path, shared_files: set[str]
+) -> tuple[int, list[str]]:
+    """Compare static asset files byte-for-byte.
+
+    Returns (identical_count, list_of_different_file_paths).
+    """
+    identical = 0
+    different: list[str] = []
+    for f in sorted(shared_files):
+        content1 = (dir1 / f).read_bytes()
+        content2 = (dir2 / f).read_bytes()
+        if content1 == content2:
+            identical += 1
+        else:
+            different.append(f)
+    return identical, different
+
+
+def compare_target_coverage(
+    old_targets: set[str], new_targets: set[str]
+) -> tuple[int, int, list[str], list[str]]:
+    """Compare link target coverage between old and new HTML.
+
+    Checks for anchored targets (file.html#name) that exist in one
+    direction but not the other. Targets only in old may indicate
+    accidentally dropped declarations.
+
+    Returns (old_count, new_count, only_in_old, only_in_new).
+    """
+    old_anchors = {t for t in old_targets if "#" in t}
+    new_anchors = {t for t in new_targets if "#" in t}
+    only_in_old = sorted(old_anchors - new_anchors)
+    only_in_new = sorted(new_anchors - old_anchors)
+    return len(old_anchors), len(new_anchors), only_in_old, only_in_new
 
 
 def render_sample_diff(diff: Difference) -> list[str]:
@@ -1925,6 +2033,14 @@ def print_summary(
     data_only_in_dir2: int = 0,
     census_total: int = 0,
     census_missing: int = 0,
+    static_identical: int = 0,
+    static_different: int = 0,
+    static_only_in_dir1: int = 0,
+    static_only_in_dir2: int = 0,
+    coverage_old: int = 0,
+    coverage_new: int = 0,
+    coverage_dropped: int = 0,
+    coverage_added: int = 0,
     rule_stats: dict[str, int] | None = None,
     rule_samples: dict[str, list[list[str]]] | None = None,
 ) -> None:
@@ -1943,7 +2059,13 @@ def print_summary(
     log(f"  Data files different: {data_files_different}")
     log(f"  Data files only in dir1: {data_only_in_dir1}")
     log(f"  Data files only in dir2: {data_only_in_dir2}")
+    log(f"  Static assets compared: {static_identical + static_different}")
+    log(f"  Static assets identical: {static_identical}")
+    log(f"  Static assets different: {static_different}")
+    log(f"  Static assets only in dir1: {static_only_in_dir1}")
+    log(f"  Static assets only in dir2: {static_only_in_dir2}")
     log(f"  Declaration census: {census_total} checked, {census_missing} missing")
+    log(f"  Target coverage: {coverage_old} old anchors, {coverage_new} new anchors, {coverage_dropped} dropped, {coverage_added} added")
     if rule_stats:
         log(f"\n  Accepted differences by rule:")
         for rule_name, count in sorted(rule_stats.items(), key=lambda x: -x[1]):
@@ -2213,7 +2335,477 @@ def run_tests() -> int:
     )
 
     log(f"\n{passed} passed, {failed} failed")
+
+    # Run acceptance rule tests
+    rp, rf = run_rule_tests()
+    passed += rp
+    failed += rf
+
+    log(f"\nTotal: {passed} passed, {failed} failed")
     return 0 if failed == 0 else 1
+
+
+def run_rule_tests() -> tuple[int, int]:
+    """Run unit tests for acceptance rules."""
+    passed = 0
+    failed = 0
+
+    def make_tag(html_str: str) -> Tag:
+        """Parse HTML and return the first tag.
+        Uses html.parser (not lxml) because lxml wraps fragments in <html><body>."""
+        return BeautifulSoup(html_str, "html.parser").find(True)
+
+    def test(name: str, rule: Rule, ctx: DiffContext, expected_accepts: bool) -> None:
+        nonlocal passed, failed
+        result = rule(ctx)
+        if (result is not None) == expected_accepts:
+            log(f"  {GREEN}PASS{RESET}: {name}")
+            passed += 1
+        else:
+            log(f"  {RED}FAIL{RESET}: {name}")
+            log(f"    Expected: {'accept' if expected_accepts else 'reject'}")
+            log(f"    Got: {result!r}")
+            failed += 1
+
+    log("\nRunning acceptance rule tests...\n")
+
+    # --- allow_lean_file_href_change ---
+
+    test(
+        "lean_file_href: same file different tmp dir",
+        allow_lean_file_href_change,
+        DiffContext(
+            file_path="Foo.html", diff_type="attribute", attribute_name="href",
+            old_elem=make_tag('<a href="file:///tmp/aaa/.lake/pkg/Foo.lean">src</a>'),
+            new_elem=make_tag('<a href="file:///tmp/bbb/.lake/pkg/Foo.lean">src</a>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value="file:///tmp/aaa/.lake/pkg/Foo.lean",
+            new_value="file:///tmp/bbb/.lake/pkg/Foo.lean",
+            old_targets=set(), new_targets=set(),
+        ),
+        expected_accepts=True,
+    )
+    test(
+        "lean_file_href: different file after .lake",
+        allow_lean_file_href_change,
+        DiffContext(
+            file_path="Foo.html", diff_type="attribute", attribute_name="href",
+            old_elem=make_tag('<a href="file:///tmp/aaa/.lake/pkg/Foo.lean">src</a>'),
+            new_elem=make_tag('<a href="file:///tmp/bbb/.lake/pkg/Bar.lean">src</a>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value="file:///tmp/aaa/.lake/pkg/Foo.lean",
+            new_value="file:///tmp/bbb/.lake/pkg/Bar.lean",
+            old_targets=set(), new_targets=set(),
+        ),
+        expected_accepts=False,
+    )
+
+    # --- allow_href_change_if_old_broken ---
+
+    test(
+        "href_change_old_broken: old broken, accept",
+        allow_href_change_if_old_broken,
+        DiffContext(
+            file_path="Foo.html", diff_type="attribute", attribute_name="href",
+            old_elem=make_tag('<a href="Missing.html#x">text</a>'),
+            new_elem=make_tag('<a href="Other.html#y">text</a>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value="Missing.html#x", new_value="Other.html#y",
+            old_targets=set(), new_targets={"Other.html#y"},
+        ),
+        expected_accepts=True,
+    )
+    test(
+        "href_change_old_broken: old valid, reject",
+        allow_href_change_if_old_broken,
+        DiffContext(
+            file_path="Foo.html", diff_type="attribute", attribute_name="href",
+            old_elem=make_tag('<a href="Valid.html#x">text</a>'),
+            new_elem=make_tag('<a href="Other.html#y">text</a>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value="Valid.html#x", new_value="Other.html#y",
+            old_targets={"Valid.html#x"}, new_targets={"Other.html#y"},
+        ),
+        expected_accepts=False,
+    )
+
+    # --- allow_href_change_from_private ---
+
+    test(
+        "href_from_private: old has _private, new valid",
+        allow_href_change_from_private,
+        DiffContext(
+            file_path="Foo.html", diff_type="attribute", attribute_name="href",
+            old_elem=make_tag('<a href="Foo.html#_private.X.Y">text</a>'),
+            new_elem=make_tag('<a href="Foo.html#X">text</a>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value="Foo.html#_private.X.Y", new_value="Foo.html#X",
+            old_targets=set(), new_targets={"Foo.html#X"},
+        ),
+        expected_accepts=True,
+    )
+    test(
+        "href_from_private: no _private in old, reject",
+        allow_href_change_from_private,
+        DiffContext(
+            file_path="Foo.html", diff_type="attribute", attribute_name="href",
+            old_elem=make_tag('<a href="Foo.html#X">text</a>'),
+            new_elem=make_tag('<a href="Foo.html#Y">text</a>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value="Foo.html#X", new_value="Foo.html#Y",
+            old_targets=set(), new_targets={"Foo.html#Y"},
+        ),
+        expected_accepts=False,
+    )
+
+    # --- allow_href_change_same_anchor_valid_target ---
+
+    test(
+        "same_anchor: same fragment, new valid",
+        allow_href_change_same_anchor_valid_target,
+        DiffContext(
+            file_path="Foo.html", diff_type="attribute", attribute_name="href",
+            old_elem=make_tag('<a href="A.html#foo">text</a>'),
+            new_elem=make_tag('<a href="B.html#foo">text</a>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value="A.html#foo", new_value="B.html#foo",
+            old_targets={"A.html#foo"}, new_targets={"B.html#foo"},
+        ),
+        expected_accepts=True,
+    )
+    test(
+        "same_anchor: different fragment, reject",
+        allow_href_change_same_anchor_valid_target,
+        DiffContext(
+            file_path="Foo.html", diff_type="attribute", attribute_name="href",
+            old_elem=make_tag('<a href="A.html#foo">text</a>'),
+            new_elem=make_tag('<a href="B.html#bar">text</a>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value="A.html#foo", new_value="B.html#bar",
+            old_targets={"A.html#foo"}, new_targets={"B.html#bar"},
+        ),
+        expected_accepts=False,
+    )
+
+    # --- allow_a_to_span_if_broken ---
+
+    test(
+        "a_to_span: broken link to span.fn",
+        allow_a_to_span_if_broken,
+        DiffContext(
+            file_path="Foo.html", diff_type="element_replaced",
+            old_elem=make_tag('<a href="Missing.html">text</a>'),
+            new_elem=make_tag('<span class="fn">text</span>'),
+            old_ancestors=[], new_ancestors=[],
+            attribute_name=None, old_value=None, new_value=None,
+            old_targets=set(), new_targets=set(),
+        ),
+        expected_accepts=True,
+    )
+    test(
+        "a_to_span: valid link to span.fn, reject",
+        allow_a_to_span_if_broken,
+        DiffContext(
+            file_path="Foo.html", diff_type="element_replaced",
+            old_elem=make_tag('<a href="Valid.html">text</a>'),
+            new_elem=make_tag('<span class="fn">text</span>'),
+            old_ancestors=[], new_ancestors=[],
+            attribute_name=None, old_value=None, new_value=None,
+            old_targets={"Valid.html"}, new_targets=set(),
+        ),
+        expected_accepts=False,
+    )
+
+    # --- allow_unwrap_broken_link ---
+
+    test(
+        "unwrap_broken: broken <a> removed",
+        allow_unwrap_broken_link,
+        DiffContext(
+            file_path="Foo.html", diff_type="element_removed",
+            old_elem=make_tag('<a href="Missing.html">text</a>'),
+            new_elem=None,
+            old_ancestors=[], new_ancestors=[],
+            attribute_name=None, old_value=None, new_value=None,
+            old_targets=set(), new_targets=set(),
+        ),
+        expected_accepts=True,
+    )
+    test(
+        "unwrap_broken: valid <a> removed, reject",
+        allow_unwrap_broken_link,
+        DiffContext(
+            file_path="Foo.html", diff_type="element_removed",
+            old_elem=make_tag('<a href="Valid.html">text</a>'),
+            new_elem=None,
+            old_ancestors=[], new_ancestors=[],
+            attribute_name=None, old_value=None, new_value=None,
+            old_targets={"Valid.html"}, new_targets=set(),
+        ),
+        expected_accepts=False,
+    )
+
+    # --- allow_span_fn_to_link ---
+
+    test(
+        "span_to_link: span.fn to valid <a>",
+        allow_span_fn_to_link,
+        DiffContext(
+            file_path="Foo.html", diff_type="element_replaced",
+            old_elem=make_tag('<span class="fn">text</span>'),
+            new_elem=make_tag('<a href="Target.html">text</a>'),
+            old_ancestors=[], new_ancestors=[],
+            attribute_name=None, old_value=None, new_value=None,
+            old_targets=set(), new_targets={"Target.html"},
+        ),
+        expected_accepts=True,
+    )
+    test(
+        "span_to_link: span.fn to invalid <a>, reject",
+        allow_span_fn_to_link,
+        DiffContext(
+            file_path="Foo.html", diff_type="element_replaced",
+            old_elem=make_tag('<span class="fn">text</span>'),
+            new_elem=make_tag('<a href="Missing.html">text</a>'),
+            old_ancestors=[], new_ancestors=[],
+            attribute_name=None, old_value=None, new_value=None,
+            old_targets=set(), new_targets=set(),
+        ),
+        expected_accepts=False,
+    )
+
+    # --- allow_added_link_with_valid_target ---
+
+    test(
+        "added_link: valid target",
+        allow_added_link_with_valid_target,
+        DiffContext(
+            file_path="Foo.html", diff_type="element_added",
+            old_elem=None,
+            new_elem=make_tag('<a href="Target.html#x">text</a>'),
+            old_ancestors=[], new_ancestors=[],
+            attribute_name=None, old_value=None, new_value=None,
+            old_targets=set(), new_targets={"Target.html#x"},
+        ),
+        expected_accepts=True,
+    )
+    test(
+        "added_link: invalid target, reject",
+        allow_added_link_with_valid_target,
+        DiffContext(
+            file_path="Foo.html", diff_type="element_added",
+            old_elem=None,
+            new_elem=make_tag('<a href="Missing.html#x">text</a>'),
+            old_ancestors=[], new_ancestors=[],
+            attribute_name=None, old_value=None, new_value=None,
+            old_targets=set(), new_targets=set(),
+        ),
+        expected_accepts=False,
+    )
+
+    # --- allow_inherited_field_id ---
+
+    test(
+        "inherited_field_id: li.inherited_field gets id",
+        allow_inherited_field_id,
+        DiffContext(
+            file_path="Foo.html", diff_type="attribute", attribute_name="id",
+            old_elem=make_tag('<li class="inherited_field">field</li>'),
+            new_elem=make_tag('<li class="inherited_field" id="Struct.field">field</li>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value=None, new_value="Struct.field",
+            old_targets=set(), new_targets=set(),
+        ),
+        expected_accepts=True,
+    )
+    test(
+        "inherited_field_id: plain li gets id, reject",
+        allow_inherited_field_id,
+        DiffContext(
+            file_path="Foo.html", diff_type="attribute", attribute_name="id",
+            old_elem=make_tag("<li>item</li>"),
+            new_elem=make_tag('<li id="item">item</li>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value=None, new_value="item",
+            old_targets=set(), new_targets=set(),
+        ),
+        expected_accepts=False,
+    )
+
+    # --- allow_empty_equations_removal ---
+
+    test(
+        "empty_equations: empty equations details removed",
+        allow_empty_equations_removal,
+        DiffContext(
+            file_path="Foo.html", diff_type="element_removed",
+            old_elem=make_tag('<details><summary>Equations</summary><ul class="equations"></ul></details>'),
+            new_elem=None,
+            old_ancestors=[], new_ancestors=[],
+            attribute_name=None, old_value=None, new_value=None,
+            old_targets=set(), new_targets=set(),
+        ),
+        expected_accepts=True,
+    )
+    test(
+        "empty_equations: non-empty equations, reject",
+        allow_empty_equations_removal,
+        DiffContext(
+            file_path="Foo.html", diff_type="element_removed",
+            old_elem=make_tag('<details><summary>Equations</summary><ul class="equations"><li>eq1</li></ul></details>'),
+            new_elem=None,
+            old_ancestors=[], new_ancestors=[],
+            attribute_name=None, old_value=None, new_value=None,
+            old_targets=set(), new_targets=set(),
+        ),
+        expected_accepts=False,
+    )
+
+    # --- allow_duplicate_li_removal_in_imports ---
+
+    def make_imports_ctx(old_lis: list[str], new_lis: list[str]) -> DiffContext:
+        """Helper: build a DiffContext inside div.imports > ul with given <li> contents."""
+        old_ul_html = "<ul>" + "".join(f"<li>{x}</li>" for x in old_lis) + "</ul>"
+        new_ul_html = "<ul>" + "".join(f"<li>{x}</li>" for x in new_lis) + "</ul>"
+        old_imports = make_tag(f'<div class="imports">{old_ul_html}</div>')
+        new_imports = make_tag(f'<div class="imports">{new_ul_html}</div>')
+        old_ul = old_imports.find("ul")
+        new_ul = new_imports.find("ul")
+        return DiffContext(
+            file_path="Foo.html", diff_type="element_removed",
+            old_elem=old_ul.find("li"), new_elem=None,
+            old_ancestors=[old_ul, old_imports],
+            new_ancestors=[new_ul, new_imports],
+            attribute_name=None, old_value=None, new_value=None,
+            old_targets=set(), new_targets=set(),
+        )
+
+    test(
+        "dedup_imports: old has dupes, new deduplicated",
+        allow_duplicate_li_removal_in_imports,
+        make_imports_ctx(["A", "A", "B"], ["A", "B"]),
+        expected_accepts=True,
+    )
+    test(
+        "dedup_imports: no dupes in old, reject",
+        allow_duplicate_li_removal_in_imports,
+        make_imports_ctx(["A", "B"], ["A"]),
+        expected_accepts=False,
+    )
+    test(
+        "dedup_imports: new adds entry not in old, reject",
+        allow_duplicate_li_removal_in_imports,
+        make_imports_ctx(["A", "A", "B"], ["A", "B", "C"]),
+        expected_accepts=False,
+    )
+
+    # --- allow_extends_id_wrapper ---
+
+    def make_extends_ctx(
+        old_header_html: str, new_header_html: str,
+        diff_type: str = "element_added",
+        new_elem_html: str | None = None,
+    ) -> DiffContext:
+        """Helper: build a DiffContext inside decl_header with extends."""
+        old_header = make_tag(old_header_html)
+        new_header = make_tag(new_header_html)
+        new_elem = make_tag(new_elem_html) if new_elem_html else None
+        return DiffContext(
+            file_path="Foo.html", diff_type=diff_type,
+            old_elem=None, new_elem=new_elem,
+            old_ancestors=[old_header], new_ancestors=[new_header],
+            attribute_name=None, old_value=None, new_value=None,
+            old_targets=set(), new_targets=set(),
+        )
+
+    test(
+        "extends_id: wrapper span in header with extends, same text",
+        allow_extends_id_wrapper,
+        make_extends_ctx(
+            '<div class="decl_header">Foo extends <span class="decl_extends">Bar</span></div>',
+            '<div class="decl_header">Foo extends <span class="decl_extends"><span id="Foo.toBar">Bar</span></span></div>',
+            new_elem_html='<span id="Foo.toBar">Bar</span>',
+        ),
+        expected_accepts=True,
+    )
+    test(
+        "extends_id: text changed, reject",
+        allow_extends_id_wrapper,
+        make_extends_ctx(
+            '<div class="decl_header">Foo extends <span class="decl_extends">Bar</span></div>',
+            '<div class="decl_header">Foo extends <span class="decl_extends"><span id="Foo.toBar">Baz</span></span></div>',
+            new_elem_html='<span id="Foo.toBar">Baz</span>',
+        ),
+        expected_accepts=False,
+    )
+    test(
+        "extends_id: no decl_extends in old, reject",
+        allow_extends_id_wrapper,
+        make_extends_ctx(
+            '<div class="decl_header">Foo : Type</div>',
+            '<div class="decl_header">Foo : <span id="Foo.x">Type</span></div>',
+            new_elem_html='<span id="Foo.x">Type</span>',
+        ),
+        expected_accepts=False,
+    )
+
+    # --- allow_reorder_same_source_position ---
+
+    # Save and restore global state
+    saved_positions = _db_decl_positions.copy()
+
+    _db_decl_positions.clear()
+    _db_decl_positions[("Test.Module", "declA")] = (42, 0)
+    _db_decl_positions[("Test.Module", "declB")] = (42, 0)
+    _db_decl_positions[("Test.Module", "declC")] = (99, 0)
+
+    both_targets = {"Test/Module.html#declA", "Test/Module.html#declB", "Test/Module.html#declC"}
+
+    test(
+        "reorder: same position, both in old+new targets",
+        allow_reorder_same_source_position,
+        DiffContext(
+            file_path="Test/Module.html", diff_type="attribute", attribute_name="id",
+            old_elem=make_tag('<div class="decl" id="declA">A</div>'),
+            new_elem=make_tag('<div class="decl" id="declB">B</div>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value="declA", new_value="declB",
+            old_targets=both_targets, new_targets=both_targets,
+        ),
+        expected_accepts=True,
+    )
+    test(
+        "reorder: different positions, reject",
+        allow_reorder_same_source_position,
+        DiffContext(
+            file_path="Test/Module.html", diff_type="attribute", attribute_name="id",
+            old_elem=make_tag('<div class="decl" id="declA">A</div>'),
+            new_elem=make_tag('<div class="decl" id="declC">C</div>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value="declA", new_value="declC",
+            old_targets=both_targets, new_targets=both_targets,
+        ),
+        expected_accepts=False,
+    )
+    test(
+        "reorder: same position but target missing from new, reject",
+        allow_reorder_same_source_position,
+        DiffContext(
+            file_path="Test/Module.html", diff_type="attribute", attribute_name="id",
+            old_elem=make_tag('<div class="decl" id="declA">A</div>'),
+            new_elem=make_tag('<div class="decl" id="declB">B</div>'),
+            old_ancestors=[], new_ancestors=[],
+            old_value="declA", new_value="declB",
+            old_targets=both_targets, new_targets={"Test/Module.html#declA"},
+        ),
+        expected_accepts=False,
+    )
+
+    _db_decl_positions.clear()
+    _db_decl_positions.update(saved_positions)
+
+    log(f"\n{passed} passed, {failed} failed")
+    return passed, failed
 
 
 def main_cli() -> int:
@@ -2270,6 +2862,12 @@ def main_cli() -> int:
     )
     json_parser.add_argument("dir1", type=Path, help="First documentation directory (old)")
     json_parser.add_argument("dir2", type=Path, help="Second documentation directory (new)")
+    json_parser.add_argument(
+        "--db",
+        type=Path,
+        default=None,
+        help="doc-gen4 SQLite database for resolving multi-module declarations",
+    )
 
     # Test command
     subparsers.add_parser("test", help="Run unit tests for compare_code_elements")
@@ -2299,6 +2897,12 @@ def run_json_compare(args: argparse.Namespace) -> int:
     start = time.perf_counter()
     log(f"Comparing JSON/BMP files in {args.dir1} vs {args.dir2}")
 
+    # Load targets from DB if provided
+    db_targets: set[str] | None = None
+    if args.db:
+        db_targets = load_db_targets(args.db)
+        log(f"Loaded {len(db_targets)} targets from {args.db}")
+
     _, _, _, other_only_dir1, other_only_dir2, other_both = compare_directories(args.dir1, args.dir2)
     data_exts = {".json", ".bmp"}
     other_only_dir1 = {f for f in other_only_dir1 if Path(f).suffix in data_exts}
@@ -2319,7 +2923,9 @@ def run_json_compare(args: argparse.Namespace) -> int:
             log(f"  {f}")
         has_errors = True
 
-    data_identical, data_different = compare_data_files(args.dir1, args.dir2, other_both)
+    data_identical, data_different, data_info = compare_data_files(
+        args.dir1, args.dir2, other_both, db_targets, db_targets
+    )
     elapsed = (time.perf_counter() - start) * 1000
     log(f"\nCompared {len(other_both)} data files ({elapsed:.1f}ms)")
     log(f"  Identical: {data_identical}")
@@ -2327,6 +2933,12 @@ def run_json_compare(args: argparse.Namespace) -> int:
     if data_different:
         has_errors = True
         for f, summary, verbose in data_different:
+            log(f"\n  {f}: {summary}")
+            for line in verbose.splitlines():
+                log(f"    {line}")
+    if data_info:
+        log(f"  Info (benign): {len(data_info)}")
+        for f, summary, verbose in data_info:
             log(f"\n  {f}: {summary}")
             for line in verbose.splitlines():
                 log(f"    {line}")
@@ -2398,20 +3010,26 @@ def main(args: argparse.Namespace | None = None) -> int:
     html_only_dir1, html_only_dir2, html_both, other_only_dir1, other_only_dir2, other_both = compare_directories(
         args.dir1, args.dir2
     )
-    # Only track JSON-like data files (.json, .bmp), not build artifacts (.hash, .trace, etc.)
+    # Split non-HTML files into data files (.json, .bmp) and static assets (.css, .js, etc.)
     data_exts = {".json", ".bmp"}
-    other_only_dir1 = {f for f in other_only_dir1 if Path(f).suffix in data_exts}
-    other_only_dir2 = {f for f in other_only_dir2 if Path(f).suffix in data_exts}
-    other_both = {f for f in other_both if Path(f).suffix in data_exts}
+    data_only_dir1 = {f for f in other_only_dir1 if Path(f).suffix in data_exts}
+    data_only_dir2 = {f for f in other_only_dir2 if Path(f).suffix in data_exts}
+    data_both = {f for f in other_both if Path(f).suffix in data_exts}
+    static_only_dir1 = {f for f in other_only_dir1 if Path(f).suffix in STATIC_ASSET_EXTS}
+    static_only_dir2 = {f for f in other_only_dir2 if Path(f).suffix in STATIC_ASSET_EXTS}
+    static_both = {f for f in other_both if Path(f).suffix in STATIC_ASSET_EXTS}
     step_elapsed = (time.perf_counter() - step_start) * 1000
 
     log(f"Scanning directories... ({step_elapsed:.1f}ms)")
     log(f"  HTML files in both: {len(html_both)}")
     log(f"  HTML files only in dir1: {len(html_only_dir1)}")
     log(f"  HTML files only in dir2: {len(html_only_dir2)}")
-    log(f"  Data files in both: {len(other_both)}")
-    log(f"  Data files only in dir1: {len(other_only_dir1)}")
-    log(f"  Data files only in dir2: {len(other_only_dir2)}")
+    log(f"  Data files in both: {len(data_both)}")
+    log(f"  Data files only in dir1: {len(data_only_dir1)}")
+    log(f"  Data files only in dir2: {len(data_only_dir2)}")
+    log(f"  Static assets in both: {len(static_both)}")
+    log(f"  Static assets only in dir1: {len(static_only_dir1)}")
+    log(f"  Static assets only in dir2: {len(static_only_dir2)}")
 
     # Step 2: Extract link targets (or load from cache)
     step_start = time.perf_counter()
@@ -2470,31 +3088,53 @@ def main(args: argparse.Namespace | None = None) -> int:
             log(f"  {f}")
         has_errors = True
 
-    if other_only_dir1:
+    if data_only_dir1:
         log("\n" + "=" * 60)
         log("DATA FILES ONLY IN DIR1:")
         log("=" * 60)
-        for f in sorted(other_only_dir1):
+        for f in sorted(data_only_dir1):
             log(f"  {f}")
         has_errors = True
 
-    if other_only_dir2:
+    if data_only_dir2:
         log("\n" + "=" * 60)
         log("DATA FILES ONLY IN DIR2:")
         log("=" * 60)
-        for f in sorted(other_only_dir2):
+        for f in sorted(data_only_dir2):
+            log(f"  {f}")
+        has_errors = True
+
+    if static_only_dir1:
+        log("\n" + "=" * 60)
+        log("STATIC ASSETS ONLY IN DIR1:")
+        log("=" * 60)
+        for f in sorted(static_only_dir1):
+            log(f"  {f}")
+        has_errors = True
+
+    if static_only_dir2:
+        log("\n" + "=" * 60)
+        log("STATIC ASSETS ONLY IN DIR2:")
+        log("=" * 60)
+        for f in sorted(static_only_dir2):
             log(f"  {f}")
         has_errors = True
 
     # Step 3: Compare data files
     step_start = time.perf_counter()
-    data_identical, data_different = compare_data_files(args.dir1, args.dir2, other_both)
+    data_identical, data_different, data_info = compare_data_files(args.dir1, args.dir2, data_both, old_targets, new_targets)
     step_elapsed = (time.perf_counter() - step_start) * 1000
-    log(f"\nComparing {len(other_both)} data files... ({step_elapsed:.1f}ms)")
+    log(f"\nComparing {len(data_both)} data files... ({step_elapsed:.1f}ms)")
     log(f"  Identical: {data_identical}")
     log(f"  Different: {len(data_different)}")
     if data_different:
+        has_errors = True
         for f, summary, verbose in data_different:
+            log(f"\n  {f}: {summary}")
+            for line in verbose.splitlines():
+                log(f"    {line}")
+    if data_info:
+        for f, summary, verbose in data_info:
             log(f"\n  {f}: {summary}")
             for line in verbose.splitlines():
                 log(f"    {line}")
@@ -2516,7 +3156,41 @@ def main(args: argparse.Namespace | None = None) -> int:
         if len(census_missing) > 50:
             log(f"  ... and {len(census_missing) - 50} more")
 
-    # Step 5: Compare HTML files in parallel, printing results in deterministic order
+    # Step 5: Compare static assets
+    step_start = time.perf_counter()
+    static_identical, static_different = compare_static_assets(args.dir1, args.dir2, static_both)
+    step_elapsed = (time.perf_counter() - step_start) * 1000
+    log(f"\nComparing {len(static_both)} static assets... ({step_elapsed:.1f}ms)")
+    log(f"  Identical: {static_identical}")
+    log(f"  Different: {len(static_different)}")
+    if static_different:
+        has_errors = True
+        log("\n" + "=" * 60)
+        log("DIFFERENT STATIC ASSETS:")
+        log("=" * 60)
+        for f in static_different:
+            log(f"  {f}")
+
+    # Step 6: Bidirectional target coverage
+    step_start = time.perf_counter()
+    cov_old, cov_new, cov_dropped, cov_added = compare_target_coverage(old_targets, new_targets)
+    step_elapsed = (time.perf_counter() - step_start) * 1000
+    log(f"\nTarget coverage... ({step_elapsed:.1f}ms)")
+    log(f"  Anchored targets in dir1: {cov_old}")
+    log(f"  Anchored targets in dir2: {cov_new}")
+    log(f"  Dropped (in old, not new): {len(cov_dropped)}")
+    log(f"  Added (in new, not old): {len(cov_added)}")
+    if cov_dropped:
+        has_errors = True
+        log("\n" + "=" * 60)
+        log("DROPPED TARGETS (in old HTML but not new):")
+        log("=" * 60)
+        for t in cov_dropped[:50]:
+            log(f"  {t}")
+        if len(cov_dropped) > 50:
+            log(f"  ... and {len(cov_dropped) - 50} more")
+
+    # Step 7: Compare HTML files in parallel, printing results in deterministic order
     log(f"\nComparing {len(html_both)} HTML files...")
 
     total_rejected = 0
@@ -2588,7 +3262,7 @@ def main(args: argparse.Namespace | None = None) -> int:
         log(f"Processed {files_compared} of {len(sorted_files)} files before interrupt.")
         return 130  # Standard exit code for SIGINT
 
-    # Step 6: Print summary
+    # Step 8: Print summary
     total_elapsed = (time.perf_counter() - total_start) * 1000
     print_summary(
         total_files=len(html_both),
@@ -2600,10 +3274,18 @@ def main(args: argparse.Namespace | None = None) -> int:
         total_elapsed_ms=total_elapsed,
         data_files_identical=data_identical,
         data_files_different=len(data_different),
-        data_only_in_dir1=len(other_only_dir1),
-        data_only_in_dir2=len(other_only_dir2),
+        data_only_in_dir1=len(data_only_dir1),
+        data_only_in_dir2=len(data_only_dir2),
         census_total=census_total,
         census_missing=len(census_missing),
+        static_identical=static_identical,
+        static_different=len(static_different),
+        static_only_in_dir1=len(static_only_dir1),
+        static_only_in_dir2=len(static_only_dir2),
+        coverage_old=cov_old,
+        coverage_new=cov_new,
+        coverage_dropped=len(cov_dropped),
+        coverage_added=len(cov_added),
         rule_stats=rule_stats,
         rule_samples=rule_samples,
     )
