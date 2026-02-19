@@ -73,257 +73,314 @@ instance : SQLite.QueryParam RenderedCode where
     let str := ToBinary.serializer code .empty
     SQLite.QueryParam.bind stmt index str
 
-def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
-  have := versoDocStringQueryParam values
-  let sqlite ← getDb dbFile
-  let deleteModuleStmt ← sqlite.prepare "DELETE FROM modules WHERE name = ?"
-  let deleteModule modName := withDbContext "write:delete:modules" do
-    deleteModuleStmt.bind 1 modName
-    run deleteModuleStmt
-  let saveModuleStmt ← sqlite.prepare "INSERT INTO modules (name, source_url) VALUES (?, ?)"
-  let saveModule modName sourceUrl? := withDbContext "write:insert:modules" do
-    saveModuleStmt.bind 1 modName
-    saveModuleStmt.bind 2 sourceUrl?
-    run saveModuleStmt
-  -- This is INSERT OR IGNORE because the module system often results in multiple imports of the same module (e.g. as meta)
-  let saveImportStmt ← sqlite.prepare "INSERT OR IGNORE INTO module_imports (importer, imported) VALUES (?, ?)"
-  let saveImport modName imported := withDbContext "write:insert:module_imports" do
-    saveImportStmt.bind 1 modName
-    saveImportStmt.bind 2 imported.toString
-    run saveImportStmt
-  let saveMarkdownDocstringStmt ← sqlite.prepare "INSERT INTO declaration_markdown_docstrings (module_name, position, text) VALUES (?, ?, ?)"
-  let saveMarkdownDocstring modName position text := withDbContext "write:insert:declaration_markdown_docstrings" do
-    saveMarkdownDocstringStmt.bind 1 modName
-    saveMarkdownDocstringStmt.bind 2 position
-    saveMarkdownDocstringStmt.bind 3 text
-    run saveMarkdownDocstringStmt
-  let saveModuleDocStmt ← sqlite.prepare "INSERT INTO module_docs_markdown (module_name, position, text) VALUES (?, ?, ?)"
-  let saveModuleDoc modName position text := withDbContext "write:insert:module_docs_markdown" do
-    saveModuleDocStmt.bind 1 modName
-    saveModuleDocStmt.bind 2 position
-    saveModuleDocStmt.bind 3 text
-    run saveModuleDocStmt
-  let saveVersoDocstringStmt ← sqlite.prepare "INSERT INTO declaration_verso_docstrings (module_name, position, content) VALUES (?, ?, ?)"
-  let saveVersoDocstring modName position text := withDbContext "write:insert:declaration_verso_docstrings" do
-    saveVersoDocstringStmt.bind 1 modName
-    saveVersoDocstringStmt.bind 2 position
-    saveVersoDocstringStmt.bind 3 text
-    run saveVersoDocstringStmt
-  let saveDeclarationRangeStmt ←
-    sqlite.prepare
-      "INSERT INTO declaration_ranges (module_name, position, start_line, start_column, start_utf16, end_line, end_column, end_utf16) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  let saveDeclarationRange modName position (declRange : Lean.DeclarationRange) := withDbContext "write:insert:declaration_ranges" do
-    saveDeclarationRangeStmt.bind 1 modName
-    saveDeclarationRangeStmt.bind 2 position
-    saveDeclarationRangeStmt.bind 3 declRange.pos.line.toInt64
-    saveDeclarationRangeStmt.bind 4 declRange.pos.column.toInt64
-    saveDeclarationRangeStmt.bind 5 declRange.charUtf16.toInt64
-    saveDeclarationRangeStmt.bind 6 declRange.endPos.line.toInt64
-    saveDeclarationRangeStmt.bind 7 declRange.endPos.column.toInt64
-    saveDeclarationRangeStmt.bind 8 declRange.endCharUtf16.toInt64
-    run saveDeclarationRangeStmt
-  let saveInfoStmt ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  let saveArgStmt ← sqlite.prepare "INSERT INTO declaration_args (module_name, position, sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?)"
-  let saveAttrStmt ← sqlite.prepare "INSERT INTO declaration_attrs (module_name, position, sequence, attr) VALUES (?, ?, ?, ?)"
-  let saveInfo modName position kind (info : Process.Info) := withDbContext "write:insert:name_info" do
-    saveInfoStmt.bind 1 modName
-    saveInfoStmt.bind 2 position
-    saveInfoStmt.bind 3 kind
-    saveInfoStmt.bind 4 info.name.toString
-    saveInfoStmt.bind 5 info.type
-    saveInfoStmt.bind 6 info.sorried
-    saveInfoStmt.bind 7 info.render
-    run saveInfoStmt
-    match info.doc with
-    | some (.inl md) => saveMarkdownDocstring modName position md
-    | some (.inr v) => saveVersoDocstring modName position v
-    | none => pure ()
-    -- Save args
-    for h : j in 0...info.args.size do
-      let arg := info.args[j]
-      withDbContext "write:insert:declaration_args" do
-        saveArgStmt.bind 1 modName
-        saveArgStmt.bind 2 position
-        saveArgStmt.bind 3 j.toInt64
-        saveArgStmt.bind 4 arg.binder
-        saveArgStmt.bind 5 arg.implicit
-        run saveArgStmt
-    -- Save attrs
-    for h : j in 0...info.attrs.size do
-      let attr := info.attrs[j]
-      withDbContext "write:insert:declaration_attrs" do
-        saveAttrStmt.bind 1 modName
-        saveAttrStmt.bind 2 position
-        saveAttrStmt.bind 3 j.toInt64
-        saveAttrStmt.bind 4 attr
-        run saveAttrStmt
-  let saveAxiomStmt ← sqlite.prepare "INSERT INTO axioms (module_name, position, is_unsafe) VALUES (?, ?, ?)"
-  let saveAxiom modName position isUnsafe := withDbContext "write:insert:axioms" do
-    saveAxiomStmt.bind 1 modName
-    saveAxiomStmt.bind 2 position
-    saveAxiomStmt.bind 3 isUnsafe
-    run saveAxiomStmt
-  let saveOpaqueStmt ← sqlite.prepare "INSERT INTO opaques (module_name, position, safety) VALUES (?, ?, ?)"
-  let saveOpaque modName position safety := withDbContext "write:insert:opaques" do
-    saveOpaqueStmt.bind 1 modName
-    saveOpaqueStmt.bind 2 position
-    saveOpaqueStmt.bind 3 safety
-    run saveOpaqueStmt
-  let saveDefinitionStmt ← sqlite.prepare "INSERT INTO definitions (module_name, position, is_unsafe, hints, is_noncomputable) VALUES (?, ?, ?, ?, ?)"
-  let saveDefinition modName position isUnsafe hints isNonComputable := withDbContext "write:insert:definitions" do
-    saveDefinitionStmt.bind 1 modName
-    saveDefinitionStmt.bind 2 position
-    saveDefinitionStmt.bind 3 isUnsafe
-    saveDefinitionStmt.bind 4 hints
-    saveDefinitionStmt.bind 5 isNonComputable
-    run saveDefinitionStmt
-  let saveDefinitionEquationStmt ← sqlite.prepare "INSERT INTO definition_equations (module_name, position, code, text_length, sequence) VALUES (?, ?, ?, ?, ?)"
-  let saveDefinitionEquation modName position (code : RenderedCode) sequence := withDbContext "write:insert:definition_equations" do
-    let textLength := RenderedCode.textLength code
-    saveDefinitionEquationStmt.bind 1 modName
-    saveDefinitionEquationStmt.bind 2 position
-    saveDefinitionEquationStmt.bind 3 <|
-      if textLength < Process.equationLimit then some code
-      else none
-    saveDefinitionEquationStmt.bind 4 textLength.toInt64
-    saveDefinitionEquationStmt.bind 5 sequence
-    run saveDefinitionEquationStmt
-  let saveInstanceStmt ← sqlite.prepare "INSERT INTO instances (module_name, position, class_name) VALUES (?, ?, ?)"
-  let saveInstance modName position className := withDbContext "write:insert:instances" do
-    saveInstanceStmt.bind 1 modName
-    saveInstanceStmt.bind 2 position
-    saveInstanceStmt.bind 3 className
-    run saveInstanceStmt
-  let saveInstanceArgStmt ← sqlite.prepare "INSERT INTO instance_args (module_name, position, sequence, type_name) VALUES (?, ?, ?, ?)"
-  let saveInstanceArg modName position sequence typeName := withDbContext "write:insert:instance_args" do
-    saveInstanceArgStmt.bind 1 modName
-    saveInstanceArgStmt.bind 2 position
-    saveInstanceArgStmt.bind 3 sequence
-    saveInstanceArgStmt.bind 4 typeName
-    run saveInstanceArgStmt
-  let saveInductiveStmt ← sqlite.prepare "INSERT INTO inductives (module_name, position, is_unsafe) VALUES (?, ?, ?)"
-  let saveInductive modName position isUnsafe := withDbContext "write:insert:inductives" do
-    saveInductiveStmt.bind 1 modName
-    saveInductiveStmt.bind 2 position
-    saveInductiveStmt.bind 3 isUnsafe
-    run saveInductiveStmt
-  let saveConstructorStmt ← sqlite.prepare "INSERT INTO constructors (module_name, position, type_position) VALUES (?, ?, ?)"
-  let saveConstructor modName position typePosition := withDbContext "write:insert:constructors" do
-    saveConstructorStmt.bind 1 modName
-    saveConstructorStmt.bind 2 position
-    saveConstructorStmt.bind 3 typePosition
-    run saveConstructorStmt
-  let saveClassInductiveStmt ← sqlite.prepare "INSERT INTO class_inductives (module_name, position, is_unsafe) VALUES (?, ?, ?)"
-  let saveClassInductive modName position isUnsafe := withDbContext "write:insert:class_inductives" do
-    saveClassInductiveStmt.bind 1 modName
-    saveClassInductiveStmt.bind 2 position
-    saveClassInductiveStmt.bind 3 isUnsafe
-    run saveClassInductiveStmt
-  let saveStructureStmt ← sqlite.prepare "INSERT INTO structures (module_name, position, is_class) VALUES (?, ?, ?)"
-  let saveStructure modName position isClass := withDbContext "write:insert:structures" do
-    saveStructureStmt.bind 1 modName
-    saveStructureStmt.bind 2 position
-    saveStructureStmt.bind 3 isClass
-    run saveStructureStmt
-  let saveStructureConstructorStmt ← sqlite.prepare "INSERT INTO structure_constructors (module_name, position, ctor_position, name, type) VALUES (?, ?, ?, ?, ?)"
-  let saveStructureConstructor modName position ctorPos info := withDbContext "write:insert:structure_constructors" do
-    saveStructureConstructorStmt.bind 1 modName
-    saveStructureConstructorStmt.bind 2 position
-    saveStructureConstructorStmt.bind 3 ctorPos
-    saveStructureConstructorStmt.bind 4 info.name.toString
-    saveStructureConstructorStmt.bind 5 info.type
-    run saveStructureConstructorStmt
-    match info.doc with
-    | some (.inl md) => saveMarkdownDocstring modName ctorPos md
-    | some (.inr v) => saveVersoDocstring modName ctorPos v
-    | none => pure ()
+private structure WriteStmts where
+  values : DocstringValues
+  deleteModuleStmt : SQLite.Stmt
+  saveModuleStmt : SQLite.Stmt
+  saveImportStmt : SQLite.Stmt
+  saveMarkdownDocstringStmt : SQLite.Stmt
+  saveModuleDocStmt : SQLite.Stmt
+  saveVersoDocstringStmt : SQLite.Stmt
+  saveDeclarationRangeStmt : SQLite.Stmt
+  saveInfoStmt : SQLite.Stmt
+  saveArgStmt : SQLite.Stmt
+  saveAttrStmt : SQLite.Stmt
+  saveAxiomStmt : SQLite.Stmt
+  saveOpaqueStmt : SQLite.Stmt
+  saveDefinitionStmt : SQLite.Stmt
+  saveDefinitionEquationStmt : SQLite.Stmt
+  saveInstanceStmt : SQLite.Stmt
+  saveInstanceArgStmt : SQLite.Stmt
+  saveInductiveStmt : SQLite.Stmt
+  saveConstructorStmt : SQLite.Stmt
+  saveClassInductiveStmt : SQLite.Stmt
+  saveStructureStmt : SQLite.Stmt
+  saveStructureConstructorStmt : SQLite.Stmt
+  saveStructureParentStmt : SQLite.Stmt
+  saveStructureFieldStmt : SQLite.Stmt
+  saveStructureFieldArgStmt : SQLite.Stmt
+  saveNameOnlyStmt : SQLite.Stmt
+  saveInternalNameStmt : SQLite.Stmt
+  saveTacticStmt : SQLite.Stmt
+  saveTacticTagStmt : SQLite.Stmt
 
-  let saveStructureParentStmt ← sqlite.prepare "INSERT INTO structure_parents (module_name, position, sequence, projection_fn, type) VALUES (?, ?, ?, ?, ?)"
-  let saveStructureParent modName position sequence projectionFn (type : RenderedCode) := withDbContext "write:insert:structure_parents" do
-    saveStructureParentStmt.bind 1 modName
-    saveStructureParentStmt.bind 2 position
-    saveStructureParentStmt.bind 3 sequence
-    saveStructureParentStmt.bind 4 projectionFn
-    saveStructureParentStmt.bind 5 type
-    run saveStructureParentStmt
-  -- Store projection function name directly; lookup happens at load time
-  let saveStructureFieldStmt ← sqlite.prepare "INSERT INTO structure_fields (module_name, position, sequence, proj_name, type, is_direct) VALUES (?, ?, ?, ?, ?, ?)"
-  let saveStructureField modName position sequence projName (type : RenderedCode) isDirect := withDbContext "write:insert:structure_fields" do
-    saveStructureFieldStmt.bind 1 modName
-    saveStructureFieldStmt.bind 2 position
-    saveStructureFieldStmt.bind 3 sequence
-    saveStructureFieldStmt.bind 4 projName
-    saveStructureFieldStmt.bind 5 type
-    saveStructureFieldStmt.bind 6 isDirect
-    run saveStructureFieldStmt
-  let saveStructureFieldArgStmt ← sqlite.prepare "INSERT INTO structure_field_args (module_name, position, field_sequence, arg_sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?, ?)"
-  let saveStructureFieldArg modName position fieldSeq argSeq (binder : RenderedCode) isImplicit := withDbContext "write:insert:structure_field_args" do
-    saveStructureFieldArgStmt.bind 1 modName
-    saveStructureFieldArgStmt.bind 2 position
-    saveStructureFieldArgStmt.bind 3 fieldSeq
-    saveStructureFieldArgStmt.bind 4 argSeq
-    saveStructureFieldArgStmt.bind 5 binder
-    saveStructureFieldArgStmt.bind 6 isImplicit
-    run saveStructureFieldArgStmt
-  -- For saving minimal info to name_info for name lookups only (not rendering)
-  let saveNameOnlyStmt ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, 0, 0)"
-  let saveNameOnly modName position kind (name : Lean.Name) (type : RenderedCode) (declRange : Lean.DeclarationRange) := withDbContext "write:insert:name_info:nameonly" do
-    saveNameOnlyStmt.bind 1 modName
-    saveNameOnlyStmt.bind 2 position
-    saveNameOnlyStmt.bind 3 kind
-    saveNameOnlyStmt.bind 4 name.toString
-    saveNameOnlyStmt.bind 5 type
-    run saveNameOnlyStmt
-    -- Also save declaration range
-    saveDeclarationRange modName position declRange
-  -- For saving internal names (like recursors) that link to their target declaration
-  let saveInternalNameStmt ← sqlite.prepare "INSERT OR IGNORE INTO internal_names (name, target_module, target_position) VALUES (?, ?, ?)"
-  let saveInternalName (name : Lean.Name) (targetModule : String) (targetPosition : Int64) := withDbContext "write:insert:internal_names" do
-    saveInternalNameStmt.bind 1 name.toString
-    saveInternalNameStmt.bind 2 targetModule
-    saveInternalNameStmt.bind 3 targetPosition
-    run saveInternalNameStmt
-  let saveTacticStmt ← sqlite.prepare "INSERT INTO tactics (module_name, internal_name, user_name, doc_string) VALUES (?, ?, ?, ?)"
-  let saveTacticTagStmt ← sqlite.prepare "INSERT INTO tactic_tags (module_name, internal_name, tag) VALUES (?, ?, ?)"
-  let saveTactic modName (tactic : Process.TacticInfo Process.MarkdownDocstring) := withDbContext "write:insert:tactics" do
-    saveTacticStmt.bind 1 modName
-    saveTacticStmt.bind 2 tactic.internalName.toString
-    saveTacticStmt.bind 3 tactic.userName
-    saveTacticStmt.bind 4 tactic.docString
-    run saveTacticStmt
-    for tag in tactic.tags do
-      saveTacticTagStmt.bind 1 modName
-      saveTacticTagStmt.bind 2 tactic.internalName.toString
-      saveTacticTagStmt.bind 3 tag.toString
-      run saveTacticTagStmt
+private def WriteStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO WriteStmts := do
+  pure {
+    values
+    deleteModuleStmt := ← sqlite.prepare "DELETE FROM modules WHERE name = ?"
+    saveModuleStmt := ← sqlite.prepare "INSERT INTO modules (name, source_url) VALUES (?, ?)"
+    -- INSERT OR IGNORE because the module system often results in multiple imports of the same module
+    saveImportStmt := ← sqlite.prepare "INSERT OR IGNORE INTO module_imports (importer, imported) VALUES (?, ?)"
+    saveMarkdownDocstringStmt := ← sqlite.prepare "INSERT INTO declaration_markdown_docstrings (module_name, position, text) VALUES (?, ?, ?)"
+    saveModuleDocStmt := ← sqlite.prepare "INSERT INTO module_docs_markdown (module_name, position, text) VALUES (?, ?, ?)"
+    saveVersoDocstringStmt := ← sqlite.prepare "INSERT INTO declaration_verso_docstrings (module_name, position, content) VALUES (?, ?, ?)"
+    saveDeclarationRangeStmt := ← sqlite.prepare
+      "INSERT INTO declaration_ranges (module_name, position, start_line, start_column, start_utf16, end_line, end_column, end_utf16) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    saveInfoStmt := ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    saveArgStmt := ← sqlite.prepare "INSERT INTO declaration_args (module_name, position, sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?)"
+    saveAttrStmt := ← sqlite.prepare "INSERT INTO declaration_attrs (module_name, position, sequence, attr) VALUES (?, ?, ?, ?)"
+    saveAxiomStmt := ← sqlite.prepare "INSERT INTO axioms (module_name, position, is_unsafe) VALUES (?, ?, ?)"
+    saveOpaqueStmt := ← sqlite.prepare "INSERT INTO opaques (module_name, position, safety) VALUES (?, ?, ?)"
+    saveDefinitionStmt := ← sqlite.prepare "INSERT INTO definitions (module_name, position, is_unsafe, hints, is_noncomputable) VALUES (?, ?, ?, ?, ?)"
+    saveDefinitionEquationStmt := ← sqlite.prepare "INSERT INTO definition_equations (module_name, position, code, text_length, sequence) VALUES (?, ?, ?, ?, ?)"
+    saveInstanceStmt := ← sqlite.prepare "INSERT INTO instances (module_name, position, class_name) VALUES (?, ?, ?)"
+    saveInstanceArgStmt := ← sqlite.prepare "INSERT INTO instance_args (module_name, position, sequence, type_name) VALUES (?, ?, ?, ?)"
+    saveInductiveStmt := ← sqlite.prepare "INSERT INTO inductives (module_name, position, is_unsafe) VALUES (?, ?, ?)"
+    saveConstructorStmt := ← sqlite.prepare "INSERT INTO constructors (module_name, position, type_position) VALUES (?, ?, ?)"
+    saveClassInductiveStmt := ← sqlite.prepare "INSERT INTO class_inductives (module_name, position, is_unsafe) VALUES (?, ?, ?)"
+    saveStructureStmt := ← sqlite.prepare "INSERT INTO structures (module_name, position, is_class) VALUES (?, ?, ?)"
+    saveStructureConstructorStmt := ← sqlite.prepare "INSERT INTO structure_constructors (module_name, position, ctor_position, name, type) VALUES (?, ?, ?, ?, ?)"
+    saveStructureParentStmt := ← sqlite.prepare "INSERT INTO structure_parents (module_name, position, sequence, projection_fn, type) VALUES (?, ?, ?, ?, ?)"
+    saveStructureFieldStmt := ← sqlite.prepare "INSERT INTO structure_fields (module_name, position, sequence, proj_name, type, is_direct) VALUES (?, ?, ?, ?, ?, ?)"
+    saveStructureFieldArgStmt := ← sqlite.prepare "INSERT INTO structure_field_args (module_name, position, field_sequence, arg_sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?, ?)"
+    saveNameOnlyStmt := ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, 0, 0)"
+    saveInternalNameStmt := ← sqlite.prepare "INSERT OR IGNORE INTO internal_names (name, target_module, target_position) VALUES (?, ?, ?)"
+    saveTacticStmt := ← sqlite.prepare "INSERT INTO tactics (module_name, internal_name, user_name, doc_string) VALUES (?, ?, ?, ?)"
+    saveTacticTagStmt := ← sqlite.prepare "INSERT INTO tactic_tags (module_name, internal_name, tag) VALUES (?, ?, ?)"
+  }
+
+private def WriteStmts.deleteModule (s : WriteStmts) (modName : String) : IO Unit := withDbContext "write:delete:modules" do
+  s.deleteModuleStmt.bind 1 modName
+  run s.deleteModuleStmt
+
+private def WriteStmts.saveModule (s : WriteStmts) (modName : String) (sourceUrl? : Option String) : IO Unit := withDbContext "write:insert:modules" do
+  s.saveModuleStmt.bind 1 modName
+  s.saveModuleStmt.bind 2 sourceUrl?
+  run s.saveModuleStmt
+
+private def WriteStmts.saveImport (s : WriteStmts) (modName : String) (imported : Lean.Name) : IO Unit := withDbContext "write:insert:module_imports" do
+  s.saveImportStmt.bind 1 modName
+  s.saveImportStmt.bind 2 imported.toString
+  run s.saveImportStmt
+
+private def WriteStmts.saveMarkdownDocstring (s : WriteStmts) (modName : String) (position : Int64) (text : String) : IO Unit := withDbContext "write:insert:declaration_markdown_docstrings" do
+  s.saveMarkdownDocstringStmt.bind 1 modName
+  s.saveMarkdownDocstringStmt.bind 2 position
+  s.saveMarkdownDocstringStmt.bind 3 text
+  run s.saveMarkdownDocstringStmt
+
+private def WriteStmts.saveModuleDoc (s : WriteStmts) (modName : String) (position : Int64) (text : String) : IO Unit := withDbContext "write:insert:module_docs_markdown" do
+  s.saveModuleDocStmt.bind 1 modName
+  s.saveModuleDocStmt.bind 2 position
+  s.saveModuleDocStmt.bind 3 text
+  run s.saveModuleDocStmt
+
+private def WriteStmts.saveVersoDocstring (s : WriteStmts) (modName : String) (position : Int64) (text : Lean.VersoDocString) : IO Unit := do
+  have := versoDocStringQueryParam s.values
+  withDbContext "write:insert:declaration_verso_docstrings" do
+    s.saveVersoDocstringStmt.bind 1 modName
+    s.saveVersoDocstringStmt.bind 2 position
+    s.saveVersoDocstringStmt.bind 3 text
+    run s.saveVersoDocstringStmt
+
+private def WriteStmts.saveDeclarationRange (s : WriteStmts) (modName : String) (position : Int64) (declRange : Lean.DeclarationRange) : IO Unit := withDbContext "write:insert:declaration_ranges" do
+  s.saveDeclarationRangeStmt.bind 1 modName
+  s.saveDeclarationRangeStmt.bind 2 position
+  s.saveDeclarationRangeStmt.bind 3 declRange.pos.line.toInt64
+  s.saveDeclarationRangeStmt.bind 4 declRange.pos.column.toInt64
+  s.saveDeclarationRangeStmt.bind 5 declRange.charUtf16.toInt64
+  s.saveDeclarationRangeStmt.bind 6 declRange.endPos.line.toInt64
+  s.saveDeclarationRangeStmt.bind 7 declRange.endPos.column.toInt64
+  s.saveDeclarationRangeStmt.bind 8 declRange.endCharUtf16.toInt64
+  run s.saveDeclarationRangeStmt
+
+private def WriteStmts.saveInfo (s : WriteStmts) (modName : String) (position : Int64) (kind : String) (info : Process.Info) : IO Unit := withDbContext "write:insert:name_info" do
+  s.saveInfoStmt.bind 1 modName
+  s.saveInfoStmt.bind 2 position
+  s.saveInfoStmt.bind 3 kind
+  s.saveInfoStmt.bind 4 info.name.toString
+  s.saveInfoStmt.bind 5 info.type
+  s.saveInfoStmt.bind 6 info.sorried
+  s.saveInfoStmt.bind 7 info.render
+  run s.saveInfoStmt
+  match info.doc with
+  | some (.inl md) => s.saveMarkdownDocstring modName position md
+  | some (.inr v) => s.saveVersoDocstring modName position v
+  | none => pure ()
+  for h : j in 0...info.args.size do
+    let arg := info.args[j]
+    withDbContext "write:insert:declaration_args" do
+      s.saveArgStmt.bind 1 modName
+      s.saveArgStmt.bind 2 position
+      s.saveArgStmt.bind 3 j.toInt64
+      s.saveArgStmt.bind 4 arg.binder
+      s.saveArgStmt.bind 5 arg.implicit
+      run s.saveArgStmt
+  for h : j in 0...info.attrs.size do
+    let attr := info.attrs[j]
+    withDbContext "write:insert:declaration_attrs" do
+      s.saveAttrStmt.bind 1 modName
+      s.saveAttrStmt.bind 2 position
+      s.saveAttrStmt.bind 3 j.toInt64
+      s.saveAttrStmt.bind 4 attr
+      run s.saveAttrStmt
+
+private def WriteStmts.saveAxiom (s : WriteStmts) (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit := withDbContext "write:insert:axioms" do
+  s.saveAxiomStmt.bind 1 modName
+  s.saveAxiomStmt.bind 2 position
+  s.saveAxiomStmt.bind 3 isUnsafe
+  run s.saveAxiomStmt
+
+private def WriteStmts.saveOpaque (s : WriteStmts) (modName : String) (position : Int64) (safety : Lean.DefinitionSafety) : IO Unit := withDbContext "write:insert:opaques" do
+  s.saveOpaqueStmt.bind 1 modName
+  s.saveOpaqueStmt.bind 2 position
+  s.saveOpaqueStmt.bind 3 safety
+  run s.saveOpaqueStmt
+
+private def WriteStmts.saveDefinition (s : WriteStmts) (modName : String) (position : Int64) (isUnsafe : Bool) (hints : Lean.ReducibilityHints) (isNonComputable : Bool) : IO Unit := withDbContext "write:insert:definitions" do
+  s.saveDefinitionStmt.bind 1 modName
+  s.saveDefinitionStmt.bind 2 position
+  s.saveDefinitionStmt.bind 3 isUnsafe
+  s.saveDefinitionStmt.bind 4 hints
+  s.saveDefinitionStmt.bind 5 isNonComputable
+  run s.saveDefinitionStmt
+
+private def WriteStmts.saveDefinitionEquation (s : WriteStmts) (modName : String) (position : Int64) (code : RenderedCode) (sequence : Int64) : IO Unit := withDbContext "write:insert:definition_equations" do
+  let textLength := RenderedCode.textLength code
+  s.saveDefinitionEquationStmt.bind 1 modName
+  s.saveDefinitionEquationStmt.bind 2 position
+  s.saveDefinitionEquationStmt.bind 3 <|
+    if textLength < Process.equationLimit then some code
+    else none
+  s.saveDefinitionEquationStmt.bind 4 textLength.toInt64
+  s.saveDefinitionEquationStmt.bind 5 sequence
+  run s.saveDefinitionEquationStmt
+
+private def WriteStmts.saveInstance (s : WriteStmts) (modName : String) (position : Int64) (className : String) : IO Unit := withDbContext "write:insert:instances" do
+  s.saveInstanceStmt.bind 1 modName
+  s.saveInstanceStmt.bind 2 position
+  s.saveInstanceStmt.bind 3 className
+  run s.saveInstanceStmt
+
+private def WriteStmts.saveInstanceArg (s : WriteStmts) (modName : String) (position : Int64) (sequence : Int64) (typeName : String) : IO Unit := withDbContext "write:insert:instance_args" do
+  s.saveInstanceArgStmt.bind 1 modName
+  s.saveInstanceArgStmt.bind 2 position
+  s.saveInstanceArgStmt.bind 3 sequence
+  s.saveInstanceArgStmt.bind 4 typeName
+  run s.saveInstanceArgStmt
+
+private def WriteStmts.saveInductive (s : WriteStmts) (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit := withDbContext "write:insert:inductives" do
+  s.saveInductiveStmt.bind 1 modName
+  s.saveInductiveStmt.bind 2 position
+  s.saveInductiveStmt.bind 3 isUnsafe
+  run s.saveInductiveStmt
+
+private def WriteStmts.saveConstructor (s : WriteStmts) (modName : String) (position : Int64) (typePosition : Int64) : IO Unit := withDbContext "write:insert:constructors" do
+  s.saveConstructorStmt.bind 1 modName
+  s.saveConstructorStmt.bind 2 position
+  s.saveConstructorStmt.bind 3 typePosition
+  run s.saveConstructorStmt
+
+private def WriteStmts.saveClassInductive (s : WriteStmts) (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit := withDbContext "write:insert:class_inductives" do
+  s.saveClassInductiveStmt.bind 1 modName
+  s.saveClassInductiveStmt.bind 2 position
+  s.saveClassInductiveStmt.bind 3 isUnsafe
+  run s.saveClassInductiveStmt
+
+private def WriteStmts.saveStructure (s : WriteStmts) (modName : String) (position : Int64) (isClass : Bool) : IO Unit := withDbContext "write:insert:structures" do
+  s.saveStructureStmt.bind 1 modName
+  s.saveStructureStmt.bind 2 position
+  s.saveStructureStmt.bind 3 isClass
+  run s.saveStructureStmt
+
+private def WriteStmts.saveStructureConstructor (s : WriteStmts) (modName : String) (position : Int64) (ctorPos : Int64) (info : Process.NameInfo) : IO Unit := withDbContext "write:insert:structure_constructors" do
+  s.saveStructureConstructorStmt.bind 1 modName
+  s.saveStructureConstructorStmt.bind 2 position
+  s.saveStructureConstructorStmt.bind 3 ctorPos
+  s.saveStructureConstructorStmt.bind 4 info.name.toString
+  s.saveStructureConstructorStmt.bind 5 info.type
+  run s.saveStructureConstructorStmt
+  match info.doc with
+  | some (.inl md) => s.saveMarkdownDocstring modName ctorPos md
+  | some (.inr v) => s.saveVersoDocstring modName ctorPos v
+  | none => pure ()
+
+private def WriteStmts.saveStructureParent (s : WriteStmts) (modName : String) (position : Int64) (sequence : Int32) (projectionFn : String) (type : RenderedCode) : IO Unit := withDbContext "write:insert:structure_parents" do
+  s.saveStructureParentStmt.bind 1 modName
+  s.saveStructureParentStmt.bind 2 position
+  s.saveStructureParentStmt.bind 3 sequence
+  s.saveStructureParentStmt.bind 4 projectionFn
+  s.saveStructureParentStmt.bind 5 type
+  run s.saveStructureParentStmt
+
+-- Store projection function name directly; lookup happens at load time
+private def WriteStmts.saveStructureField (s : WriteStmts) (modName : String) (position : Int64) (sequence : Int64) (projName : String) (type : RenderedCode) (isDirect : Bool) : IO Unit := withDbContext "write:insert:structure_fields" do
+  s.saveStructureFieldStmt.bind 1 modName
+  s.saveStructureFieldStmt.bind 2 position
+  s.saveStructureFieldStmt.bind 3 sequence
+  s.saveStructureFieldStmt.bind 4 projName
+  s.saveStructureFieldStmt.bind 5 type
+  s.saveStructureFieldStmt.bind 6 isDirect
+  run s.saveStructureFieldStmt
+
+private def WriteStmts.saveStructureFieldArg (s : WriteStmts) (modName : String) (position : Int64) (fieldSeq : Int64) (argSeq : Int64) (binder : RenderedCode) (isImplicit : Bool) : IO Unit := withDbContext "write:insert:structure_field_args" do
+  s.saveStructureFieldArgStmt.bind 1 modName
+  s.saveStructureFieldArgStmt.bind 2 position
+  s.saveStructureFieldArgStmt.bind 3 fieldSeq
+  s.saveStructureFieldArgStmt.bind 4 argSeq
+  s.saveStructureFieldArgStmt.bind 5 binder
+  s.saveStructureFieldArgStmt.bind 6 isImplicit
+  run s.saveStructureFieldArgStmt
+
+private def WriteStmts.saveNameOnly (s : WriteStmts) (modName : String) (position : Int64) (kind : String) (name : Lean.Name) (type : RenderedCode) (declRange : Lean.DeclarationRange) : IO Unit := withDbContext "write:insert:name_info:nameonly" do
+  s.saveNameOnlyStmt.bind 1 modName
+  s.saveNameOnlyStmt.bind 2 position
+  s.saveNameOnlyStmt.bind 3 kind
+  s.saveNameOnlyStmt.bind 4 name.toString
+  s.saveNameOnlyStmt.bind 5 type
+  run s.saveNameOnlyStmt
+  s.saveDeclarationRange modName position declRange
+
+private def WriteStmts.saveInternalName (s : WriteStmts) (name : Lean.Name) (targetModule : String) (targetPosition : Int64) : IO Unit := withDbContext "write:insert:internal_names" do
+  s.saveInternalNameStmt.bind 1 name.toString
+  s.saveInternalNameStmt.bind 2 targetModule
+  s.saveInternalNameStmt.bind 3 targetPosition
+  run s.saveInternalNameStmt
+
+private def WriteStmts.saveTactic (s : WriteStmts) (modName : String) (tactic : Process.TacticInfo Process.MarkdownDocstring) : IO Unit := withDbContext "write:insert:tactics" do
+  s.saveTacticStmt.bind 1 modName
+  s.saveTacticStmt.bind 2 tactic.internalName.toString
+  s.saveTacticStmt.bind 3 tactic.userName
+  s.saveTacticStmt.bind 4 tactic.docString
+  run s.saveTacticStmt
+  for tag in tactic.tags do
+    s.saveTacticTagStmt.bind 1 modName
+    s.saveTacticTagStmt.bind 2 tactic.internalName.toString
+    s.saveTacticTagStmt.bind 3 tag.toString
+    run s.saveTacticTagStmt
+
+def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
+  let sqlite ← getDb dbFile
+  let ws ← WriteStmts.prepare sqlite values
+  let writeMutex ← Std.Mutex.new ws
   let readOps ← mkReadOps sqlite values
   pure { readOps with
     sqlite,
-    deleteModule,
-    saveModule,
-    saveImport,
-    saveMarkdownDocstring,
-    saveModuleDoc,
-    saveVersoDocstring,
-    saveDeclarationRange,
-    saveInfo,
-    saveAxiom,
-    saveOpaque,
-    saveDefinition,
-    saveDefinitionEquation,
-    saveInstance,
-    saveInstanceArg,
-    saveInductive,
-    saveConstructor,
-    saveClassInductive,
-    saveStructure,
-    saveStructureConstructor,
-    saveStructureParent,
-    saveStructureField,
-    saveStructureFieldArg,
-    saveNameOnly,
-    saveInternalName,
-    saveTactic
+    deleteModule modName := writeMutex.atomically do (← get).deleteModule modName
+    saveModule modName sourceUrl? := writeMutex.atomically do (← get).saveModule modName sourceUrl?
+    saveImport modName imported := writeMutex.atomically do (← get).saveImport modName imported
+    saveMarkdownDocstring modName position text := writeMutex.atomically do (← get).saveMarkdownDocstring modName position text
+    saveModuleDoc modName position text := writeMutex.atomically do (← get).saveModuleDoc modName position text
+    saveVersoDocstring modName position text := writeMutex.atomically do (← get).saveVersoDocstring modName position text
+    saveDeclarationRange modName position declRange := writeMutex.atomically do (← get).saveDeclarationRange modName position declRange
+    saveInfo modName position kind info := writeMutex.atomically do (← get).saveInfo modName position kind info
+    saveAxiom modName position isUnsafe := writeMutex.atomically do (← get).saveAxiom modName position isUnsafe
+    saveOpaque modName position safety := writeMutex.atomically do (← get).saveOpaque modName position safety
+    saveDefinition modName position isUnsafe hints isNonComputable := writeMutex.atomically do (← get).saveDefinition modName position isUnsafe hints isNonComputable
+    saveDefinitionEquation modName position code sequence := writeMutex.atomically do (← get).saveDefinitionEquation modName position code sequence
+    saveInstance modName position className := writeMutex.atomically do (← get).saveInstance modName position className
+    saveInstanceArg modName position sequence typeName := writeMutex.atomically do (← get).saveInstanceArg modName position sequence typeName
+    saveInductive modName position isUnsafe := writeMutex.atomically do (← get).saveInductive modName position isUnsafe
+    saveConstructor modName position typePosition := writeMutex.atomically do (← get).saveConstructor modName position typePosition
+    saveClassInductive modName position isUnsafe := writeMutex.atomically do (← get).saveClassInductive modName position isUnsafe
+    saveStructure modName position isClass := writeMutex.atomically do (← get).saveStructure modName position isClass
+    saveStructureConstructor modName position ctorPos info := writeMutex.atomically do (← get).saveStructureConstructor modName position ctorPos info
+    saveStructureParent modName position sequence projectionFn type := writeMutex.atomically do (← get).saveStructureParent modName position sequence projectionFn type
+    saveStructureField modName position sequence projName type isDirect := writeMutex.atomically do (← get).saveStructureField modName position sequence projName type isDirect
+    saveStructureFieldArg modName position fieldSeq argSeq binder isImplicit := writeMutex.atomically do (← get).saveStructureFieldArg modName position fieldSeq argSeq binder isImplicit
+    saveNameOnly modName position kind name type declRange := writeMutex.atomically do (← get).saveNameOnly modName position kind name type declRange
+    saveInternalName name targetModule targetPosition := writeMutex.atomically do (← get).saveInternalName name targetModule targetPosition
+    saveTactic modName tactic := writeMutex.atomically do (← get).saveTactic modName tactic
   }
 
 structure DBM.Context where

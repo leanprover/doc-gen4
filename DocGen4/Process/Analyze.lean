@@ -22,15 +22,13 @@ open Lean.Elab.Tactic.Doc
 /-- Represents a non-verso docstring; these will be rendered using `Output.docStringToHtml`. -/
 abbrev MarkdownDocstring := String
 
-deriving instance Hashable for ModuleDoc
-
 /--
 Member of a module, either a declaration or some module doc string.
 -/
 inductive ModuleMember where
 | docInfo (info : DocInfo) : ModuleMember
 | modDoc (doc : ModuleDoc) : ModuleMember
-deriving Inhabited, Hashable
+deriving Inhabited
 
 /-- Information about a tactic declaration which will be rendered on the Tactics page.
 
@@ -68,7 +66,7 @@ structure Module where
   Tactics declared in this module.
   -/
   tactics : Array (TacticInfo MarkdownDocstring)
-  deriving Inhabited, Hashable
+  deriving Inhabited
 
 /--
 The result of running a full doc-gen analysis on a project.
