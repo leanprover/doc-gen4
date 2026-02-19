@@ -342,9 +342,16 @@ def withSQLite (f : SQLite → DBM α) : DBM α := do f (← read).db
 
 private def readonlyError : IO α := throw (IO.userError "DB opened for reading only")
 
+/--
+Open a database for reading only. All write operations will throw `readonlyError`.
+
+Read operations are protected by a `Std.Mutex`, so a single `DB` instance can be shared across tasks
+without corrupting state. However, sharing serializes all reads through one SQLite connection. For
+parallel workloads, each task should call `openForReading` to get its own connection and mutex.
+-/
 def openForReading (dbFile : System.FilePath) (values : DocstringValues) : IO DB := do
   let sqlite ← SQLite.openWith dbFile .readonly
-  sqlite.exec "PRAGMA busy_timeout = 86400000"
+  sqlite.exec "PRAGMA busy_timeout = 1800000"  -- 30 minutes
   let readOps ← mkReadOps sqlite values
   pure {
     sqlite,
@@ -406,6 +413,9 @@ Uses dynamic SQL (variable number of placeholders) so cannot be pre-prepared.
 -/
 def DB.getTransitiveImports (db : DB) (modules : Array Name) : IO (Array Name) := withDbContext "read:transitive_imports" do
   if modules.isEmpty then return #[]
+  --The only interpolated value is `placeholders`, which is built from literal `"(?)"` strings
+  --(one per module). Actual module names are always bound via `stmt.bind`. No user data is interpolated
+  --into the SQL string.
   let placeholders := ", ".intercalate (modules.toList.map fun _ => "(?)")
   let sql := s!"
     WITH RECURSIVE transitive_imports(name) AS (
@@ -588,12 +598,12 @@ where
 
   infoKind : Process.DocInfo → String
     | .axiomInfo _ => "axiom"
-    | .theoremInfo info => "theorem"
-    | .opaqueInfo info => "opaque"
-    | .definitionInfo info => "definition"
-    | .instanceInfo info => "instance"
-    | .inductiveInfo info => "inductive"
-    | .structureInfo info => "structure"
-    | .classInfo info => "class"
-    | .classInductiveInfo info => "class inductive"
-    | .ctorInfo info => "constructor"
+    | .theoremInfo _ => "theorem"
+    | .opaqueInfo _ => "opaque"
+    | .definitionInfo _ => "definition"
+    | .instanceInfo _ => "instance"
+    | .inductiveInfo _ => "inductive"
+    | .structureInfo _ => "structure"
+    | .classInfo _ => "class"
+    | .classInductiveInfo _ => "class inductive"
+    | .ctorInfo _ => "constructor"

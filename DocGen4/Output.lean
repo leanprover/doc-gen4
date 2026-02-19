@@ -203,10 +203,14 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) 
       if freshModuleNames.contains modName then continue
       let fileContent ← FS.readFile entry.path
       match Json.parse fileContent with
-      | .error _ => continue
+      | .error err =>
+        IO.eprintln s!"warning: skipping {entry.path}: failed to parse JSON: {err}"
+        continue
       | .ok jsonContent =>
         match fromJson? jsonContent with
-        | .error _ => continue
+        | .error err =>
+          IO.eprintln s!"warning: skipping {entry.path}: failed to deserialize JsonModule: {err}"
+          continue
         | .ok (module : JsonModule) =>
           diskModules := diskModules.push module
 

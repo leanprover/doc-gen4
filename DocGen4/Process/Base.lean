@@ -137,7 +137,14 @@ structure OpaqueInfo extends Info where
 
 deriving instance Hashable for ReducibilityHints
 
-/-- The maximum string length of equations before they are omitted from rendering. -/
+/--
+The maximum string length of equations before they are omitted from rendering.
+
+Equations exceeding this limit are stored as NULL blobs in the database (only `text_length` is
+preserved). This means oversized equations cannot be recovered by re-rendering from the DB.
+The `equationsWereOmitted` field in `DefinitionInfo` is set when any equation exceeds this limit,
+causing the rendering code in `DocGen4/Output/Definition.lean` to show a notice to the user.
+-/
 def equationLimit : Nat := 200
 
 /--

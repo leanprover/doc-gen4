@@ -91,7 +91,28 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
   let loadStructureParentsStmt ← sqlite.prepare "SELECT projection_fn, type FROM structure_parents WHERE module_name = ? AND position = ? ORDER BY sequence"
   let loadFieldArgsStmt ← sqlite.prepare "SELECT binder, is_implicit FROM structure_field_args WHERE module_name = ? AND position = ? AND field_sequence = ? ORDER BY arg_sequence"
   let loadFieldsStmt ← sqlite.prepare "SELECT sequence, proj_name, type, is_direct FROM structure_fields WHERE module_name = ? AND position = ? ORDER BY sequence"
-  let loadFieldsJoinedStmt ← sqlite.prepare "SELECT f.sequence, f.proj_name, f.type, f.is_direct, n.module_name, n.position, n.render, md.text, v.content, dr.start_line, dr.start_column, dr.start_utf16, dr.end_line, dr.end_column, dr.end_utf16 FROM structure_fields f LEFT JOIN name_info n ON n.name = f.proj_name LEFT JOIN declaration_markdown_docstrings md ON md.module_name = n.module_name AND md.position = n.position LEFT JOIN declaration_verso_docstrings v ON v.module_name = n.module_name AND v.position = n.position LEFT JOIN declaration_ranges dr ON dr.module_name = n.module_name AND dr.position = n.position WHERE f.module_name = ? AND f.position = ? ORDER BY f.sequence"
+  -- Column indices for loadFieldsJoinedStmt:
+  --   0: f.sequence      1: f.proj_name      2: f.type         3: f.is_direct
+  --   4: n.module_name   5: n.position        6: n.render
+  --   7: md.text         8: v.content
+  --   9: dr.start_line  10: dr.start_column  11: dr.start_utf16
+  --  12: dr.end_line    13: dr.end_column    14: dr.end_utf16
+  let loadFieldsJoinedStmt ← sqlite.prepare
+    "SELECT f.sequence, f.proj_name, f.type, f.is_direct, \
+            n.module_name, n.position, n.render, \
+            md.text, v.content, \
+            dr.start_line, dr.start_column, dr.start_utf16, \
+            dr.end_line, dr.end_column, dr.end_utf16 \
+     FROM structure_fields f \
+     LEFT JOIN name_info n ON n.name = f.proj_name \
+     LEFT JOIN declaration_markdown_docstrings md \
+       ON md.module_name = n.module_name AND md.position = n.position \
+     LEFT JOIN declaration_verso_docstrings v \
+       ON v.module_name = n.module_name AND v.position = n.position \
+     LEFT JOIN declaration_ranges dr \
+       ON dr.module_name = n.module_name AND dr.position = n.position \
+     WHERE f.module_name = ? AND f.position = ? \
+     ORDER BY f.sequence"
   let lookupProjStmt ← sqlite.prepare "SELECT module_name, position FROM name_info WHERE name = ? LIMIT 1"
   let lookupRenderStmt ← sqlite.prepare "SELECT render FROM name_info WHERE module_name = ? AND position = ?"
   let loadStructCtorStmt ← sqlite.prepare "SELECT name, type, ctor_position FROM structure_constructors WHERE module_name = ? AND position = ?"
@@ -608,14 +629,15 @@ private def ReadStmts.getContainedNames (s : ReadStmts) (moduleName : Name) : IO
 
 def mkReadOps (sqlite : SQLite) (values : DocstringValues) : IO ReadOps := do
   let s ← ReadStmts.prepare sqlite values
+  let mutex ← Std.Mutex.new s
   pure {
-    getModuleNames := s.getModuleNames
-    getModuleSourceUrls := s.getModuleSourceUrls
-    getModuleImports := s.getModuleImports
-    buildName2ModIdx := s.buildName2ModIdx
-    loadModule := s.loadModule
-    loadAllTactics := s.loadAllTactics
-    getContainedNames := s.getContainedNames
+    getModuleNames := mutex.atomically do (← get).getModuleNames
+    getModuleSourceUrls := mutex.atomically do (← get).getModuleSourceUrls
+    getModuleImports name := mutex.atomically do (← get).getModuleImports name
+    buildName2ModIdx names := mutex.atomically do (← get).buildName2ModIdx names
+    loadModule name := mutex.atomically do (← get).loadModule name
+    loadAllTactics := mutex.atomically do (← get).loadAllTactics
+    getContainedNames name := mutex.atomically do (← get).getContainedNames name
   }
 
 end DocGen4.DB

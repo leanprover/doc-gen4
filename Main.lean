@@ -186,6 +186,9 @@ def headerDataCmd := `[Cli|
     b, build : String; "Build directory."
 ]
 
+-- Prior versions of doc-gen4 generated HTML for one module at a time, directly from the olean, and
+-- then ran an index command at the end to create the search index. Now, `fromDb` generates all HTML
+-- and the search index in a single pass from the DB.
 def fromDbCmd := `[Cli|
   fromDb VIA runFromDbCmd;
   "Generate HTML documentation from a SQLite database."

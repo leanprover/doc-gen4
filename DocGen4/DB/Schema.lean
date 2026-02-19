@@ -50,7 +50,7 @@ def getDb (dbFile : System.FilePath) : IO SQLite := do
   -- SQLite atomically creates the DB file, and the schema and journal settings here are applied
   -- idempotently. This avoids DB creation race conditions.
   let db ← SQLite.openWith dbFile .readWriteCreate
-  db.exec "PRAGMA busy_timeout = 86400000"  -- 24 hours - effectively no timeout for parallel builds
+  db.exec "PRAGMA busy_timeout = 1800000"  -- 30 minutes
   db.exec "PRAGMA journal_mode = WAL"
   db.exec "PRAGMA foreign_keys = ON"
   try
