@@ -15,7 +15,7 @@ def withDbContext [MonadLiftT BaseIO m] [MonadControlT IO m] [Monad m] (context 
       let ms' ← IO.monoMsNow
       throw <| .userError s!"Exception in `{context}` after {ms' - ms}ms: {e.toString}"
 
-structure ReadOps where
+structure ReadDB where
   getModuleNames : IO (Array Lean.Name)
   getModuleSourceUrls : IO (Std.HashMap Lean.Name String)
   getModuleImports : Lean.Name → IO (Array Lean.Name)
@@ -25,6 +25,11 @@ structure ReadOps where
   /-- For a module, return a map from each rendered declaration to the set of names
       whose declaration ranges are contained within it. -/
   getContainedNames : Lean.Name → IO (Std.HashMap Lean.Name (Std.HashSet Lean.Name))
+  /--
+  Get transitive closure of imports for given modules using recursive CTE.
+  Called at most once per `fromDb` invocation (and only when explicit module roots are provided).
+  -/
+  getTransitiveImports : Array Lean.Name → IO (Array Lean.Name)
 
 private def done (stmt : SQLite.Stmt) : IO Unit := do
   stmt.reset
@@ -627,7 +632,7 @@ private def ReadStmts.getContainedNames (s : ReadStmts) (moduleName : Name) : IO
   done s.getContainedNamesStmt
   return result
 
-def mkReadOps (sqlite : SQLite) (values : DocstringValues) : IO ReadOps := do
+def mkReadDB (sqlite : SQLite) (values : DocstringValues) : IO ReadDB := do
   let s ← ReadStmts.prepare sqlite values
   let mutex ← Std.Mutex.new s
   pure {
@@ -638,6 +643,29 @@ def mkReadOps (sqlite : SQLite) (values : DocstringValues) : IO ReadOps := do
     loadModule name := mutex.atomically do (← get).loadModule name
     loadAllTactics := mutex.atomically do (← get).loadAllTactics
     getContainedNames name := mutex.atomically do (← get).getContainedNames name
+    getTransitiveImports modules := withDbContext "read:transitive_imports" do
+      if modules.isEmpty then return #[]
+      -- Uses dynamic SQL (variable number of placeholders) so cannot be pre-prepared.
+      -- This is fine because it's called at most once per `fromDb` invocation.
+      -- The only interpolated value is `placeholders`, which is built from literal `"(?)"` strings
+      -- (one per module). Actual module names are always bound via `stmt.bind`.
+      let placeholders := ", ".intercalate (modules.toList.map fun _ => "(?)")
+      let sql := s!"
+        WITH RECURSIVE transitive_imports(name) AS (
+          VALUES {placeholders}
+          UNION
+          SELECT mi.imported FROM module_imports mi
+          JOIN transitive_imports ti ON mi.importer = ti.name
+        )
+        SELECT DISTINCT name FROM transitive_imports"
+      let stmt ← sqlite.prepare sql
+      for h : i in [0:modules.size] do
+        stmt.bind (i.toInt32 + 1) modules[i].toString
+      let mut result := #[]
+      while (← stmt.step) do
+        let name := (← stmt.columnText 0).toName
+        result := result.push name
+      return result
   }
 
 end DocGen4.DB

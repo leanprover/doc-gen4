@@ -8,7 +8,12 @@ import DocGen4.DB.Read
 
 namespace DocGen4.DB
 
-structure DB extends ReadOps where
+-- ReadDB is defined in DocGen4.DB.Read and is the read-only database interface.
+-- WriteDB (below) is the write-only interface. The two types are completely disjoint,
+-- enforcing at compile time that read and write paths cannot be mixed.
+
+/-- A write-only database handle. Used during the analysis phase to populate the database. -/
+structure WriteDB where
   sqlite : SQLite
   deleteModule (modName : String) : IO Unit
   saveModule (modName : String) (sourceUrl? : Option String) : IO Unit
@@ -39,14 +44,13 @@ structure DB extends ReadOps where
   /-- Save a tactic defined in this module -/
   saveTactic (modName : String) (tactic : Process.TacticInfo Process.MarkdownDocstring) : IO Unit
 
-
-def DB.saveDocstring (db : DB) (modName : String) (position : Int64) (text : String ⊕ Lean.VersoDocString) : IO Unit :=
+def WriteDB.saveDocstring (db : WriteDB) (modName : String) (position : Int64) (text : String ⊕ Lean.VersoDocString) : IO Unit :=
   match text with
   | .inl md => db.saveMarkdownDocstring modName position md
   | .inr v => db.saveVersoDocstring modName position v
 
-instance : Coe DB SQLite where
-  coe := DB.sqlite
+instance : Coe WriteDB SQLite where
+  coe := WriteDB.sqlite
 
 private def run (stmt : SQLite.Stmt) : IO Unit := do
   stmt.exec
@@ -349,12 +353,11 @@ private def WriteStmts.saveTactic (s : WriteStmts) (modName : String) (tactic : 
     s.saveTacticTagStmt.bind 3 tag.toString
     run s.saveTacticTagStmt
 
-def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
+def ensureWriteDb (values : DocstringValues) (dbFile : System.FilePath) : IO WriteDB := do
   let sqlite ← getDb dbFile
   let ws ← WriteStmts.prepare sqlite values
   let writeMutex ← Std.Mutex.new ws
-  let readOps ← mkReadOps sqlite values
-  pure { readOps with
+  pure {
     sqlite,
     deleteModule modName := writeMutex.atomically do (← get).deleteModule modName
     saveModule modName sourceUrl? := writeMutex.atomically do (← get).saveModule modName sourceUrl?
@@ -385,66 +388,30 @@ def ensureDb (values : DocstringValues) (dbFile : System.FilePath) : IO DB := do
 
 structure DBM.Context where
   values : DocstringValues
-  db : DB
+  db : WriteDB
 
 abbrev DBM α := ReaderT DBM.Context IO α
 
 def DBM.run (values : DocstringValues) (dbFile : System.FilePath) (act : DBM α) : IO α := do
-  let db ← ensureDb values dbFile
+  let db ← ensureWriteDb values dbFile
   ReaderT.run act { values, db }
 
-def withDB (f : DB → DBM α) : DBM α := do f (← read).db
+def withDB (f : WriteDB → DBM α) : DBM α := do f (← read).db
 
-def withSQLite (f : SQLite → DBM α) : DBM α := do f (← read).db
-
-private def readonlyError : IO α := throw (IO.userError "DB opened for reading only")
+def withSQLite (f : SQLite → DBM α) : DBM α := do f (← read).db.sqlite
 
 /--
-Open a database for reading only. All write operations will throw `readonlyError`.
+Open a database for reading only.
 
-Read operations are protected by a `Std.Mutex`, so a single `DB` instance can be shared across tasks
-without corrupting state. However, sharing serializes all reads through one SQLite connection. For
-parallel workloads, each task should call `openForReading` to get its own connection and mutex.
+Read operations are protected by a `Std.Mutex` internally (see `mkReadDB`), so a single `ReadDB`
+can be shared across tasks without corrupting state. However, sharing serializes all reads through
+one SQLite connection. For parallel workloads, each task should call `openForReading` to get its own
+connection.
 -/
-def openForReading (dbFile : System.FilePath) (values : DocstringValues) : IO DB := do
+def openForReading (dbFile : System.FilePath) (values : DocstringValues) : IO ReadDB := do
   let sqlite ← SQLite.openWith dbFile .readonly
   sqlite.exec "PRAGMA busy_timeout = 1800000"  -- 30 minutes
-  let readOps ← mkReadOps sqlite values
-  pure {
-    sqlite,
-    deleteModule := fun _ => readonlyError,
-    saveModule := fun _ _ => readonlyError,
-    saveImport := fun _ _ => readonlyError,
-    saveMarkdownDocstring := fun _ _ _ => readonlyError,
-    saveModuleDoc := fun _ _ _ => readonlyError,
-    saveVersoDocstring := fun _ _ _ => readonlyError,
-    saveDeclarationRange := fun _ _ _ => readonlyError,
-    saveInfo := fun _ _ _ _ => readonlyError,
-    saveAxiom := fun _ _ _ => readonlyError,
-    saveOpaque := fun _ _ _ => readonlyError,
-    saveDefinition := fun _ _ _ _ _ => readonlyError,
-    saveDefinitionEquation := fun _ _ _ _ => readonlyError,
-    saveInstance := fun _ _ _ => readonlyError,
-    saveInstanceArg := fun _ _ _ _ => readonlyError,
-    saveInductive := fun _ _ _ => readonlyError,
-    saveConstructor := fun _ _ _ => readonlyError,
-    saveClassInductive := fun _ _ _ => readonlyError,
-    saveStructure := fun _ _ _ => readonlyError,
-    saveStructureConstructor := fun _ _ _ _ => readonlyError,
-    saveNameOnly := fun _ _ _ _ _ _ => readonlyError,
-    saveStructureParent := fun _ _ _ _ _ => readonlyError,
-    saveStructureField := fun _ _ _ _ _ _ => readonlyError,
-    saveStructureFieldArg := fun _ _ _ _ _ _ => readonlyError,
-    saveInternalName := fun _ _ _ => readonlyError,
-    saveTactic := fun _ _ => readonlyError,
-    getModuleNames := readOps.getModuleNames,
-    getModuleSourceUrls := readOps.getModuleSourceUrls,
-    getModuleImports := readOps.getModuleImports,
-    buildName2ModIdx := readOps.buildName2ModIdx,
-    loadModule := readOps.loadModule,
-    loadAllTactics := readOps.loadAllTactics,
-    getContainedNames := readOps.getContainedNames,
-  }
+  mkReadDB sqlite values
 
 /-! ## DB Reading -/
 
@@ -458,38 +425,11 @@ structure LinkingContext where
   name2ModIdx : Std.HashMap Name ModuleIdx
 
 /-- Load the linking context from the database. -/
-def DB.loadLinkingContext (db : DB) : IO LinkingContext := do
+def ReadDB.loadLinkingContext (db : ReadDB) : IO LinkingContext := do
   let moduleNames ← db.getModuleNames
   let sourceUrls ← db.getModuleSourceUrls
   let name2ModIdx ← db.buildName2ModIdx moduleNames
   return { moduleNames, sourceUrls, name2ModIdx }
-
-/--
-Get transitive closure of imports for given modules using recursive CTE.
-Uses dynamic SQL (variable number of placeholders) so cannot be pre-prepared.
--/
-def DB.getTransitiveImports (db : DB) (modules : Array Name) : IO (Array Name) := withDbContext "read:transitive_imports" do
-  if modules.isEmpty then return #[]
-  --The only interpolated value is `placeholders`, which is built from literal `"(?)"` strings
-  --(one per module). Actual module names are always bound via `stmt.bind`. No user data is interpolated
-  --into the SQL string.
-  let placeholders := ", ".intercalate (modules.toList.map fun _ => "(?)")
-  let sql := s!"
-    WITH RECURSIVE transitive_imports(name) AS (
-      VALUES {placeholders}
-      UNION
-      SELECT mi.imported FROM module_imports mi
-      JOIN transitive_imports ti ON mi.importer = ti.name
-    )
-    SELECT DISTINCT name FROM transitive_imports"
-  let stmt ← db.sqlite.prepare sql
-  for h : i in [0:modules.size] do
-    stmt.bind (i.toInt32 + 1) modules[i].toString
-  let mut result := #[]
-  while (← stmt.step) do
-    let name := (← stmt.columnText 0).toName
-    result := result.push name
-  return result
 
 end Reading
 
@@ -599,7 +539,7 @@ def updateModuleDb (values : DocstringValues)
 where
   -- Save all recursors (main + aux) for an inductive type
   -- Uses name2ModIdx (from env.const2ModIdx) to check if names exist
-  saveRecursors (name2ModIdx : Std.HashMap Lean.Name Lean.ModuleIdx) (db : DB) (modName : String) (pos : Int64) (indName : Lean.Name) : IO Unit := do
+  saveRecursors (name2ModIdx : Std.HashMap Lean.Name Lean.ModuleIdx) (db : WriteDB) (modName : String) (pos : Int64) (indName : Lean.Name) : IO Unit := do
     -- Save the main recursor
     db.saveInternalName (Lean.mkRecName indName) modName pos
     -- Save aux recursors if they exist in the environment
@@ -615,7 +555,7 @@ where
       db.saveInternalName `HEq.ndrecOn modName pos
 
   -- First pass: save structure metadata (not fields)
-  saveStructureMetadata (isClass : Bool) (info : Process.StructureInfo) (db : DB) (modName : String) (pos : Int64) (name2ModIdx : Std.HashMap Lean.Name Lean.ModuleIdx) : StateT Int64 IO Unit := do
+  saveStructureMetadata (isClass : Bool) (info : Process.StructureInfo) (db : WriteDB) (modName : String) (pos : Int64) (name2ModIdx : Std.HashMap Lean.Name Lean.ModuleIdx) : StateT Int64 IO Unit := do
     db.saveStructure modName pos isClass
     -- Save recursors for this structure
     saveRecursors name2ModIdx db modName pos info.name
@@ -639,7 +579,7 @@ where
 
   -- Second pass: save structure fields (after all projection functions are in name_info)
   -- The INSERT...SELECT in saveStructureField handles the projection function lookup
-  saveStructureFields (info : Process.StructureInfo) (db : DB) (modName : String) (pos : Int64) : IO Unit := do
+  saveStructureFields (info : Process.StructureInfo) (db : WriteDB) (modName : String) (pos : Int64) : IO Unit := do
     let mut fieldSeq : Int64 := 0
     for field in info.fieldInfo do
       let projName := field.name.toString

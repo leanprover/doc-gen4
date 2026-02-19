@@ -81,7 +81,7 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   walCheckpoint dbPath
 
   -- Load linking context (module names, source URLs, declaration locations)
-  let db ← DB.openForReading dbPath builtinDocstringValues
+  let db ← openForReading dbPath builtinDocstringValues
   let linkCtx ← db.loadLinkingContext
 
   -- Determine which modules to generate HTML for
