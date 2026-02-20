@@ -120,7 +120,7 @@ def JsonIndex.addModule (index : JsonIndex) (module : JsonModule) : BaseHtmlM Js
 def DocInfo.toJson (sourceLinker : Option DeclarationRange → String) (info : Process.DocInfo) : HtmlM JsonDeclaration := do
   let name := info.getName.toString
   let kind := info.getKind
-  let doc := info.getDocString.getD ""
+  let doc := info.getMarkdownDocString.getD ""
   let docLink ← declNameToLink info.getName
   let sourceLink := sourceLinker info.getDeclarationRange
   let line := info.getDeclarationRange.pos.line
@@ -128,11 +128,12 @@ def DocInfo.toJson (sourceLinker : Option DeclarationRange → String) (info : P
   let info := { name, kind, doc, docLink, sourceLink, line }
   return { info, header }
 
-def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
+def moduleToJsonModule (module : Process.Module) : HtmlM JsonModule := do
     let mut jsonDecls := []
     let mut instances := #[]
     let sourceLinker := (← read).sourceLinker module.name
-    let declInfo := Process.filterDocInfo module.members
+    let declInfo := Process.filterDocInfo module.members.iter
+      |>.filter (!isPrivateName ·.getName)
     for decl in declInfo do
       jsonDecls := (← DocInfo.toJson sourceLinker decl) :: jsonDecls
       if let .instanceInfo i := decl then
@@ -141,12 +142,14 @@ def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
           className := i.className.toString
           typeNames := i.typeNames.map Name.toString
         }
-    let jsonMod : JsonModule :=  {
+    return {
       name := module.name.toString,
       declarations := jsonDecls,
       instances,
       imports := module.imports.map Name.toString
     }
-    return ToJson.toJson jsonMod
+
+def Process.Module.toJson (module : Process.Module) : HtmlM Json := do
+    return ToJson.toJson (← moduleToJsonModule module)
 
 end DocGen4.Output

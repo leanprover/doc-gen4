@@ -14,15 +14,11 @@ def envOfImports (imports : Array Name) : IO Environment := do
   unsafe Lean.enableInitializersExecution
   importModules (imports.map (Import.mk · false true false)) Options.empty (leakEnv := true) (loadExts := true)
 
-def loadInit (imports : Array Name) : IO Hierarchy := do
- let env ← envOfImports imports
- pure <| Hierarchy.fromArray env.header.moduleNames
-
 /--
 Load a list of modules from the current Lean search path into an `Environment`
 to process for documentation.
 -/
-def load (task : Process.AnalyzeTask) : IO (Process.AnalyzerResult × Hierarchy) := do
+def load (task : Process.AnalyzeTask) : IO Process.AnalyzerResult := do
   initSearchPath (← findSysroot)
   let env ← envOfImports task.getLoad
   let config := {

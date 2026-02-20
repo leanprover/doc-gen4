@@ -31,7 +31,9 @@ def structureInfoHeader (s : Process.StructureInfo) : HtmlM (Array Html) := do
     for parent in s.parents, i in [0:s.parents.size] do
       if i > 0 then
         parents := parents.push (Html.text ", ")
-      parents := parents ++ (← infoFormatToHtml parent.type)
+      let parentHtml ← renderedCodeToHtml parent.type
+      parents := parents.push
+        <span id={parent.projFn.toString}>[parentHtml]</span>
     nodes := nodes ++ parents
   return nodes
 
@@ -56,7 +58,7 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   | _ => nodes := nodes
 
   nodes := nodes.push <| Html.element "span" true #[("class", "decl_args")] #[" :"]
-  nodes := nodes.push <div class="decl_type">[← infoFormatToHtml doc.getType]</div>
+  nodes := nodes.push <div class="decl_type">[← renderedCodeToHtml doc.getType]</div>
   return <div class="decl_header"> [nodes] </div>
 
 /--
@@ -116,7 +118,7 @@ as HTML.
 def modDocToHtml (mdoc : ModuleDoc) : HtmlM Html := do
   pure
     <div class="mod_doc">
-      [← docStringToHtml mdoc.doc ""]
+      [← docStringToHtml (.inl mdoc.doc) ""]
     </div>
 
 /--
@@ -179,7 +181,7 @@ The main entry point to rendering the HTML for an entire module.
 def moduleToHtml (module : Process.Module) : HtmlM Html := withTheReader SiteBaseContext (setCurrentName module.name) do
   let relevantMembers := module.members.filter Process.ModuleMember.shouldRender
   let memberDocs ← relevantMembers.mapM (moduleMemberToHtml module.name)
-  let memberNames := filterDocInfo relevantMembers |>.map DocInfo.getName
+  let memberNames := filterDocInfo relevantMembers.iter |>.map DocInfo.getName |>.toArray
   templateLiftExtends (baseHtmlGenerator module.name.toString) <| pure #[
     ← internalNav memberNames module.name,
     Html.element "main" false #[] memberDocs

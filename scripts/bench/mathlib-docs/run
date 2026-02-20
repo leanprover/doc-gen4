@@ -25,6 +25,9 @@ lake +"$TOOLCHAIN" new mathproject math-lax
 
 cd mathproject
 
+# Get Mathlib cache
+lake exe cache get
+
 # Add a dependency to the doc-gen4 checkout
 cat >> lakefile.toml <<EOF
 
@@ -36,11 +39,9 @@ EOF
 # Update doc-gen4 dependency
 MATHLIB_NO_CACHE_ON_UPDATE=1 lake update doc-gen4
 
-# Get Mathlib cache
-lake exe cache get
-
 # Build DocGen4 and its executable first (we want to measure docs generation, not tool building)
 lake build DocGen4
+lake build Mathlib
 lake build doc-gen4
 
 popd
@@ -51,6 +52,14 @@ env DOCGEN_SRC="file" "$REPO_ROOT/$BENCH/measure.py" -t mathlib-docs -m instruct
 
 TAR_ARGS=(doc)
 if [ -f "$TMPDIR/mathproject/.lake/build/api-docs.db" ]; then
+  # Compact the DB into a single portable file (removes WAL/journal dependency)
+  sqlite3 "$TMPDIR/mathproject/.lake/build/api-docs.db" "VACUUM"
   TAR_ARGS+=(api-docs.db)
+
+  # Track database sizes
+  DB_RAW_SIZE=$(wc -c < "$TMPDIR/mathproject/.lake/build/api-docs.db" | tr -d ' ')
+  DB_ZSTD_SIZE=$(zstd -c "$TMPDIR/mathproject/.lake/build/api-docs.db" | wc -c | tr -d ' ')
+  echo "{\"metric\": \"mathlib-docs//db-size-raw\", \"value\": $DB_RAW_SIZE, \"unit\": \"B\"}" >> "$REPO_ROOT/measurements.jsonl"
+  echo "{\"metric\": \"mathlib-docs//db-size-zstd\", \"value\": $DB_ZSTD_SIZE, \"unit\": \"B\"}" >> "$REPO_ROOT/measurements.jsonl"
 fi
-tar czf "$REPO_ROOT/mathlib-docs.tar.gz" -C "$TMPDIR/mathproject/.lake/build" "${TAR_ARGS[@]}"
+tar cf - -C "$TMPDIR/mathproject/.lake/build" "${TAR_ARGS[@]}" | zstd -o "$REPO_ROOT/mathlib-docs.tar.zst"

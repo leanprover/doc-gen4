@@ -5,6 +5,7 @@ Authors: Henrik Böving
 -/
 import Lean
 import DocGen4.Process
+import DocGen4.DB
 import DocGen4.Output.Base
 import DocGen4.Output.Index
 import DocGen4.Output.Module
@@ -17,10 +18,11 @@ import DocGen4.Output.Search
 import DocGen4.Output.Tactics
 import DocGen4.Output.ToJson
 import DocGen4.Output.FoundationalTypes
+import DocGen4.Helpers
 
 namespace DocGen4
 
-open Lean IO System Output Process
+open Lean IO System Output Process DB
 
 def collectBackrefs (buildDir : System.FilePath) : IO (Array BackrefItem) := do
   let mut backrefs : Array BackrefItem := #[]
@@ -37,7 +39,7 @@ def collectBackrefs (buildDir : System.FilePath) : IO (Array BackrefItem) := do
         | .ok (arr : Array BackrefItem) => backrefs := backrefs ++ arr
   return backrefs
 
-def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
+def htmlOutputSetup (config : SiteBaseContext) (tacticInfo : Array (Process.TacticInfo Html)) : IO Unit := do
   let findBasePath (buildDir : System.FilePath) := basePath buildDir / "find"
 
   -- Base structure
@@ -53,7 +55,7 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   let navbarHtml := ReaderT.run navbar config |>.toString
   let searchHtml := ReaderT.run search config |>.toString
   let referencesHtml := ReaderT.run (references (← collectBackrefs config.buildDir)) config |>.toString
-  let tacticsHtml := ReaderT.run (tactics (← loadTacticsJSON config.buildDir)) config |>.toString
+  let tacticsHtml := ReaderT.run (tactics tacticInfo) config |>.toString
   let docGenStatic := #[
     ("style.css", styleCss),
     ("favicon.svg", faviconSvg),
@@ -86,53 +88,90 @@ def htmlOutputSetup (config : SiteBaseContext) : IO Unit := do
   for (fileName, content) in findStatic do
     FS.writeFile (findBasePath config.buildDir / fileName) content
 
-def htmlOutputDeclarationDatas (buildDir : System.FilePath) (result : AnalyzerResult) : HtmlT IO Unit := do
-  for (_, mod) in result.moduleInfo.toArray do
-    let jsonDecls ← Module.toJson mod
-    FS.writeFile (declarationsBasePath buildDir / s!"declaration-data-{mod.name}.bmp") (toJson jsonDecls).compress
-
 /-- Custom source linker type: given an optional source URL and module name, returns a function from declaration range to URL -/
 abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → String
 
-def htmlOutputResults (baseConfig : SiteBaseContext) (result : AnalyzerResult) (sourceUrl? : Option String)
+/--
+Generates HTML for all modules in parallel. Each task loads its module from DB, renders HTML, and
+writes output files. The linking context provides cross-module linking without loading all module
+data upfront. When `targetModules` is provided, only those modules are rendered (but linking uses
+all modules).
+-/
+def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.FilePath)
+    (linkCtx : LinkingContext)
+    (targetModules : Array Name := linkCtx.moduleNames)
     (sourceLinker? : Option SourceLinkerFn := none)
-    (declarationDecorator? : Option DeclarationDecoratorFn := none) : IO (Array System.FilePath) := do
-  let config : SiteContext := {
-    result := result
-    sourceLinker := (sourceLinker?.getD SourceLinker.sourceLinker) sourceUrl?
-    refsMap := .ofList (baseConfig.refs.map fun x => (x.citekey, x)).toList
-    declarationDecorator := declarationDecorator?.getD defaultDeclarationDecorator
-  }
-
+    (declarationDecorator? : Option DeclarationDecoratorFn := none) : IO (Array System.FilePath × Array JsonModule) := do
   FS.createDirAll <| basePath baseConfig.buildDir
   FS.createDirAll <| declarationsBasePath baseConfig.buildDir
 
-  discard <| htmlOutputDeclarationDatas baseConfig.buildDir result |>.run {} config baseConfig
+  let chunkSize := if targetModules.size > 20 then targetModules.size / 20 else 1
+  -- Spawn about 20 tasks
+  let mut tasks := #[]
+  for mods in chunked targetModules chunkSize do
+    tasks := tasks.push <| ← IO.asTask do
+      -- Each task opens its own DB connection (SQLite handles concurrent readers well)
+      let db ← openForReading dbPath builtinDocstringValues
+      let mut results := #[]
+      for modName in mods do
+        let module ← db.loadModule modName
+        let containedNames ← db.getContainedNames modName
 
+        -- Build a minimal AnalyzerResult with just this module's info
+        let result : AnalyzerResult := {
+          name2ModIdx := linkCtx.name2ModIdx
+          moduleNames := linkCtx.moduleNames
+          moduleInfo := ({} : Std.HashMap Name Process.Module).insert modName module
+          containedNames
+        }
+
+        let config : SiteContext := {
+          result := result
+          sourceLinker := (sourceLinker?.getD SourceLinker.sourceLinker) none
+          refsMap := Std.HashMap.emptyWithCapacity baseConfig.refs.size |>.insertMany (baseConfig.refs.iter.map fun x => (x.citekey, x))
+          declarationDecorator := declarationDecorator?.getD defaultDeclarationDecorator
+        }
+
+        -- path: 'basePath/module/components/till/last.html'
+        -- The last component is the file name, so we drop it from the depth to root.
+        let moduleConfig := { baseConfig with
+          depthToRoot := modName.components.dropLast.length
+          currentName := some modName
+        }
+        let (moduleHtml, cfg) := moduleToHtml module |>.run {} config moduleConfig
+        if not cfg.errors.isEmpty then
+          throw <| IO.userError s!"There are errors when generating HTML for '{modName}': {cfg.errors}"
+
+        -- Write HTML file
+        let relFilePath := basePathComponent / moduleNameToFile modName
+        let filePath := baseConfig.buildDir / relFilePath
+        if let .some d := filePath.parent then
+          FS.createDirAll d
+        FS.writeFile filePath moduleHtml.toString
+
+        -- Write backrefs JSON
+        FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json")
+          (toString (toJson cfg.backrefs))
+
+        -- Generate declaration data JSON for search
+        let (jsonModule, _) := moduleToJsonModule module |>.run {} config baseConfig
+        FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"declaration-data-{module.name}.bmp")
+          (ToJson.toJson jsonModule).compress
+
+        results := results.push (relFilePath, jsonModule)
+      return results
+
+  -- Wait for all tasks and collect output paths and modules
   let mut outputs := #[]
-  for (modName, module) in result.moduleInfo.toArray do
-    let relFilePath := basePathComponent / moduleNameToFile modName
-    let filePath := baseConfig.buildDir / relFilePath
-    -- path: 'basePath/module/components/till/last.html'
-    -- The last component is the file name, so we drop it from the depth to root.
-    let moduleConfig := { baseConfig with
-      depthToRoot := modName.components.dropLast.length
-      currentName := some modName
-    }
-    let (moduleHtml, cfg) := moduleToHtml module |>.run {} config moduleConfig
-    let (tactics, cfg) := module.tactics.mapM TacticInfo.docStringToHtml |>.run cfg config baseConfig
-    if not cfg.errors.isEmpty then
-      throw <| IO.userError s!"There are errors when generating '{filePath}': {cfg.errors}"
-    if let .some d := filePath.parent then
-      FS.createDirAll d
-    FS.writeFile filePath moduleHtml.toString
-    FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json") (toString (toJson cfg.backrefs))
-    saveTacticsJSON (declarationsBasePath baseConfig.buildDir / s!"tactics-{module.name}.json") tactics
-    -- The output paths need to be relative to the build directory, as they are stored in a build
-    -- artifact.
-    outputs := outputs.push relFilePath
-
-  return outputs
+  let mut jsonModules := #[]
+  for task in tasks do
+    match (← IO.wait task) with
+    | .ok results =>
+      for (path, jsonMod) in results do
+        outputs := outputs.push path
+        jsonModules := jsonModules.push jsonMod
+    | .error e => throw e
+  return (outputs, jsonModules)
 
 def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) :
     IO SiteBaseContext := do
@@ -153,22 +192,38 @@ def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) :
         refs := refs
       }
 
-def htmlOutputIndex (baseConfig : SiteBaseContext) : IO Unit := do
-  htmlOutputSetup baseConfig
+def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) (tacticInfo : Array (Process.TacticInfo Html)) : IO Unit := do
+  htmlOutputSetup baseConfig tacticInfo
 
-  let mut index : JsonIndex := {}
+  -- Build a set of module names we just generated (already in memory)
+  let freshModuleNames : Std.HashSet String := modules.foldl (init := {}) fun s m => s.insert m.name
+
+  -- Load per-module data from disk for modules NOT in the current task set.
+  -- This enables incremental builds: prior runs wrote declaration-data-{module}.bmp files,
+  -- and we merge them so the unified search index covers all modules.
+  let mut diskModules : Array JsonModule := #[]
   for entry in ← System.FilePath.readDir (declarationsBasePath baseConfig.buildDir) do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
+      -- Extract module name from filename: "declaration-data-Foo.Bar.bmp" -> "Foo.Bar"
+      let modName := entry.fileName.drop "declaration-data-".length |>.dropEnd ".bmp".length |>.toString
+      if freshModuleNames.contains modName then continue
       let fileContent ← FS.readFile entry.path
       match Json.parse fileContent with
       | .error err =>
-        throw <| IO.userError s!"failed to parse file '{entry.path}' as json: {err}"
+        IO.eprintln s!"warning: skipping {entry.path}: failed to parse JSON: {err}"
+        continue
       | .ok jsonContent =>
         match fromJson? jsonContent with
         | .error err =>
-          throw <| IO.userError s!"failed to parse file '{entry.path}': {err}"
+          IO.eprintln s!"warning: skipping {entry.path}: failed to deserialize JsonModule: {err}"
+          continue
         | .ok (module : JsonModule) =>
-          index := index.addModule module |>.run baseConfig
+          diskModules := diskModules.push module
+
+  let allModules := modules ++ diskModules
+  let mut index : JsonIndex := {}
+  for module in allModules do
+    index := index.addModule module |>.run baseConfig
 
   let finalJson := toJson index
   -- The root JSON for find
@@ -181,8 +236,15 @@ def headerDataOutput (buildDir : System.FilePath) : IO Unit := do
   for entry in ← System.FilePath.readDir (declarationsBasePath buildDir) do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
       let fileContent ← FS.readFile entry.path
-      let .ok jsonContent := Json.parse fileContent | unreachable!
-      let .ok (module : JsonModule) := fromJson? jsonContent | unreachable!
+      let jsonContent ←
+        match Json.parse fileContent with
+        | .ok c => pure c
+        | .error e => throw <| IO.userError s!"failed to parse JSON in {entry.path}: {e}"
+      let (module : JsonModule) ←
+        match fromJson? jsonContent with
+        | .ok v => pure v
+        | .error e =>
+          throw <| IO.userError s!"failed to deserialize JsonModule from {entry.path}: {e}"
       headerIndex := headerIndex.addModule module
 
   let finalHeaderJson := toJson headerIndex
@@ -190,15 +252,83 @@ def headerDataOutput (buildDir : System.FilePath) : IO Unit := do
   FS.createDirAll declarationDir
   FS.writeFile (declarationDir / "header-data.bmp") finalHeaderJson.compress
 
+/-- Converts an HTML file path to a module name: `doc/A/B/C.html` -> `A.B.C`. -/
+def htmlPathToModuleName (docDir : System.FilePath) (htmlPath : System.FilePath) : Option Name :=
+  -- Get relative path from doc directory
+  let docDirStr := docDir.toString
+  let htmlPathStr := htmlPath.toString
+  -- Strip the doc directory prefix (handle both with and without trailing separator)
+  let relPath? :=
+    if htmlPathStr.startsWith (docDirStr ++ "/") then
+      some (htmlPathStr.drop (docDirStr.length + 1))
+    else if htmlPathStr.startsWith docDirStr then
+      some (htmlPathStr.drop docDirStr.length)
+    else
+      none
+  relPath?.bind fun relPath =>
+    -- Remove .html extension
+    if relPath.endsWith ".html" then
+      let withoutExt := relPath.dropEnd 5
+      -- Convert path separators to dots
+      let name := withoutExt.replace "/" "." |>.replace "\\" "."
+      some name.toName
+    else
+      none
+
+/-- Scans for existing module HTML files under `docDir`. -/
+partial def scanModuleHtmlFiles (docDir : System.FilePath) : IO (Array Name) := do
+  -- Files/directories to skip (not module HTML files)
+  let skipFiles := ["index.html", "404.html", "navbar.html", "search.html",
+                    "foundational_types.html", "references.html", "tactics.html"]
+  let skipDirs := ["find", "declarations", "src"]
+
+  let rec scanDir (dir : System.FilePath) : IO (Array Name) := do
+    let mut result := #[]
+    if !(← dir.pathExists) then return result
+    for entry in ← System.FilePath.readDir dir do
+      let entryPath := entry.root / entry.fileName
+      if ← entryPath.isDir then
+        -- Skip special directories
+        if skipDirs.contains entry.fileName then continue
+        result := result ++ (← scanDir entryPath)
+      else if entry.fileName.endsWith ".html" then
+        -- Skip special files
+        if skipFiles.contains entry.fileName then continue
+        -- Convert file path to module name
+        if let some modName := htmlPathToModuleName docDir entryPath then
+          result := result.push modName
+    return result
+
+  scanDir docDir
+
 /--
-The main entrypoint for outputting the documentation HTML based on an
-`AnalyzerResult`.
+Rebuilds `navbar.html` by scanning existing HTML files on disk. This enables incremental builds
+where subsequent builds include HTML modules from previous builds.
 -/
-def htmlOutput (buildDir : System.FilePath) (result : AnalyzerResult) (hierarchy : Hierarchy)
-    (sourceUrl? : Option String) (sourceLinker? : Option SourceLinkerFn := none)
-    (declarationDecorator? : Option DeclarationDecoratorFn := none) : IO Unit := do
-  let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  discard <| htmlOutputResults baseConfig result sourceUrl? sourceLinker? declarationDecorator?
-  htmlOutputIndex baseConfig
+def updateNavbarFromDisk (buildDir : System.FilePath) : IO Unit := do
+  let docDir := basePath buildDir
+  -- Scan for all existing module HTML files
+  let existingModules ← scanModuleHtmlFiles docDir
+  -- Load references for base context
+  let contents ← FS.readFile (declarationsBasePath buildDir / "references.json") <|> (pure "[]")
+  let refs : Array BibItem ← match Json.parse contents with
+    | .error _ => pure #[]
+    | .ok jsonContent =>
+      match fromJson? jsonContent with
+      | .error _ => pure #[]
+      | .ok refs => pure refs
+  -- Add `references` pseudo-module to hierarchy only when bibliography data exists
+  let allModules := if refs.isEmpty then existingModules else existingModules.push `references
+  let hierarchy := Hierarchy.fromArray allModules
+  let baseConfig : SiteBaseContext := {
+    buildDir := buildDir
+    depthToRoot := 0
+    currentName := none
+    hierarchy := hierarchy
+    refs := refs
+  }
+  -- Regenerate navbar
+  let navbarHtml := ReaderT.run navbar baseConfig |>.toString
+  FS.writeFile (docDir / "navbar.html") navbarHtml
 
 end DocGen4

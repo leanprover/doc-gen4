@@ -5,6 +5,7 @@ Authors: Henrik Böving
 -/
 import DocGen4.Process
 import DocGen4.Output.ToHtmlFormat
+import DocGen4.RenderedCode
 
 namespace DocGen4.Output
 
@@ -259,85 +260,138 @@ def declNameToHtmlBreakWithinLink (name : Name) : HtmlM Html := do
     </a>
 
 /--
-In Lean syntax declarations the following pattern is quite common:
-```
-syntax term " + " term : term
-```
-that is, we place spaces around the operator in the middle. When the
-`InfoTree` framework provides us with information about what source token
-corresponds to which identifier it will thus say that `" + "` corresponds to
-`HAdd.hadd`. This is however not the way we want this to be linked, in the HTML
-only `+` should be linked, taking care of this is what this function is
-responsible for.
+For a name, try to find a linkable target by stripping suffix components
+that are numeric or start with `_`. Returns the first name found in name2ModIdx,
+or none if nothing is found.
 -/
-def splitWhitespaces (s : String) : String × String × String :=
-  let length := s.length
-  let s := s.trimAsciiStart
-  let front := "".pushn ' ' (length - s.positions.length)
-  let length := s.positions.length
-  let s := s.trimAsciiEnd.copy
-  let back := "".pushn ' ' (length - s.length)
-  (front, s, back)
+private def findLinkableParent (name2ModIdx : Std.HashMap Name ModuleIdx) (name : Name) : Option Name :=
+  match name with
+  | .str parent s =>
+    -- If this component starts with _ or is numeric-like, try the parent
+    if s.startsWith "_" then
+      findLinkableParent name2ModIdx parent
+    else if name2ModIdx.contains name then
+      some name
+    else
+      findLinkableParent name2ModIdx parent
+  | .num parent _ =>
+    findLinkableParent name2ModIdx parent
+  | .anonymous => none
 
 /--
-Implementation for `infoFormatToHtml`.
-
-Returns (1) whether the HTML contains an anchor tag and (2) the resulting HTML.
+Extract the module name from a private name prefix like `_private.Init.Prelude.0`.
+Returns the module name (e.g., `Init.Prelude`).
 -/
-private partial def infoFormatToHtmlAux (i : CodeWithInfos) : HtmlM (Bool × Array Html) := do
-  match i with
-  | .text t => return (false, #[t])
-  | .append tt => tt.foldlM (fun (a?, acc) t => do
-    let (a?', acc') ← infoFormatToHtmlAux t
-    return (a? || a?', acc ++ acc')) (false, #[])
-  | .tag a t =>
-    match a.info.val.info with
-    | Info.ofTermInfo i =>
-      let cleanExpr :=  i.expr.consumeMData
-      match cleanExpr with
-      | .const name _ =>
-        -- TODO: this is some very primitive blacklisting but real Blacklisting needs MetaM
-        -- find a better solution
-        if (← getResult).name2ModIdx.contains name then
-          match t with
-          | .text t =>
-            let (front, t, back) := splitWhitespaces t
-            let elem := <a href={← declNameToLink name}>{t}</a>
-            return (true, #[Html.text front, elem, Html.text back])
-          | _ =>
-            toHtmlMaybeLink t (← declNameToLink name)
-        else
-          toHtmlWrapFn t
-      | .sort _ =>
-        match t with
-        | .text t =>
-          let sortPrefix :: rest := t.splitOn " " | unreachable!
-          let sortLink := <a href={s!"{← getRoot}foundational_types.html"}>{sortPrefix}</a>
-          let mut restStr := String.intercalate " " rest
-          if restStr.length != 0 then
-            restStr := " " ++ restStr
-          return (true, #[sortLink, Html.text restStr])
-        | _ =>
-          toHtmlMaybeLink t s!"{← getRoot}foundational_types.html"
-      | _ => toHtmlWrapFn t
-    | _ => toHtmlWrapFn t
+private def moduleFromPrivatePrefix (pfx : Name) : Name :=
+  match pfx with
+  | .num parent 0 => go parent
+  | _ => .anonymous
 where
-  toHtmlWrapFn (t : TaggedText SubexprInfo) : HtmlM (Bool × Array Html) := do
-    let (a?, acc) ← infoFormatToHtmlAux t
-    return (a?, #[<span class="fn">[acc]</span>])
-  toHtmlMaybeLink (t : TaggedText SubexprInfo) (link : String) : HtmlM (Bool × Array Html) := do
-    let (a?, acc) ← infoFormatToHtmlAux t
-    if a? then
-      return (true, acc)
-    else
-      return (true, #[<a href={link}>[acc]</a>])
+  go (n : Name) : Name :=
+    match n with
+    | .str parent s =>
+      if parent == Lean.privateHeader then
+        .str .anonymous s
+      else
+        .str (go parent) s
+    | _ => .anonymous
+
+/--
+Converts `RenderedCode` to HTML with declaration links.
+
+Returns `(hasAnchor, html)` where `hasAnchor` indicates if the result contains an `<a>` tag. This is
+tracked to avoid creating nested anchors (which is invalid HTML).
+
+For `.const name` tags, it first checks whether the name is a valid link target (that is, a
+non-private name in `name2ModIdx`). If so, it links directly to that name. If not, it applies
+`Lean.privateToUserName?` to convert internal private names to user-facing names (e.g.,
+`_private.Init.Prelude.0.Foo.helper` → `Foo.helper`) and then tries:
+
+1. **Auxiliary name removal** (`findLinkableParent`): Strip trailing components that start with `_`
+   or are numeric (e.g., `Foo.bar._proof_2` → `Foo.bar`). This handles auto-generated auxiliary
+   names like match discriminant functions (`Foo.bar.match_1` → `Foo.bar`).
+2. **Module link**: For private names where no declaration was found, extract the module name from
+   the private prefix and link to the module page (e.g., `_private.Init.Prelude.0.Foo` → module
+   `Init.Prelude`).
+3. **Give up**: Wrap in `<span class="fn">` with no link.
+-/
+partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM (Bool × Array Html) := do
+  match code with
+  | .text t => return (false, #[t])
+  | .append xs =>
+    xs.foldlM (init := (false, #[])) fun (a?, acc) t => do
+      let (a?', acc') ← renderedCodeToHtmlAux t
+      pure (a? || a?', acc ++ acc')
+  | .tag tag inner =>
+    let (innerHasAnchor, innerHtml) ← renderedCodeToHtmlAux inner
+    match tag with
+    | .const name =>
+      let name2ModIdx := (← getResult).name2ModIdx
+      -- Direct match: non-private name in name2ModIdx
+      if name2ModIdx.contains name && (Lean.privatePrefix? name).isNone then
+        let link ← declNameToLink name
+        if innerHasAnchor then
+          return (true, innerHtml)
+        else
+          return (true, #[<a href={link}>[innerHtml]</a>])
+      else
+        -- Resolve private names, then try the remaining steps
+        let nameToSearch := Lean.privateToUserName? name |>.getD name
+        -- Step 1: Auxiliary name removal
+        match findLinkableParent name2ModIdx nameToSearch with
+        | some target =>
+          let link ← declNameToLink target
+          if innerHasAnchor then
+            return (true, innerHtml)
+          else
+            return (true, #[<a href={link}>[innerHtml]</a>])
+        | none =>
+          -- Step 2: Module link
+          match Lean.privatePrefix? name with
+          | some pfx =>
+            let modName := moduleFromPrivatePrefix pfx
+            if modName != Name.anonymous then
+              let link ← moduleNameToLink modName
+              if innerHasAnchor then
+                return (true, innerHtml)
+              else
+                return (true, #[<a href={link}>[innerHtml]</a>])
+            else
+              -- Step 3: Give up
+              return (innerHasAnchor, fn innerHtml)
+          | none =>
+            -- Step 3: Give up
+            return (innerHasAnchor, fn innerHtml)
+    | .sort _ =>
+      let link := s!"{← getRoot}foundational_types.html"
+      -- Avoid nested anchors
+      -- Match original behavior: no fn wrapper when creating sort link
+      if innerHasAnchor then
+        return (true, innerHtml)
+      else
+        return (true, #[<a href={link}>[innerHtml]</a>])
+    -- For compatibility with the old HTML output: treat keyword/string as plain content (no extra
+    -- styling) This matches the original infoFormatToHtml behavior. It can be updated for extra
+    -- styling in the future.
+    | .keyword => return (innerHasAnchor, innerHtml)
+    | .string => return (innerHasAnchor, innerHtml)
+    | .otherExpr => return (innerHasAnchor, fn innerHtml)
+where
+  fn (html : Array Html) : Array Html := #[<span class="fn">[html]</span>]
+
+/--
+Convert RenderedCode to HTML with declaration links.
+-/
+def renderedCodeToHtml (code : RenderedCode) : HtmlM (Array Html) :=
+  Prod.snd <$> renderedCodeToHtmlAux code
 
 /-
 Turns a `CodeWithInfos` object, that is basically a Lean syntax tree with
 information about what the identifiers mean, into an HTML object that links
 to as much information as possible.
 -/
-def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) := Prod.snd <$> infoFormatToHtmlAux i
+def infoFormatToHtml (i : CodeWithInfos) : HtmlM (Array Html) :=
+  renderedCodeToHtml (renderTagged i)
 
 def baseHtmlHeadDeclarations : BaseHtmlM (Array Html) := do
   return #[

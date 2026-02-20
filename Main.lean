@@ -2,13 +2,7 @@ import DocGen4
 import Lean
 import Cli
 
-open DocGen4 Lean Cli
-
-def getTopLevelModules (p : Parsed) : IO (List String) :=  do
-  let topLevelModules := p.variableArgsAs! String |>.toList
-  if topLevelModules.length == 0 then
-    throw <| IO.userError "No topLevelModules provided."
-  return topLevelModules
+open DocGen4 DocGen4.DB DocGen4.Output Lean Cli
 
 def runHeaderDataCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
@@ -21,38 +15,110 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
+  let dbFile := p.positionalArg! "db" |>.as! String
   let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
   let sourceUri := p.positionalArg! "sourceUri" |>.as! String
-  let (doc, hierarchy) ← load <| .analyzeConcreteModules relevantModules
-  let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  discard <| htmlOutputResults baseConfig doc (some sourceUri)
-  return 0
-
-def runIndexCmd (p : Parsed) : IO UInt32 := do
-  let buildDir := match p.flag? "build" with
-    | some dir => dir.as! String
-    | none => ".lake/build"
-  let hierarchy ← Hierarchy.fromDirectory (Output.basePath buildDir)
-  let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  htmlOutputIndex baseConfig
+  let doc ← load <| .analyzeConcreteModules relevantModules
+  updateModuleDb builtinDocstringValues doc buildDir dbFile (some sourceUri)
   return 0
 
 def runGenCoreCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
-  let manifestOutput? := (p.flag? "manifest").map (·.as! String)
+  let dbFile := p.positionalArg! "db" |>.as! String
   let module := p.positionalArg! "module" |>.as! String |> String.toName
-  let (doc, hierarchy) ← load <| .analyzePrefixModules module
-  let baseConfig ← getSimpleBaseContext buildDir hierarchy
-  let outputs ← htmlOutputResults baseConfig doc none
-  if let .some manifestOutput := manifestOutput? then
-    IO.FS.writeFile manifestOutput (Lean.toJson outputs).compress
+  let doc ← load <| .analyzePrefixModules module
+  updateModuleDb builtinDocstringValues doc buildDir dbFile none
   return 0
 
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
   IO.println "You most likely want to use me via Lake now, check my README on Github on how to:"
   IO.println "https://github.com/leanprover/doc-gen4"
+  return 0
+
+/-- A source linker that uses URLs from the database, falling back to core module URLs -/
+def dbSourceLinker (sourceUrls : Std.HashMap Name String) (_gitUrl? : Option String) (module : Name) : Option DeclarationRange → String :=
+  let root := module.getRoot
+  let leanHash := Lean.githash
+  if root == `Lean ∨ root == `Init ∨ root == `Std then
+    let parts := module.components.map (Name.toString (escape := false))
+    let path := "/".intercalate parts
+    Output.SourceLinker.mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/{path}.lean"
+  else if root == `Lake then
+    let parts := module.components.map (Name.toString (escape := false))
+    let path := "/".intercalate parts
+    Output.SourceLinker.mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/lake/{path}.lean"
+  else
+    -- Look up source URL from database
+    match sourceUrls[module]? with
+    | some url =>
+      if url.startsWith "vscode://file/" then
+        Output.SourceLinker.mkVscodeSourceLinker url
+      else if url.startsWith "https://github.com" then
+        Output.SourceLinker.mkGithubSourceLinker url
+      else
+        fun _ => url
+    | none =>
+      -- Fallback for modules without source URL
+      fun _ => "#"
+
+/-- Flush the WAL so the database file is self-contained. Connection is closed on return. -/
+def walCheckpoint (dbPath : String) : IO Unit := do
+  let db ← SQLite.open dbPath
+  db.exec "PRAGMA wal_checkpoint(TRUNCATE)"
+  db.exec "PRAGMA optimize"
+
+def runFromDbCmd (p : Parsed) : IO UInt32 := do
+  let buildDir := match p.flag? "build" with
+    | some dir => dir.as! String
+    | none => ".lake/build"
+  let dbPath := p.positionalArg! "db" |>.as! String
+  let manifestOutput? := (p.flag? "manifest").map (·.as! String)
+  let moduleRoots := (p.variableArgsAs! String).map String.toName
+
+  -- Flush WAL so the database file is self-contained for concurrent readers
+  walCheckpoint dbPath
+
+  -- Load linking context (module names, source URLs, declaration locations)
+  let db ← openForReading dbPath builtinDocstringValues
+  let linkCtx ← db.loadLinkingContext
+
+  -- Determine which modules to generate HTML for
+  let targetModules ←
+    if moduleRoots.isEmpty then
+      pure linkCtx.moduleNames
+    else
+      db.getTransitiveImports moduleRoots
+
+  let baseConfig ← getSimpleBaseContext buildDir (Hierarchy.fromArray targetModules)
+  -- Add `references` pseudo-module to hierarchy only when bibliography data exists
+  let hierarchy := Hierarchy.fromArray
+    (if baseConfig.refs.isEmpty then targetModules else targetModules.push `references)
+  let baseConfig := { baseConfig with hierarchy }
+
+  -- Parallel HTML generation
+  let (outputs, jsonModules) ← htmlOutputResultsParallel baseConfig dbPath linkCtx targetModules (sourceLinker? := some (dbSourceLinker linkCtx.sourceUrls))
+
+  -- Load all tactics from DB in sorted order and convert markdown docstrings to HTML
+  let allTacticsRaw ← db.loadAllTactics
+  let refsMap : Std.HashMap String BibItem :=
+    Std.HashMap.emptyWithCapacity baseConfig.refs.size |>.insertMany
+      (baseConfig.refs.iter.map fun x => (x.citekey, x))
+  let minimalSiteCtx : SiteContext := {
+    result := { name2ModIdx := linkCtx.name2ModIdx, moduleNames := linkCtx.moduleNames, moduleInfo := {} }
+    sourceLinker := fun _ _ => "#"
+    refsMap := refsMap
+  }
+  let (allTactics, _) := allTacticsRaw.mapM Process.TacticInfo.docStringToHtml |>.run {} minimalSiteCtx baseConfig
+
+  -- Generate the search index (declaration-data.bmp)
+  htmlOutputIndex baseConfig jsonModules allTactics
+
+  -- Update navbar to include all modules on disk
+  updateNavbarFromDisk buildDir
+  if let .some manifestOutput := manifestOutput? then
+    IO.FS.writeFile manifestOutput (Lean.toJson outputs).compress
   return 0
 
 def runBibPrepassCmd (p : Parsed) : IO UInt32 := do
@@ -76,34 +142,27 @@ def runBibPrepassCmd (p : Parsed) : IO UInt32 := do
 
 def singleCmd := `[Cli|
   single VIA runSingleCmd;
-  "Only generate the documentation for the module it was given, might contain broken links unless all documentation is generated."
+  "Populate the database with documentation for the specified module."
 
   FLAGS:
     b, build : String; "Build directory."
 
   ARGS:
-    module : String; "The module to generate the HTML for. Does not have to be part of topLevelModules."
+    module : String; "The module to document."
+    db : String; "Path to the SQLite database (relative to build dir)"
     sourceUri : String; "The sourceUri as computed by the Lake facet"
-]
-
-def indexCmd := `[Cli|
-  index VIA runIndexCmd;
-  "Index the documentation that has been generated by single."
-
-  FLAGS:
-    b, build : String; "Build directory."
 ]
 
 def genCoreCmd := `[Cli|
   genCore VIA runGenCoreCmd;
-  "Generate documentation for the specified Lean core module as they are not lake projects."
+  "Populate the database with documentation for the specified Lean core module (Init, Std, Lake, Lean)."
 
   FLAGS:
     b, build : String; "Build directory."
-    m, manifest : String; "Manifest output, to list all the files generated."
 
   ARGS:
-    module : String; "The module to generate the HTML for."
+    module : String; "The core module prefix to document (e.g., Init, Lean)."
+    db : String; "Path to the SQLite database (relative to build dir)"
 ]
 
 def bibPrepassCmd := `[Cli|
@@ -127,16 +186,32 @@ def headerDataCmd := `[Cli|
     b, build : String; "Build directory."
 ]
 
+-- Prior versions of doc-gen4 generated HTML for one module at a time, directly from the olean, and
+-- then ran an index command at the end to create the search index. Now, `fromDb` generates all HTML
+-- and the search index in a single pass from the DB.
+def fromDbCmd := `[Cli|
+  fromDb VIA runFromDbCmd;
+  "Generate HTML documentation from a SQLite database."
+
+  FLAGS:
+    b, build : String; "Build directory (default: .lake/build)"
+    m, manifest : String; "Manifest output file, listing all generated HTML files."
+
+  ARGS:
+    db : String; "Path to the SQLite database"
+    ...modules : String; "Optional: Module roots to generate docs for (computes transitive closure)"
+]
+
 def docGenCmd : Cmd := `[Cli|
   "doc-gen4" VIA runDocGenCmd; ["0.1.0"]
   "A documentation generator for Lean 4."
 
   SUBCOMMANDS:
     singleCmd;
-    indexCmd;
     genCoreCmd;
     bibPrepassCmd;
-    headerDataCmd
+    headerDataCmd;
+    fromDbCmd
 ]
 
 def main (args : List String) : IO UInt32 :=

@@ -5,6 +5,7 @@ Authors: Henrik Böving
 -/
 
 import Lean
+import DocGen4.RenderedCode
 
 namespace DocGen4.Process
 open Lean Widget Meta
@@ -13,6 +14,15 @@ structure DocGenOptions where
   genEquations : Bool := true
 
 abbrev AnalyzeM : Type → Type := ReaderT DocGenOptions MetaM
+
+def versoDocToMarkdown (v : VersoDocString) : String :=
+  let { text, subsections } := v
+  Doc.MarkdownM.run' do
+    for b in text do
+      Doc.ToMarkdown.toMarkdown b
+    for p in subsections do
+      Doc.ToMarkdown.toMarkdown p
+
 
 /--
 Stores information about a typed name.
@@ -25,11 +35,11 @@ structure NameInfo where
   /--
   The pretty printed type of this name.
   -/
-  type : CodeWithInfos
+  type : RenderedCode
   /--
   The doc string of the name if it exists.
   -/
-  doc : Option String
+  doc : Option (String ⊕ VersoDocString)
   deriving Inhabited
 
 /--
@@ -39,7 +49,7 @@ structure Arg where
   /--
   The pretty printed binder syntax itself.
   -/
-  binder : CodeWithInfos
+  binder : RenderedCode
   /--
   Whether the binder is implicit.
   -/
@@ -95,13 +105,28 @@ structure OpaqueInfo extends Info where
   definitionSafety : DefinitionSafety
   deriving Inhabited
 
+
+/--
+The maximum string length of equations before they are omitted from rendering.
+
+This is an arbitrary cutoff that seems to work well in practice. Very long equations are unreadable
+in documentation and slow down page generation and rendering, so we drop them and show a notice
+instead. The number 200 has no deeper justification.
+
+Equations exceeding this limit are stored as NULL blobs in the database (only `text_length` is
+preserved). The `equationsWereOmitted` field in `DefinitionInfo` is set when any equation exceeds
+this limit, causing the rendering code in `DocGen4/Output/Definition.lean` to show a notice.
+-/
+def equationLimit : Nat := 200
+
 /--
 Information about a `def` declaration, note that partial defs are handled by `OpaqueInfo`.
 -/
 structure DefinitionInfo extends Info where
   isUnsafe : Bool
   hints : ReducibilityHints
-  equations : Option (Array CodeWithInfos)
+  equations : Option (Array RenderedCode)
+  equationsWereOmitted : Bool := false
   isNonComputable : Bool
   deriving Inhabited
 
@@ -145,7 +170,7 @@ structure StructureParentInfo where
   /-- Name of the projection function. -/
   projFn : Name
   /-- Pretty printed type. -/
-  type : CodeWithInfos
+  type : RenderedCode
 
 /--
 Information about a `structure` declaration.
@@ -192,10 +217,22 @@ inductive DocInfo where
 | ctorInfo (info : ConstructorInfo) : DocInfo
   deriving Inhabited
 
+def DocInfo.toInfo : DocInfo → Info
+  | .axiomInfo info => info.toInfo
+  | .theoremInfo info => info.toInfo
+  | .opaqueInfo info => info.toInfo
+  | .definitionInfo info => info.toInfo
+  | .instanceInfo info => info.toInfo
+  | .inductiveInfo info => info.toInfo
+  | .structureInfo info => info.toInfo
+  | .classInfo info => info.toInfo
+  | .classInductiveInfo info => info.toInfo
+  | .ctorInfo info => info
+
 /--
-Turns an `Expr` into a pretty printed `CodeWithInfos`.
+Turns an `Expr` into a pretty printed `RenderedCode`.
 -/
-def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
+def prettyPrintTerm (expr : Expr) : MetaM RenderedCode := do
   let ⟨fmt, infos⟩ ← PrettyPrinter.ppExprWithInfos expr
   let tt := TaggedText.prettyTagged fmt
   let ctx := {
@@ -207,7 +244,7 @@ def prettyPrintTerm (expr : Expr) : MetaM CodeWithInfos := do
     fileMap := default,
     ngen := ← getNGen
   }
-  tagCodeInfos ctx infos tt
+  return renderTagged (← tagCodeInfos ctx infos tt)
 
 def isInstance (declName : Name) : MetaM Bool := do
   return (instanceExtension.getState (← getEnv)).instanceNames.contains declName

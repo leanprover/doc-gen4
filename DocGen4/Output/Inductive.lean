@@ -24,13 +24,13 @@ def ctorToHtml (c : Process.ConstructorInfo) : HtmlM Html := do
     let renderedDoc ← docStringToHtml doc name
     pure
       <li class="constructor" id={name}>
-        {shortName} [args] {" : "} [← infoFormatToHtml c.type]
+        {shortName} [args] {" : "} [← renderedCodeToHtml c.type]
         <div class="inductive_ctor_doc">[renderedDoc]</div>
       </li>
   else
     pure
       <li class="constructor" id={name}>
-        {shortName} [args] {" : "} [← infoFormatToHtml c.type]
+        {shortName} [args] {" : "} [← renderedCodeToHtml c.type]
       </li>
 
 def inductiveToHtml (i : Process.InductiveInfo) : HtmlM (Array Html) := do

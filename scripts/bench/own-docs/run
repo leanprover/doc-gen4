@@ -17,6 +17,14 @@ env DOCGEN_SRC="file" "$BENCH/measure.py" -t own-docs -m instructions -m maxrss 
 
 TAR_ARGS=(doc)
 if [ -f .lake/build/api-docs.db ]; then
+  # Compact the DB into a single portable file (removes WAL/journal dependency)
+  sqlite3 .lake/build/api-docs.db "VACUUM"
   TAR_ARGS+=(api-docs.db)
+
+  # Track database sizes
+  DB_RAW_SIZE=$(wc -c < .lake/build/api-docs.db | tr -d ' ')
+  DB_ZSTD_SIZE=$(zstd -c .lake/build/api-docs.db | wc -c | tr -d ' ')
+  echo "{\"metric\": \"own-docs//db-size-raw\", \"value\": $DB_RAW_SIZE, \"unit\": \"B\"}" >> measurements.jsonl
+  echo "{\"metric\": \"own-docs//db-size-zstd\", \"value\": $DB_ZSTD_SIZE, \"unit\": \"B\"}" >> measurements.jsonl
 fi
-tar czf own-docs.tar.gz -C .lake/build "${TAR_ARGS[@]}"
+tar cf - -C .lake/build "${TAR_ARGS[@]}" | zstd -o own-docs.tar.zst
