@@ -47,7 +47,7 @@ structure TacticInfo (textType : Type) where
   docString : textType
   /-- Name of the module where the tactic is declared. -/
   definingModule : Name
-deriving FromJson, ToJson, Hashable
+deriving FromJson, ToJson
 
 /--
 A Lean module.

@@ -91,10 +91,12 @@ def htmlOutputSetup (config : SiteBaseContext) (tacticInfo : Array (Process.Tact
 /-- Custom source linker type: given an optional source URL and module name, returns a function from declaration range to URL -/
 abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → String
 
-/-- Generate HTML for all modules in parallel.
-    Each task loads its module from DB, renders HTML, and writes output files.
-    The linking context provides cross-module linking without loading all module data upfront.
-    When `targetModules` is provided, only those modules are rendered (but linking uses all modules). -/
+/--
+Generates HTML for all modules in parallel. Each task loads its module from DB, renders HTML, and
+writes output files. The linking context provides cross-module linking without loading all module
+data upfront. When `targetModules` is provided, only those modules are rendered (but linking uses
+all modules).
+-/
 def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.FilePath)
     (linkCtx : LinkingContext)
     (targetModules : Array Name := linkCtx.moduleNames)
@@ -250,7 +252,7 @@ def headerDataOutput (buildDir : System.FilePath) : IO Unit := do
   FS.createDirAll declarationDir
   FS.writeFile (declarationDir / "header-data.bmp") finalHeaderJson.compress
 
-/-- Convert HTML file path to module name: doc/A/B/C.html -> `A.B.C -/
+/-- Converts an HTML file path to a module name: `doc/A/B/C.html` -> `A.B.C`. -/
 def htmlPathToModuleName (docDir : System.FilePath) (htmlPath : System.FilePath) : Option Name :=
   -- Get relative path from doc directory
   let docDirStr := docDir.toString
@@ -273,7 +275,7 @@ def htmlPathToModuleName (docDir : System.FilePath) (htmlPath : System.FilePath)
     else
       none
 
-/-- Scan for existing module HTML files under docDir -/
+/-- Scans for existing module HTML files under `docDir`. -/
 partial def scanModuleHtmlFiles (docDir : System.FilePath) : IO (Array Name) := do
   -- Files/directories to skip (not module HTML files)
   let skipFiles := ["index.html", "404.html", "navbar.html", "search.html",
@@ -299,8 +301,10 @@ partial def scanModuleHtmlFiles (docDir : System.FilePath) : IO (Array Name) := 
 
   scanDir docDir
 
-/-- Rebuild navbar.html by scanning existing HTML files on disk.
-    This enables incremental builds where subsequent builds include modules from previous builds. -/
+/--
+Rebuilds `navbar.html` by scanning existing HTML files on disk. This enables incremental builds
+where subsequent builds include HTML modules from previous builds.
+-/
 def updateNavbarFromDisk (buildDir : System.FilePath) : IO Unit := do
   let docDir := basePath buildDir
   -- Scan for all existing module HTML files

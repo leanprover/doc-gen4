@@ -1,7 +1,7 @@
 /-
 Copyright (c) 2021 Henrik Böving. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: Henrik Böving
+Authors: Henrik Böving, David Thrane Christiansen
 -/
 import Lean
 import SQLite
@@ -10,14 +10,14 @@ import SQLite
 # Rendered Code
 
 Lean's pretty printer produces `CodeWithInfos` (a `TaggedText SubexprInfo`), which carries rich
-metadata — expression types, universe levels, elaboration state, etc. This is too large to serialize
-to disk.
+metadata such as expression types, universe levels, elaboration state, etc. This is too large to
+serialize to disk.
 
 `RenderedCode` is a `TaggedText RenderedCode.Tag` that keeps only the information needed for HTML
 rendering: which tokens are declaration references (for linking), which are sorts (for linking to
 the foundational types page), and which are keywords or strings (for syntax highlighting). The
 conversion from `CodeWithInfos` to `RenderedCode` happens in `renderTagged` at the bottom of this
-file. The reverse direction is not possible — `RenderedCode` is a lossy projection.
+file.
 
 `RenderedCode` is serialized to the database as a binary blob via `ToBinary`/`FromBinary` instances.
 If the `RenderedCode.Tag` or `TaggedText` types change, the type hash in `DocGen4.DB.Schema` will

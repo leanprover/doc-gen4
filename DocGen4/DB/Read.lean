@@ -8,19 +8,21 @@ import SQLite
 import DocGen4.DB.VersoDocString
 
 /-!
-# Database Read Interface
+# Reading from the Database
 
-The read side of the database layer. `ReadDB` is a structure of closures (like `WriteDB`) that
-load module data from a SQLite database. Each closure wraps a prepared statement from `ReadStmts`.
+This module contains the code used to read from the database. `ReadDB` is a structure of functions
+(like `WriteDB`) that load module data from a SQLite database. Each function wraps a prepared
+statement from `ReadStmts`.
 
 `ReadDB` is constructed via `mkReadDB` (called from `openForReading` in `DocGen4.DB`). A single
-`ReadDB` can be shared across tasks (reads are mutex-protected), but for parallel workloads each
-task should call `openForReading` to get its own connection — see `htmlOutputResultsParallel` in
+`ReadDB` can be shared across tasks without corruption due to the implicit state associated with
+SQLite prepared statements because the statements are behind a mutex, but for parallel workloads
+each task should call `openForReading` to get its own connection. See `htmlOutputResultsParallel` in
 `DocGen4.Output`.
 
 Column access in the read methods uses positional indices (e.g., `stmt.columnInt64 3`) that must
-match the column order in the corresponding SQL query. When modifying a query, update the column
-indices in the reader method to match.
+match the column order in the corresponding SQL query. When modifying a query, make sure to update
+the column indices in the reader method to match.
 -/
 
 namespace DocGen4.DB
@@ -42,12 +44,16 @@ structure ReadDB where
   buildName2ModIdx : Array Lean.Name → IO (Std.HashMap Lean.Name Lean.ModuleIdx)
   loadModule : Lean.Name → IO Process.Module
   loadAllTactics : IO (Array (Process.TacticInfo Process.MarkdownDocstring))
-  /-- For a module, return a map from each rendered declaration to the set of names
-      whose declaration ranges are contained within it. -/
+  /--
+  For a module, returns a map from each rendered declaration to the set of names whose declaration
+  ranges are contained within it. This is used to find things like projection functions for
+  inherited fields that are sometimes but not always produced by structure elaboration.
+  -/
   getContainedNames : Lean.Name → IO (Std.HashMap Lean.Name (Std.HashSet Lean.Name))
   /--
-  Get transitive closure of imports for given modules using recursive CTE.
-  Called at most once per `fromDb` invocation (and only when explicit module roots are provided).
+  Gets the transitive closure of imports for a set of modules. Called at most once per `fromDb`
+  invocation, and only when explicit module roots are provided, to identify which HTML files to
+  produce.
   -/
   getTransitiveImports : Array Lean.Name → IO (Array Lean.Name)
 
@@ -59,7 +65,7 @@ def _root_.SQLite.Stmt.bind [SQLite.NullableQueryParam α] (stmt : SQLite.Stmt) 
   SQLite.NullableQueryParam.bind stmt index param
 
 open SQLite.Blob in
-/-- Read RenderedCode from a blob. -/
+/-- Reads `RenderedCode` from a blob. -/
 def readRenderedCode (blob : ByteArray) : IO RenderedCode := do
   match fromBinary blob with
   | .ok code => return code
@@ -582,14 +588,14 @@ open Lean SQLite.Blob in
 private def ReadStmts.loadModule (s : ReadStmts) (moduleName : Name) : IO Process.Module := do
   let modNameStr := moduleName.toString
   let imports ← s.getModuleImports moduleName
-  -- Single query returns declarations and standalone module docs in position order
+  -- Single query returns declarations and module docstrings in position order
   s.loadModuleMembersStmt.bind 1 modNameStr
   s.loadModuleMembersStmt.bind 2 modNameStr
   let mut members : Array Process.ModuleMember := #[]
   while (← s.loadModuleMembersStmt.step) do
     let position ← s.loadModuleMembersStmt.columnInt64 0
     if (← s.loadModuleMembersStmt.columnNull 1) then
-      -- Standalone module doc (kind column is NULL)
+      -- Module docstrings (kind column is NULL)
       let doc ← s.loadModuleMembersStmt.columnText 6
       match (← s.loadDeclarationRange modNameStr position) with
       | some declRange => members := members.push (.modDoc { doc, declarationRange := declRange })
@@ -665,10 +671,11 @@ def mkReadDB (sqlite : SQLite) (values : DocstringValues) : IO ReadDB := do
     getContainedNames name := mutex.atomically do (← get).getContainedNames name
     getTransitiveImports modules := withDbContext "read:transitive_imports" do
       if modules.isEmpty then return #[]
-      -- Uses dynamic SQL (variable number of placeholders) so cannot be pre-prepared.
-      -- This is fine because it's called at most once per `fromDb` invocation.
-      -- The only interpolated value is `placeholders`, which is built from literal `"(?)"` strings
-      -- (one per module). Actual module names are always bound via `stmt.bind`.
+      -- Uses dynamic SQL (variable number of placeholders) so cannot be pre-prepared. This is not a
+      -- performance problem because it's called at most once per `fromDb` invocation. The only
+      -- interpolated value is `placeholders`, which is built from literal `"(?)"` strings (one per
+      -- module), so there's no user-supplied data included in the generated SQL. Actual module
+      -- names are always bound via `stmt.bind`.
       let placeholders := ", ".intercalate (modules.toList.map fun _ => "(?)")
       let sql := s!"
         WITH RECURSIVE transitive_imports(name) AS (

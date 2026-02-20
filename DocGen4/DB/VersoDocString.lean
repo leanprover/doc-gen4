@@ -12,19 +12,20 @@ import DocGen4.Helpers
 # Verso Docstring Serialization
 
 Verso docstrings (`VersoDocString`) contain a tree of `Doc.Block`/`Doc.Inline` nodes, which can
-include *extension points* (`ElabInline`/`ElabBlock`) which are opaque `Dynamic` values identified
-by `Name`. Different Lean packages can register their own extension types, so we can't know all
-possible types at compile time.
+include extension points (`ElabInline`/`ElabBlock`) which are opaque `Dynamic` values identified by
+`Name`. Different Lean packages can register their own extension types, so we can't know all
+possible types ahead of time.
 
 The serialization strategy is:
 * For each `ElabInline`/`ElabBlock`, look up a handler by name in `DocstringValues`.
-* If a handler exists, serialize the payload with it (tag byte `1`, then name, then length-prefixed
-  payload). On deserialization, the same handler reconstructs the value.
+* If a handler exists, serialize the payload with it. On deserialization, the same handler
+  reconstructs the value.
 * If no handler exists (the extension type is unknown), serialize just the name (tag byte `0`). On
   deserialization, unknown extensions are replaced with an `Unknown` sentinel value and their
   payload bytes are skipped. This means the database remains readable even if extension types are
-  added or removed between versions. In Verso docstrings, the content underneath a custom inline or
-  block node represents an alternative plain representation.
+  not available to a client. In Verso docstrings, the content underneath a custom inline or block
+  node represents an alternative “plain” representation, such as a generic code element instead of
+  semantically-highlighted Lean code.
 
 `builtinDocstringValues` (defined at the bottom of this file) registers the handlers for extension
 types that ship with Lean. If a downstream package defines custom Verso extensions, it would need to
@@ -245,7 +246,7 @@ private def mkHandler (α : Type) [TypeName α] [ToBinary α] [FromBinary α] : 
        | none => b  -- should not happen if names match
      deserialize := Dynamic.mk <$> (FromBinary.deserializer : Deserializer α) })
 
--- SourceInfo: original → canonical synthetic (lossy), synthetic and none preserved
+-- SourceInfo is serialized by mapping original info to canonical synthetic info to avoid saving the underling source string from which substrings are drawn.
 private instance : ToBinary SourceInfo where
   serializer
     | .original _leading pos _trailing endPos, b =>

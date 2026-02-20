@@ -11,15 +11,15 @@ import DocGen4.DB.Schema
 import DocGen4.DB.Read
 
 /-!
-# Database Write Interface
+# Writing the Database
 
 This file defines `WriteDB`, the interface for populating the database. Lake runs one `single`
-command per module (and `genCore` for Init/Std/Lake/Lean), each of which writes to the shared
-SQLite database through `WriteDB`. Later, the `fromDb` command reads everything back via `ReadDB`
-(defined in `DocGen4.DB.Read`) and generates HTML.
+command per module (and `genCore` for Init/Std/Lake/Lean), each of which writes to the shared SQLite
+database through `WriteDB`. Later, the `fromDb` command reads everything back via `ReadDB` (defined
+in `DocGen4.DB.Read`) and generates HTML.
 
-`WriteDB` and `ReadDB` are separate types because writers and readers have different needs.
-The database schema lives in `DocGen4.DB.Schema`.
+`WriteDB` and `ReadDB` are separate types because writers and readers have different needs. The
+database schema lives in `DocGen4.DB.Schema`.
 
 ## Module Item Positions
 
@@ -27,30 +27,29 @@ Within a module, each item (declaration, module doc, constructor) is assigned a 
 position starting from 0. This position serves as the item's identity within the module: the
 composite key `(module_name, position)` is the primary key for most tables. Positions are assigned
 in the order items appear in the module's `members` array, with constructors and structure fields
-interleaved between their parent declarations. For example, a module containing a module doc,
-a definition, and an inductive with two constructors might have positions:
+interleaved between their parent declarations. For example, a module containing a module doc, a
+definition, and an inductive with two constructors might have positions:
 
-  0: module doc
-  1: definition
-  2: inductive
-  3: constructor 1 (of the inductive at position 2)
-  4: constructor 2 (of the inductive at position 2)
+  0: module doc 1: definition 2: inductive 3: constructor 1 (of the inductive at position 2) 4:
+  constructor 2 (of the inductive at position 2)
 
 The position counter is a mutable `Int64` in `updateModuleDb`. Structures consume extra positions
-for their constructor and fields. The read side reconstructs module members by querying
-`name_info` and `module_docs_markdown` ordered by position.
+for their constructor and fields. The read side reconstructs module members by querying `name_info`
+and `module_docs_markdown` ordered by position.
 
 ## Changing the Schema
 
 When adding a new column or table:
   1. Add the DDL in `DocGen4.DB.Schema` (the `ddl` string in `getDb`).
   2. Add a prepared statement to `WriteStmts` and its `prepare` method below.
-  3. Add a `WriteStmts.saveXxx` method with positional `bind` calls matching the SQL.
-  4. Expose it through `WriteDB` (the structure at the top of this file) and the mutex wrapper
-     in `ensureWriteDb`.
+  3. Add a `WriteStmts.saveXyz` method with positional `bind` calls that match the SQL.
+  4. Expose it through `WriteDB` (the structure at the top of this file) and the mutex wrapper in
+     `ensureWriteDb`.
   5. Add a prepared statement and loader to `ReadStmts` in `DocGen4.DB.Read`.
-  6. If the change affects serialized blob types, update `serializedCodeTypeDefs` in
-     `DocGen4.DB.Schema` so the type hash invalidates stale databases.
+  6. If the change affects serialized blob types, check that there is an update
+     `serializedCodeTypeDefs` in `DocGen4.DB.Schema` so the type hash invalidates stale databases.
+     Otherwise, assess the risk of users getting old databases and consider adding another
+     invalidation.
 -/
 
 namespace DocGen4.DB
@@ -457,6 +456,10 @@ connection.
 -/
 def openForReading (dbFile : System.FilePath) (values : DocstringValues) : IO ReadDB := do
   let sqlite ← SQLite.openWith dbFile .readonly
+  -- A very long busy timeout is used because the analysis phase spawns many, many processes, each
+  -- of which waits on a transaction lock. In practice, timeouts of up to a minute caused
+  -- intermittent problems when building Mathlib docs on a fast multicore machine, so 30 is very
+  -- conservative.
   sqlite.exec "PRAGMA busy_timeout = 1800000"  -- 30 minutes
   mkReadDB sqlite values
 
@@ -509,7 +512,7 @@ def updateModuleDb (values : DocstringValues)
             db.saveImport modNameStr imported
           -- Position counter: each item gets a unique sequential position within the module.
           -- Constructors and structure metadata consume positions between their parent and the
-          -- next top-level member. See "Module Item Positions" in the module docstring.
+          -- next top-level member. See “Module Item Positions” in the module docstring.
           let mut i : Int64 := 0
           for mem in modInfo.members do
             let pos := i

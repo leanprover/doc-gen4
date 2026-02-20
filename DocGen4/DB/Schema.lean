@@ -11,14 +11,15 @@ import SQLite
 
 Defines the SQLite DDL (table definitions) and handles database creation, including schema
 versioning. The schema is versioned by two hashes:
-- **DDL hash**: detects changes to table definitions (column additions, new tables, etc.).
-- **Type hash**: detects changes to Lean types that are serialized as blobs in the database (e.g.,
-  `RenderedCode`, `RenderedCode.Tag`). Computed at compile time via `inductiveRepr!`.
+* The _DDL hash_ detects changes to table definitions (column additions, new tables, etc.).
+* The _type hash_ detects changes to Lean types that are serialized as blobs in the database (e.g.,
+  `RenderedCode`, `RenderedCode.Tag`). It is computed at compile time via `inductiveRepr!`.
 
 If either hash doesn't match, the database is rejected with an error message asking the user to
-rebuild. This prevents silent corruption from reading blobs with a stale deserializer. Note that
-changes to the serialization procedures that don't change the datatypes will not invalidate the
-hashes, so this measure is not perfect.
+rebuild. This prevents some silent corruption resulting from reading blobs with a stale
+deserializer. Note that changes to the serialization procedures that don't change the datatypes will
+not invalidate the hashes, so this measure is not perfect; however, these instances are typically
+derived, so they should follow the structure of the type.
 -/
 
 namespace DocGen4.DB
@@ -67,7 +68,10 @@ def serializedCodeTypeDefs : String :=
 
 def getDb (dbFile : System.FilePath) : IO SQLite := do
   -- SQLite atomically creates the DB file, and the schema and journal settings here are applied
-  -- idempotently. This avoids DB creation race conditions.
+  -- idempotently. This avoids DB creation race conditions. A very long busy timeout is used because
+  -- the analysis phase spawns many, many processes, each of which waits on a transaction lock. In
+  -- practice, timeouts of up to a minute caused intermittent problems when building Mathlib docs on
+  -- a fast multicore machine, so 30 is very conservative.
   let db ← SQLite.openWith dbFile .readWriteCreate
   db.exec "PRAGMA busy_timeout = 1800000"  -- 30 minutes
   db.exec "PRAGMA journal_mode = WAL"

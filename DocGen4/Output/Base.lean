@@ -370,8 +370,9 @@ partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM (Bool × Array H
         return (true, innerHtml)
       else
         return (true, #[<a href={link}>[innerHtml]</a>])
-    -- For Phase 1 compatibility: treat keyword/string as plain content (no extra styling)
-    -- This matches the original infoFormatToHtml behavior
+    -- For compatibility with the old HTML output: treat keyword/string as plain content (no extra
+    -- styling) This matches the original infoFormatToHtml behavior. It can be updated for extra
+    -- styling in the future.
     | .keyword => return (innerHasAnchor, innerHtml)
     | .string => return (innerHasAnchor, innerHtml)
     | .otherExpr => return (innerHasAnchor, fn innerHtml)
