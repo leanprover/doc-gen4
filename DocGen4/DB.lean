@@ -459,7 +459,11 @@ def openForReading (dbFile : System.FilePath) (values : DocstringValues) : IO Re
   -- A very long busy timeout is used because the analysis phase spawns many, many processes, each
   -- of which waits on a transaction lock. In practice, timeouts of up to a minute caused
   -- intermittent problems when building Mathlib docs on a fast multicore machine, so 30 is very
-  -- conservative.
+  -- conservative. When the DB is opened for reading, no exclusive locks should be necessary;
+  -- however, if multiple concurrent doc rebuilds are launched at the same time, then write
+  -- transactions from analysis might lock the database file. Using the same conservative timeout
+  -- for reading makes the failure mode into "one process waits on another" instead of "obscure
+  -- error message".
   sqlite.exec "PRAGMA busy_timeout = 1800000"  -- 30 minutes
   mkReadDB sqlite values
 
