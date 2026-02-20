@@ -55,5 +55,11 @@ if [ -f "$TMPDIR/mathproject/.lake/build/api-docs.db" ]; then
   # Compact the DB into a single portable file (removes WAL/journal dependency)
   sqlite3 "$TMPDIR/mathproject/.lake/build/api-docs.db" "VACUUM"
   TAR_ARGS+=(api-docs.db)
+
+  # Track database sizes
+  DB_RAW_SIZE=$(wc -c < "$TMPDIR/mathproject/.lake/build/api-docs.db" | tr -d ' ')
+  DB_ZSTD_SIZE=$(zstd -c "$TMPDIR/mathproject/.lake/build/api-docs.db" | wc -c | tr -d ' ')
+  echo "{\"metric\": \"mathlib-docs//db-size-raw\", \"value\": $DB_RAW_SIZE, \"unit\": \"B\"}" >> "$REPO_ROOT/measurements.jsonl"
+  echo "{\"metric\": \"mathlib-docs//db-size-zstd\", \"value\": $DB_ZSTD_SIZE, \"unit\": \"B\"}" >> "$REPO_ROOT/measurements.jsonl"
 fi
 tar cf - -C "$TMPDIR/mathproject/.lake/build" "${TAR_ARGS[@]}" | zstd -o "$REPO_ROOT/mathlib-docs.tar.zst"
