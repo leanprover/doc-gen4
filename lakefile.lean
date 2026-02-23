@@ -256,7 +256,7 @@ module_facet docInfo (mod) : FilePath := do
                 args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
                 env := ← getAugmentedEnv
               }
-              IO.FS.createDirAll markerFile.parent.get!
+              createParentDirs markerFile
               IO.FS.writeFile markerFile ""
             return markerFile
 
