@@ -204,6 +204,11 @@ def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
   let buildDir := (← getRootPackage).buildDir
+  -- Building the core targets adds their information to the database file. While it would be
+  -- possible to hash just the relevant content of the database (e.g. using SQLite's SHA3 module)
+  -- and write the result to a file, this adds a significant overhead. Instead, we create an empty
+  -- "marker file" to indicate that the database content has been inserted, and rely on its trace
+  -- changing to trigger rebuilds.
   let markerFile := buildDir / "doc-data" / s!"core-{component}.doc"
   bibPrepassJob.bindM fun _ => do
     exeJob.mapM fun exeFile => do
@@ -242,6 +247,12 @@ module_facet docInfo (mod) : FilePath := do
   let imports ← (← mod.imports.fetch).await
   let depDocJobs := Job.mixArray <| ← imports.mapM fun mod => fetch <| mod.facet `docInfo
   let buildDir := (← getRootPackage).buildDir
+  -- Building the documentation info for the module adds or updates the relevant content in the
+  -- database. If the dependencies change, then this needs to be re-done. While it would be possible
+  -- to hash just the relevant content of the database (e.g. using SQLite's SHA3 module) and write
+  -- the result to a file, this adds a significant overhead. Instead, we create an empty "marker
+  -- file" to indicate that the database content has been inserted, and rely on its Lake trace
+  -- changing to trigger rebuilds.
   let markerFile := buildDir / "doc-data" / s!"{mod.name}.doc"
   coreJob.bindM fun _ => do
     depDocJobs.bindM fun _ => do
@@ -265,9 +276,7 @@ Populates the database with information for all modules in a library.
 -/
 library_facet docInfo (lib) : Array FilePath := do
   let mods ← (← lib.modules.fetch).await
-  let moduleJobs := Job.collectArray <| ← mods.mapM (fetch <| ·.facet `docInfo)
-  moduleJobs.mapM fun modDeps =>
-    return modDeps
+  pure <| Job.collectArray <| ← mods.mapM (fetch <| ·.facet `docInfo)
 
 /--
 A facet to collect docInfo dependencies for a package (no HTML generation).
