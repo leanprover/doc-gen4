@@ -455,7 +455,6 @@ one SQLite connection. For parallel workloads, each task should call `openForRea
 connection.
 -/
 def openForReading (dbFile : System.FilePath) (values : DocstringValues) : IO ReadDB := do
-  let sqlite ← SQLite.openWith dbFile .readonly
   -- A very long busy timeout is used because the analysis phase spawns many, many processes, each
   -- of which waits on a transaction lock. In practice, timeouts of up to a minute caused
   -- intermittent problems when building Mathlib docs on a fast multicore machine, so 30 is very
@@ -464,7 +463,7 @@ def openForReading (dbFile : System.FilePath) (values : DocstringValues) : IO Re
   -- transactions from analysis might lock the database file. Using the same conservative timeout
   -- for reading makes the failure mode into "one process waits on another" instead of "obscure
   -- error message".
-  sqlite.exec "PRAGMA busy_timeout = 1800000"  -- 30 minutes
+  let sqlite ← SQLite.openWith dbFile .readonly (busyTimeoutMs := 1800000)  -- 30 minutes
   mkReadDB sqlite values
 
 /-! ## DB Reading -/
