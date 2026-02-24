@@ -66,6 +66,11 @@ def dbSourceLinker (sourceUrls : Std.HashMap Name String) (_gitUrl? : Option Str
 /-- Flush the WAL so the database file is self-contained. Connection is closed on return. -/
 def walCheckpoint (dbPath : String) : IO Unit := do
   let db ← SQLite.open dbPath
+  -- The checkpoint requires a read-write connection, which can be blocked by concurrent
+  -- documentation info writes for other libraries that this library doesn't depend on. This uses a
+  -- very long timeout (24h) because a full Mathlib build on a slow machine could in principle keep
+  -- the DB locked for a long time.
+  db.exec "PRAGMA busy_timeout = 86400000"
   db.exec "PRAGMA wal_checkpoint(TRUNCATE)"
   db.exec "PRAGMA optimize"
 
