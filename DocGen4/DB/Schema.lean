@@ -72,8 +72,7 @@ def getDb (dbFile : System.FilePath) : IO SQLite := do
   -- the analysis phase spawns many, many processes, each of which waits on a transaction lock. In
   -- practice, timeouts of up to a minute caused intermittent problems when building Mathlib docs on
   -- a fast multicore machine, so 30 is very conservative.
-  let db ← SQLite.openWith dbFile .readWriteCreate
-  db.exec "PRAGMA busy_timeout = 1800000"  -- 30 minutes
+  let db ← SQLite.openWith dbFile .readWriteCreate (busyTimeoutMs := 1800000)  -- 30 minutes
   db.exec "PRAGMA journal_mode = WAL"
   db.exec "PRAGMA foreign_keys = ON"
   try
