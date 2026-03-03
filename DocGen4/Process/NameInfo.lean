@@ -71,33 +71,13 @@ def NameInfo.ofTypedName (n : Name) (t : Expr) : MetaM NameInfo := do
 /--
 Pretty prints a `Lean.Parser.Term.bracketedBinder`.
 -/
-private def prettyPrintBinder (stx : Syntax) (infos : SubExpr.PosMap Elab.Info) : MetaM RenderedCode := do
+private def prettyPrintBinder (stx : Syntax) (infos : SubExpr.PosMap Elab.Info) : MetaM FormatCode := do
   let fmt ← PrettyPrinter.format Parser.Term.bracketedBinder.formatter stx
-  let tt := Widget.TaggedText.prettyTagged fmt
-  let ctx := {
-    env := ← getEnv
-    mctx := ← getMCtx
-    options := ← getOptions
-    currNamespace := ← getCurrNamespace
-    openDecls := ← getOpenDecls
-    fileMap := default,
-    ngen := ← getNGen
-  }
-  return renderTagged (← Widget.tagCodeInfos ctx infos tt)
+  toFormatCode fmt infos.get?
 
-private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) : MetaM RenderedCode := do
+private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) : MetaM FormatCode := do
   let fmt ← PrettyPrinter.formatTerm stx
-  let tt := Widget.TaggedText.prettyTagged fmt
-  let ctx := {
-    env := ← getEnv
-    mctx := ← getMCtx
-    options := ← getOptions
-    currNamespace := ← getCurrNamespace
-    openDecls := ← getOpenDecls
-    fileMap := default,
-    ngen := ← getNGen
-  }
-  return renderTagged (← Widget.tagCodeInfos ctx infos tt)
+  toFormatCode fmt infos.get?
 
 def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
   -- Use the main signature delaborator. We need to run sanitization, parenthesization, and formatting ourselves

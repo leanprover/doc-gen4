@@ -375,7 +375,7 @@ partial def renderedCodeToHtmlAux (code : RenderedCode) : HtmlM (Bool × Array H
     -- styling in the future.
     | .keyword => return (innerHasAnchor, innerHtml)
     | .string => return (innerHasAnchor, innerHtml)
-    | .otherExpr => return (innerHasAnchor, fn innerHtml)
+    | .otherExpr | .localVar .. => return (innerHasAnchor, fn innerHtml)
 where
   fn (html : Array Html) : Array Html := #[<span class="fn">[html]</span>]
 
@@ -384,6 +384,13 @@ Convert RenderedCode to HTML with declaration links.
 -/
 def renderedCodeToHtml (code : RenderedCode) : HtmlM (Array Html) :=
   Prod.snd <$> renderedCodeToHtmlAux code
+
+/--
+Render a `FormatCode` to HTML. This is the main entry point for rendering
+DB-stored code (types, binders, equations) as HTML.
+-/
+def formatCodeToHtml (code : FormatCode) : HtmlM (Array Html) :=
+  renderedCodeToHtml code.render
 
 /-
 Turns a `CodeWithInfos` object, that is basically a Lean syntax tree with
