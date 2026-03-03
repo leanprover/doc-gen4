@@ -286,8 +286,12 @@ where
     | .tag _ f, n => go f n
     | .append a b, n => (go a n).bind (go b ·)
 
+private def initTagIndex : Std.HashMap RenderedCode.Tag Nat :=
+  Std.HashMap.emptyWithCapacity 3 |>.insert .keyword 0 |>.insert .string 1 |>.insert .otherExpr 2
+
 private structure NormState where
   tags : Array RenderedCode.Tag := #[.keyword, .string, .otherExpr]
+  tagIndex : Std.HashMap RenderedCode.Tag Nat := initTagIndex
   localVars : Array (Lean.Name × Lean.Format) := #[]
   fvarMap : Std.HashMap FVarId Nat := {}
 
@@ -319,11 +323,11 @@ private abbrev NormM := ReaderT NormContext (StateT NormState MetaM)
 /-- Emits a tag into the shared array (deduplicating) and wraps it around the given format. -/
 private def addTag (tag : RenderedCode.Tag) (f' : Std.Format) : NormM Std.Format := do
   let s ← get
-  match s.tags.idxOf? tag with
+  match s.tagIndex.get? tag with
   | some idx => return .tag idx f'
   | none =>
     let idx := s.tags.size
-    modify fun s => { s with tags := s.tags.push tag }
+    modify fun s => { s with tags := s.tags.push tag, tagIndex := s.tagIndex.insert tag idx }
     return .tag idx f'
 
 /-- Tokenizes untagged text nodes in a format, tagging keywords and string literals. -/
