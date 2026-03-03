@@ -234,7 +234,7 @@ Turns an `Expr` into a `FormatCode` for storage in the database.
 -/
 def prettyPrintTerm (expr : Expr) : MetaM FormatCode := do
   let ⟨fmt, infos⟩ ← PrettyPrinter.ppExprWithInfos expr
-  toFormatCode fmt infos.get?
+  toFormatCode fmt infos
 
 def isInstance (declName : Name) : MetaM Bool := do
   return (instanceExtension.getState (← getEnv)).instanceNames.contains declName

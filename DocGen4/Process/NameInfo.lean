@@ -73,11 +73,11 @@ Pretty prints a `Lean.Parser.Term.bracketedBinder`.
 -/
 private def prettyPrintBinder (stx : Syntax) (infos : SubExpr.PosMap Elab.Info) : MetaM FormatCode := do
   let fmt ← PrettyPrinter.format Parser.Term.bracketedBinder.formatter stx
-  toFormatCode fmt infos.get?
+  toFormatCode fmt infos
 
 private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) : MetaM FormatCode := do
   let fmt ← PrettyPrinter.formatTerm stx
-  toFormatCode fmt infos.get?
+  toFormatCode fmt infos
 
 def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
   -- Use the main signature delaborator. We need to run sanitization, parenthesization, and formatting ourselves

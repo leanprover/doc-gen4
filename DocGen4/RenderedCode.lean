@@ -303,15 +303,9 @@ private partial def findCanonical (id : FVarId) : StateM (Std.HashMap FVarId FVa
     return root
 
 /-- Traverses the format tree, building a mapping from `FVarId`s to their canonical representative. -/
-private def collectAliasBase (getInfo : Nat → Option Info) (fmt : Std.Format) :
-    StateM (Std.HashMap FVarId FVarId) Unit := do
-  match fmt with
-  | .nil | .line | .align _ | .text _ => return ()
-  | .nest _ f | .group f _ => collectAliasBase getInfo f
-  | .append a b => collectAliasBase getInfo a; collectAliasBase getInfo b
-  | .tag n f =>
-    collectAliasBase getInfo f
-    if let some (.ofFVarAliasInfo ai) := getInfo n then
+private def collectAliasBase (infos : PrettyPrinter.InfoPerPos) : StateM (Std.HashMap FVarId FVarId) Unit := do
+  for (_, i) in infos do
+    if let .ofFVarAliasInfo ai := i then
       let canon ← findCanonical ai.baseId
       modify (·.insert ai.id canon)
 
@@ -334,6 +328,8 @@ private def addTag (tag : RenderedCode.Tag) (f' : Std.Format) : NormM Std.Format
 
 /-- Tokenizes untagged text nodes in a format, tagging keywords and string literals. -/
 private partial def normalizeText (txt : String) : NormM Std.Format := do
+  -- Early exit with no allocations if there are no tokens to extract
+  unless txt.any (fun c => c == '"' || c.isAlpha) do return .text txt
   let mut todo := txt.drop 0
   let mut result : Std.Format := .nil
   while !todo.isEmpty do
@@ -410,8 +406,9 @@ Two passes are made:
 1. `FVarAliasInfo` is collected in order to discover equivalence classes of local variables
 2. Semantic tags are simplified and normalized, de-duplicating them and discarding unneeded information.
 -/
-def toFormatCode (fmt : Lean.Format) (lookup : Nat → Option Info) : MetaM FormatCode := do
-  let canonMap := (collectAliasBase lookup fmt |>.run {}).2
+def toFormatCode (fmt : Lean.Format) (infos : PrettyPrinter.InfoPerPos) : MetaM FormatCode := do
+  let lookup := infos.get?
+  let canonMap := (collectAliasBase infos |>.run {}).2
   let ctx : NormContext := { getInfo := lookup, canonicalFVars := canonMap, shallow := false }
   let (fmt', state) ← normalizeFormat fmt |>.run ctx |>.run {}
   return { state with fmt := fmt' }
