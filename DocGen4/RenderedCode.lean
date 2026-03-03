@@ -322,7 +322,7 @@ private structure NormContext where
 
 private abbrev NormM := ReaderT NormContext (StateT NormState MetaM)
 
-/-- Emits a tag into the shared array (deduplicating) and wraps id around the given format. -/
+/-- Emits a tag into the shared array (deduplicating) and wraps it around the given format. -/
 private def addTag (tag : RenderedCode.Tag) (f' : Std.Format) : NormM Std.Format := do
   let s ← get
   match s.tags.idxOf? tag with
@@ -358,8 +358,7 @@ private partial def normalizeText (txt : String) : NormM Std.Format := do
 /--
 Normalizes a `Std.Format`, discarding information that won't be saved.
 -/
-private partial def normalizeFormat (fmt : Std.Format) : NormM Std.Format := do
-  match fmt with
+private partial def normalizeFormat : (fmt : Std.Format) →  NormM Std.Format
   | .nil => return .nil
   | .line => return .line
   | .align force => return .align force
@@ -398,48 +397,48 @@ private partial def normalizeFormat (fmt : Std.Format) : NormM Std.Format := do
             addTag (.localVar localVarIdx ti.isBinder) f'
       | .const n _ => addTag (.const n) f'
       | .sort level =>
-          let former := if level.isZero then .prop else if level.isSucc then .type else .sort
-          addTag (.sort (some former)) f'
+        let former := if level.isZero then .prop else if level.isSucc then .type else .sort
+        addTag (.sort (some former)) f'
       | _ => addTag .otherExpr f'
     | some _ => return f'
 
 /--
 Convert a `Lean.Format` and its associated info map to a `FormatCode`.
-The `lookup` function resolves tag indices to elaboration info. Two passes are made: the first
-collects `FVarAliasInfo` to build a canonical-FVarId map (handling cases where one variable is an
-alias for another, e.g. after `match` generalization), and the second normalizes tag indices and
-builds the local variable table.
+The `lookup` function resolves tag indices to elaboration info.
+
+Two passes are made:
+1. `FVarAliasInfo` is collected in order to discover equivalence classes of local variables
+2. Semantic tags are simplified and normalized, de-duplicating them and discarding unneeded information.
 -/
 def toFormatCode (fmt : Lean.Format) (lookup : Nat → Option Info) : MetaM FormatCode := do
   let canonMap := (collectAliasBase lookup fmt |>.run {}).2
   let ctx : NormContext := { getInfo := lookup, canonicalFVars := canonMap, shallow := false }
-  let (fmt', state) ← (normalizeFormat fmt |>.run ctx).run {}
-  return { fmt := fmt', tags := state.tags, localVars := state.localVars }
+  let (fmt', state) ← normalizeFormat fmt |>.run ctx |>.run {}
+  return { state with fmt := fmt' }
 
-private partial def renderFormatCode
-    (tags : Array RenderedCode.Tag) : TaggedText (Nat × Nat) → RenderedCode
+private partial def renderFormatCode (tags : Array RenderedCode.Tag) :
+    TaggedText (Nat × Nat) → RenderedCode
   | .text s => .text s
   | .append xs => xs.foldl (fun acc x => acc ++ renderFormatCode tags x) .empty
   | .tag (n, _) inner =>
-      match tags[n]? with
-      | none => renderFormatCode tags inner
-      | some (.const name) =>
-          match inner with
-          | .text t =>
-              let (front, t', back) := splitWhitespaces t
-              .append #[.text front, .tag (.const name) (.text t'), .text back]
-          | _ => .tag (.const name) (renderFormatCode tags inner)
-      | some (.sort former) =>
-          match inner with
-          | .text t =>
-              match t.splitOn " " with
-              | [] => .tag (.sort former) (renderFormatCode tags inner)
-              | sortPrefix :: rest =>
-                  let restStr := if rest.isEmpty then ""
-                    else " " ++ String.intercalate " " rest
-                  .append #[.tag (.sort former) (.text sortPrefix), .text restStr]
-          | _ => .tag (.sort former) (renderFormatCode tags inner)
-      | some tag => .tag tag (renderFormatCode tags inner)
+    match tags[n]? with
+    | none => renderFormatCode tags inner
+    | some (.const name) =>
+      match inner with
+      | .text t =>
+        let (front, t', back) := splitWhitespaces t
+        .append #[.text front, .tag (.const name) (.text t'), .text back]
+      | _ => .tag (.const name) (renderFormatCode tags inner)
+    | some (.sort former) =>
+      match inner with
+      | .text t =>
+        match t.splitOn " " with
+        | [] => .tag (.sort former) (renderFormatCode tags inner)
+        | sortPrefix :: rest =>
+          let restStr := if rest.isEmpty then "" else " " ++ String.intercalate " " rest
+          .append #[.tag (.sort former) (.text sortPrefix), .text restStr]
+      | _ => .tag (.sort former) (renderFormatCode tags inner)
+    | some tag => .tag tag (renderFormatCode tags inner)
 
 /--
 Render a `FormatCode` to `RenderedCode` at the given width (default: `Std.Format.defWidth`).
