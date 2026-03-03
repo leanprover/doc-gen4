@@ -287,7 +287,7 @@ where
     | .append a b, n => (go a n).bind (go b ·)
 
 private structure NormState where
-  tags : Array RenderedCode.Tag := #[]
+  tags : Array RenderedCode.Tag := #[.keyword, .string, .otherExpr]
   localVars : Array (Lean.Name × Lean.Format) := #[]
   fvarMap : Std.HashMap FVarId Nat := {}
 
