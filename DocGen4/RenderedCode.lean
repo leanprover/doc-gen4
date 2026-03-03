@@ -378,12 +378,8 @@ private partial def normalizeFormat : (fmt : Std.Format) →  NormM Std.Format
           else
             let some decl := ti.lctx.find? canonId
               | addTag .otherExpr f'
-            let localInsts ← ti.lctx.foldlM (init := #[]) fun acc d => do
-              if d.isImplementationDetail then return acc
-              if let some className ← isClass? d.type then
-                return acc.push { className, fvar := d.toExpr }
-              return acc
-            let ⟨typeFmt, typeInfos⟩ ← withLCtx ti.lctx localInsts (PrettyPrinter.ppExprWithInfos decl.type)
+            -- The Lean pretty printer ignores the local instance array, so we can just pass #[] here
+            let ⟨typeFmt, typeInfos⟩ ← withLCtx ti.lctx #[] (PrettyPrinter.ppExprWithInfos decl.type)
             let typeFmt' ← withReader ({ · with getInfo := typeInfos.get?, shallow := true }) do
               normalizeFormat typeFmt
             let localVarIdx := (← get).localVars.size
