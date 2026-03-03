@@ -277,14 +277,14 @@ def FormatCode.exceedsLimit (doc : FormatCode) (limit : Nat) : Bool :=
   (go doc.fmt limit).isNone
 where
   go : Lean.Format → Nat → Option Nat
-    | .nil, n => some n
+    | .nil, n
     | .align _, n => some n
-    | .line, n => if n == 0 then none else some (n - 1)
-    | .text s, n => if s.length > n then none else some (n - s.length)
+    | .line, n => if n == 0 then failure else return (n - 1)
+    | .text s, n => if s.length > n then failure else return (n - s.length)
     | .nest _ f, n
     | .group f _, n
     | .tag _ f, n => go f n
-    | .append a b, n => (go a n).bind (go b ·)
+    | .append a b, n => go a n >>= go b
 
 private def initTagIndex : Std.HashMap RenderedCode.Tag Nat :=
   Std.HashMap.emptyWithCapacity 3 |>.insert .keyword 0 |>.insert .string 1 |>.insert .otherExpr 2
@@ -396,7 +396,7 @@ private partial def normalizeFormat : (fmt : Std.Format) →  NormM Std.Format
         let former := if level.isZero then .prop else if level.isSucc then .type else .sort
         addTag (.sort (some former)) f'
       | _ => addTag .otherExpr f'
-    | some _ => return f'
+    | some _ => addTag .otherExpr f'
 
 /--
 Convert a `Lean.Format` and its associated info map to a `FormatCode`.

@@ -650,14 +650,61 @@ def allow_inherited_field_id(ctx: DiffContext) -> str | None:
     return None
 
 
-# Default rules list
+_METAVAR_RE = re.compile(r"\?[a-zA-Z_]\w*\.\d+")
+
+
+def allow_metavar_renumbering(ctx: DiffContext) -> str | None:
+    """Accept text diffs where only metavar indices differ (e.g. ?u.34 vs ?u.69).
+
+    The new version's normalizeFormat calls ppExprWithInfos for local variable types,
+    which advances the name generator counter. This shifts universe metavar indices
+    in subsequent renderings without affecting the semantic content.
+    """
+    if ctx.diff_type != "text":
+        return None
+    old_val = str(ctx.old_value or "")
+    new_val = str(ctx.new_value or "")
+    if _METAVAR_RE.sub("?x.N", old_val) == _METAVAR_RE.sub("?x.N", new_val):
+        return "metavar renumbering"
+    return None
+
+
+def allow_equation_elision_threshold(ctx: DiffContext) -> str | None:
+    """Accept diffs where the old version elided an equation but the new renders it.
+
+    The old code used RenderedCode.textLength (rendered text, including indentation)
+    against the 200-char limit. The new code uses FormatCode.exceedsLimit which counts
+    raw Format text without indentation, so it stores equations that the old code elided.
+    Rather than re-rendering just to check length, we accept these differences here.
+    """
+    if ctx.diff_type != "element_added":
+        return None
+    if not ctx.old_ancestors:
+        return None
+    old_parent = ctx.old_ancestors[0]
+    if not isinstance(old_parent, Tag) or old_parent.name != "li":
+        return None
+    if "equation" not in old_parent.get("class", []):
+        return None
+    elision_text = "One or more equations did not get rendered due to their size."
+    if old_parent.get_text(strip=True) == elision_text:
+        return "equation elision threshold difference"
+    return None
+
+
+# Default rules list for comparing two database-based doc-gen4 outputs.
 # Note: <code> elements are handled specially by compare_code_elements() in compare_trees()
-# These rules handle differences outside of <code> elements
+# These rules handle differences outside of <code> elements.
 #
 # Link insertion in doc-gen4 is heuristic — the same declaration text may
-# legitimately resolve to different targets between the old and new pipelines.
+# legitimately resolve to different targets between the two versions.
 # Rules and code comparison therefore validate that new link targets *exist*,
 # not that they point to the *same* declaration as before.
+#
+# The following rules handled one-time migration differences from the pre-database
+# pipeline to the database-backed pipeline and are intentionally excluded here:
+#   allow_extends_id_wrapper, allow_empty_equations_removal,
+#   allow_duplicate_li_removal_in_imports, allow_inherited_field_id
 RULES: list[Rule] = [
     allow_lean_file_href_change,
     allow_href_change_if_old_broken,
@@ -667,11 +714,9 @@ RULES: list[Rule] = [
     allow_span_fn_to_link,
     allow_unwrap_broken_link,
     allow_added_link_with_valid_target,
-    allow_extends_id_wrapper,
-    allow_empty_equations_removal,
-    allow_duplicate_li_removal_in_imports,
     allow_reorder_same_source_position,
-    allow_inherited_field_id,
+    allow_metavar_renumbering,
+    allow_equation_elision_threshold,
 ]
 
 
@@ -1909,32 +1954,36 @@ def compare_data_files(
     return identical, different, info_items
 
 
-def run_declaration_census(
-    db_path: Path, new_targets: set[str]
-) -> tuple[int, list[tuple[str, str]]]:
-    """Verify every rendered declaration in the DB has an HTML anchor in dir2.
+def load_db_declarations(db_path: Path) -> set[tuple[str, str]]:
+    """Load all rendered declarations from a doc-gen4 SQLite database.
 
-    Checks that for each (module_name, name) with render=1 in the database,
-    the target "Module/Path.html#name" exists in new_targets.
+    Returns a set of (module_name, name) pairs for every entry with render=1.
+    """
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.execute("SELECT module_name, name FROM name_info WHERE render = 1")
+    result = {(module_name, name) for module_name, name in cursor}
+    conn.close()
+    return result
+
+
+def run_declaration_census(
+    decls: set[tuple[str, str]], targets: set[str]
+) -> tuple[int, list[tuple[str, str]]]:
+    """Verify every declaration in decls has an HTML anchor in targets.
+
+    For each (module_name, name) pair, checks that the target
+    "Module/Path.html#escaped_name" exists in targets.
 
     Returns (total_checked, list_of_missing_(module, name)_pairs).
     """
-    conn = sqlite3.connect(str(db_path))
-    cursor = conn.execute(
-        "SELECT module_name, name FROM name_info WHERE render = 1"
-    )
-    total = 0
     missing: list[tuple[str, str]] = []
-    for module_name, name in cursor:
-        total += 1
+    for module_name, name in decls:
         file_path = module_name.replace(".", "/") + ".html"
         # HTML id attributes have <, >, & escaped; DB stores them raw
         escaped_name = html.escape(name, quote=False)
-        target = f"{file_path}#{escaped_name}"
-        if target not in new_targets:
+        if f"{file_path}#{escaped_name}" not in targets:
             missing.append((module_name, name))
-    conn.close()
-    return total, missing
+    return len(decls), missing
 
 
 # Extensions for static assets that should be compared byte-for-byte.
@@ -2850,10 +2899,16 @@ def main_cli() -> int:
         help="Cache file for link targets (loads if exists, creates otherwise)",
     )
     compare_parser.add_argument(
-        "--db",
+        "--db1",
+        type=Path,
+        default=None,
+        help="doc-gen4 SQLite database for dir1 (used for source position lookups)",
+    )
+    compare_parser.add_argument(
+        "--db2",
         type=Path,
         required=True,
-        help="doc-gen4 SQLite database for source position lookups and declaration census",
+        help="doc-gen4 SQLite database for dir2 (used for source position lookups and declaration census)",
     )
 
     # JSON comparison command
@@ -2863,10 +2918,16 @@ def main_cli() -> int:
     json_parser.add_argument("dir1", type=Path, help="First documentation directory (old)")
     json_parser.add_argument("dir2", type=Path, help="Second documentation directory (new)")
     json_parser.add_argument(
-        "--db",
+        "--db1",
         type=Path,
         default=None,
-        help="doc-gen4 SQLite database for resolving multi-module declarations",
+        help="doc-gen4 SQLite database for dir1 (for resolving multi-module declarations)",
+    )
+    json_parser.add_argument(
+        "--db2",
+        type=Path,
+        default=None,
+        help="doc-gen4 SQLite database for dir2 (for resolving multi-module declarations)",
     )
 
     # Test command
@@ -2897,11 +2958,15 @@ def run_json_compare(args: argparse.Namespace) -> int:
     start = time.perf_counter()
     log(f"Comparing JSON/BMP files in {args.dir1} vs {args.dir2}")
 
-    # Load targets from DB if provided
-    db_targets: set[str] | None = None
-    if args.db:
-        db_targets = load_db_targets(args.db)
-        log(f"Loaded {len(db_targets)} targets from {args.db}")
+    # Load targets from DBs if provided
+    db1_targets: set[str] | None = None
+    db2_targets: set[str] | None = None
+    if getattr(args, "db1", None):
+        db1_targets = load_db_targets(args.db1)
+        log(f"Loaded {len(db1_targets)} targets from {args.db1}")
+    if getattr(args, "db2", None):
+        db2_targets = load_db_targets(args.db2)
+        log(f"Loaded {len(db2_targets)} targets from {args.db2}")
 
     _, _, _, other_only_dir1, other_only_dir2, other_both = compare_directories(args.dir1, args.dir2)
     data_exts = {".json", ".bmp"}
@@ -2924,7 +2989,7 @@ def run_json_compare(args: argparse.Namespace) -> int:
         has_errors = True
 
     data_identical, data_different, data_info = compare_data_files(
-        args.dir1, args.dir2, other_both, db_targets, db_targets
+        args.dir1, args.dir2, other_both, db1_targets, db2_targets
     )
     elapsed = (time.perf_counter() - start) * 1000
     log(f"\nCompared {len(other_both)} data files ({elapsed:.1f}ms)")
@@ -2978,10 +3043,16 @@ def main(args: argparse.Namespace | None = None) -> int:
             help="Cache file for link targets (loads if exists, creates otherwise)",
         )
         parser.add_argument(
-            "--db",
+            "--db1",
+            type=Path,
+            default=None,
+            help="doc-gen4 SQLite database for dir1 (used for source position lookups)",
+        )
+        parser.add_argument(
+            "--db2",
             type=Path,
             required=True,
-            help="doc-gen4 SQLite database for source position lookups and declaration census",
+            help="doc-gen4 SQLite database for dir2 (used for source position lookups and declaration census)",
         )
         args = parser.parse_args()
 
@@ -2993,14 +3064,15 @@ def main(args: argparse.Namespace | None = None) -> int:
         print(f"Error: {args.dir2} is not a directory", file=sys.stderr)
         return 1
 
-    if not args.db.exists():
-        print(f"Error: database {args.db} not found", file=sys.stderr)
+    if not args.db2.exists():
+        print(f"Error: database {args.db2} not found", file=sys.stderr)
         return 1
 
-    # Load DB declaration positions for reorder acceptance
+    # Load DB declaration positions for reorder acceptance (prefer db1 if provided, else db2)
     global _db_decl_positions
-    _db_decl_positions = load_db_decl_positions(args.db)
-    log(f"Loaded {len(_db_decl_positions)} declaration positions from {args.db}")
+    positions_db = args.db1 if getattr(args, "db1", None) else args.db2
+    _db_decl_positions = load_db_decl_positions(positions_db)
+    log(f"Loaded {len(_db_decl_positions)} declaration positions from {positions_db}")
 
     total_start = time.perf_counter()
     log(f"Comparing {args.dir1} vs {args.dir2}")
@@ -3141,20 +3213,59 @@ def main(args: argparse.Namespace | None = None) -> int:
 
     # Step 4: Declaration census
     step_start = time.perf_counter()
-    census_total, census_missing = run_declaration_census(args.db, new_targets)
+    db2_decls = load_db_declarations(args.db2)
+    census2_total, census2_missing = run_declaration_census(db2_decls, new_targets)
+    db1_decls: set[tuple[str, str]] | None = None
+    census1_total, census1_missing = 0, []
+    if getattr(args, "db1", None):
+        db1_decls = load_db_declarations(args.db1)
+        census1_total, census1_missing = run_declaration_census(db1_decls, old_targets)
     step_elapsed = (time.perf_counter() - step_start) * 1000
     log(f"\nDeclaration census... ({step_elapsed:.1f}ms)")
-    log(f"  Declarations checked: {census_total}")
-    log(f"  Missing from HTML: {len(census_missing)}")
-    if census_missing:
+    if db1_decls is not None:
+        log(f"  dir1 declarations checked: {census1_total}")
+        log(f"  dir1 missing from HTML: {len(census1_missing)}")
+        dropped = sorted(db1_decls - db2_decls)
+        added = sorted(db2_decls - db1_decls)
+        log(f"  Declarations dropped (in db1, not db2): {len(dropped)}")
+        log(f"  Declarations added (in db2, not db1): {len(added)}")
+    log(f"  dir2 declarations checked: {census2_total}")
+    log(f"  dir2 missing from HTML: {len(census2_missing)}")
+    if census1_missing:
         has_errors = True
         log("\n" + "=" * 60)
-        log("MISSING DECLARATIONS:")
+        log("MISSING FROM DIR1 HTML:")
         log("=" * 60)
-        for module_name, name in census_missing[:50]:
+        for module_name, name in census1_missing[:50]:
             log(f"  {module_name}: {name}")
-        if len(census_missing) > 50:
-            log(f"  ... and {len(census_missing) - 50} more")
+        if len(census1_missing) > 50:
+            log(f"  ... and {len(census1_missing) - 50} more")
+    if db1_decls is not None and dropped:
+        has_errors = True
+        log("\n" + "=" * 60)
+        log("DECLARATIONS DROPPED (in db1, not in db2):")
+        log("=" * 60)
+        for module_name, name in dropped[:50]:
+            log(f"  {module_name}: {name}")
+        if len(dropped) > 50:
+            log(f"  ... and {len(dropped) - 50} more")
+    if db1_decls is not None and added:
+        log("\n" + "=" * 60)
+        log("DECLARATIONS ADDED (in db2, not in db1):")
+        log("=" * 60)
+        for module_name, name in added[:50]:
+            log(f"  {module_name}: {name}")
+        if len(added) > 50:
+            log(f"  ... and {len(added) - 50} more")
+    if census2_missing:
+        has_errors = True
+        log("\n" + "=" * 60)
+        log("MISSING FROM DIR2 HTML:")
+        log("=" * 60)
+        for module_name, name in census2_missing[:50]:
+            log(f"  {module_name}: {name}")
+        if len(census2_missing) > 50:
+            log(f"  ... and {len(census2_missing) - 50} more")
 
     # Step 5: Compare static assets
     step_start = time.perf_counter()
