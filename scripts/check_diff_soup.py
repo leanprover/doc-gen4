@@ -677,37 +677,38 @@ def allow_equation_elision_threshold(ctx: DiffContext) -> str | None:
     raw Format text without indentation, so it stores equations that the old code elided.
     Rather than re-rendering just to check length, we accept these differences here.
     """
-    if ctx.diff_type != "element_added":
-        return None
     if not ctx.old_ancestors:
         return None
-    elision_text = "One or more equations did not get rendered due to their size."
     old_parent = ctx.old_ancestors[0]
     if not isinstance(old_parent, Tag):
         return None
-    # Pattern 1: element added *inside* a <li class="equation"> that has the elision text.
-    # The new code renders the equation; old code replaced it with the elision message.
-    if old_parent.name == "li" and "equation" in old_parent.get("class", []):
-        if old_parent.get_text(strip=True) == elision_text:
-            return "equation elision threshold difference"
-    # Pattern 2: a new <li class="equation"> added to a <ul class="equations"> that
-    # already has an elision <li>.  This happens when the old code produced a single
-    # elision entry but the new code stores multiple equations that were previously elided.
-    if (
-        old_parent.name == "ul"
-        and "equations" in old_parent.get("class", [])
-        and ctx.new_elem
-        and isinstance(ctx.new_elem, Tag)
-        and ctx.new_elem.name == "li"
-        and "equation" in ctx.new_elem.get("class", [])
-    ):
-        for child in old_parent.children:
-            if (
-                isinstance(child, Tag)
-                and child.name == "li"
-                and child.get_text(strip=True) == elision_text
-            ):
+
+    if ctx.diff_type == "element_added":
+        # Pattern 1: element added *inside* a <li class="equation"> that has the elision text.
+        # The new code renders the equation; old code replaced it with the elision message.
+        # (The <ul class="equations"> subset check in compare_trees handles the common case;
+        # this catches any residual element_added diffs that fall through.)
+        if old_parent.name == "li" and "equation" in old_parent.get("class", []):
+            if old_parent.get_text(strip=True) == _ELISION_TEXT:
                 return "equation elision threshold difference"
+        # Pattern 2: a new <li class="equation"> added to a <ul class="equations"> that
+        # already has an elision <li>.
+        if (
+            old_parent.name == "ul"
+            and "equations" in old_parent.get("class", [])
+            and ctx.new_elem
+            and isinstance(ctx.new_elem, Tag)
+            and ctx.new_elem.name == "li"
+            and "equation" in ctx.new_elem.get("class", [])
+        ):
+            for child in old_parent.children:
+                if (
+                    isinstance(child, Tag)
+                    and child.name == "li"
+                    and child.get_text(strip=True) == _ELISION_TEXT
+                ):
+                    return "equation elision threshold difference"
+
     return None
 
 
@@ -1148,6 +1149,22 @@ def compare_attributes(
     return differences
 
 
+_ELISION_TEXT = "One or more equations did not get rendered due to their size."
+
+
+
+def _equation_texts(ul: Tag) -> set[str]:
+    """Return the get_text() of each non-elision <li class="equation"> in a <ul>."""
+    return {
+        li.get_text(strip=True)
+        for li in ul.children
+        if isinstance(li, Tag)
+        and li.name == "li"
+        and "equation" in li.get("class", [])
+        and li.get_text(strip=True) != _ELISION_TEXT
+    }
+
+
 def compare_trees(
     old_node: Tag | NavigableString | None,
     new_node: Tag | NavigableString | None,
@@ -1296,6 +1313,31 @@ def compare_trees(
             return differences
         # If not OK, fall through to normal comparison which will generate
         # specific differences that rules can evaluate
+
+    # Special handling for <ul class="equations">: accept if old equations ⊆ new equations.
+    # The old code used a rendered-text length limit; the new code uses a raw-format limit,
+    # so new may render equations that old elided.  As long as nothing old showed is missing,
+    # the difference is purely due to the elision threshold and should be accepted.
+    if old_node.name == "ul" and "equations" in old_node.get("class", []):
+        old_eqs = _equation_texts(old_node)
+        new_eqs = _equation_texts(new_node)
+        if old_eqs <= new_eqs:
+            if str(old_node) != str(new_node):
+                differences.append(
+                    Difference(
+                        file_path=file_path,
+                        diff_type="structural",
+                        old_elem=old_node,
+                        new_elem=new_node,
+                        old_ancestors=old_ancestors.copy(),
+                        new_ancestors=new_ancestors.copy(),
+                        accepted=True,
+                        reason="equation elision threshold difference",
+                        rule_name="compare_equations_subset",
+                    )
+                )
+            return differences
+        # old has equations not present in new — fall through to report the regression
 
     # Same tag name - compare attributes
     differences.extend(

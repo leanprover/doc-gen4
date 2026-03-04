@@ -261,12 +261,12 @@ partial def renderTagged (doc : CodeWithInfos) : RenderedCode := Id.run do
 A pretty-printer document with semantic tag annotations, for width-flexible rendering.
 The `Format.tag n` values in `fmt` and in any type format in `localVars` are all indices into
 `tags`. `localVars` contains one entry per distinct local variable: its user-facing name and the
-pretty-printed format of its type.
+pretty-printed format of its type, or `none` if the type could not be pretty-printed.
 -/
 structure FormatCode where
   fmt       : Lean.Format
   tags      : Array RenderedCode.Tag
-  localVars : Array (Lean.Name × Lean.Format) := #[]
+  localVars : Array (Lean.Name × Option Lean.Format) := #[]
 deriving ToBinary, FromBinary, Inhabited
 
 /--
@@ -292,7 +292,7 @@ private def initTagIndex : Std.HashMap RenderedCode.Tag Nat :=
 private structure NormState where
   tags : Array RenderedCode.Tag := #[.keyword, .string, .otherExpr]
   tagIndex : Std.HashMap RenderedCode.Tag Nat := initTagIndex
-  localVars : Array (Lean.Name × Lean.Format) := #[]
+  localVars : Array (Lean.Name × Option Lean.Format) := #[]
   fvarMap : Std.HashMap FVarId Nat := {}
 
 /--
@@ -382,20 +382,25 @@ private partial def normalizeFormat : (fmt : Std.Format) →  NormM Std.Format
           else
             let some decl := ti.lctx.find? canonId
               | addTag .otherExpr f'
-            -- The Lean pretty printer ignores the local instance array, so we can just pass #[] here.
-            -- Save/restore the name generator to prevent these inner calls from advancing the counter and
-            -- causing bound variable names to differ in subsequent prettyPrintTerm calls.
+            -- The Lean pretty printer ignores the local instance array, so we can just pass #[]
+            -- here. We save/restore the name generator to prevent these inner calls from advancing
+            -- the counter and causing names to differ in subsequent prettyPrintTerm calls - this
+            -- makes it easier to compare outputs from different doc-gen4 versions during
+            -- development.
             let savedNGen ← getNGen
-            let ⟨typeFmt, typeInfos⟩ ←
+            let typeFmt? ←
               try
-                withLCtx ti.lctx #[] (PrettyPrinter.ppExprWithInfos decl.type)
-              finally
-                setNGen savedNGen
-            let typeFmt' ← withReader ({ · with getInfo := typeInfos.get?, shallow := true }) do
-              normalizeFormat typeFmt
+                let ⟨typeFmt, typeInfos⟩ ←
+                  try withLCtx ti.lctx #[] (PrettyPrinter.ppExprWithInfos decl.type)
+                  finally setNGen savedNGen
+                let f ← withReader ({ · with getInfo := typeInfos.get?, shallow := true }) do
+                  normalizeFormat typeFmt
+                pure (some f)
+              catch _ => pure none
+
             let localVarIdx := (← get).localVars.size
             modify fun s => { s with
-              localVars := s.localVars.push (decl.userName, typeFmt')
+              localVars := s.localVars.push (decl.userName, typeFmt?)
               fvarMap := s.fvarMap.insert canonId localVarIdx }
             addTag (.localVar localVarIdx ti.isBinder) f'
       | .const n _ => addTag (.const n) f'
