@@ -27,16 +27,21 @@ def processEq (eq : Name) : MetaM FormatCode := do
   let type ← (mkConstWithFreshMVarLevels eq >>= inferType)
   prettyPrintEquation type
 
-def computeEquations? (v : DefinitionVal) : AnalyzeM (Array FormatCode) := do
+def computeEquations? (v : DefinitionVal) : AnalyzeM (Array (Option FormatCode)) := do
   unless (← read).genEquations do return #[]
   let eqs? ← getEqnsFor? v.name
   match eqs? with
   | some eqs =>
-    let eqs ← liftM (eqs.mapM processEq)
-    return eqs
+    eqs.mapM fun eq => do
+      try return some (← processEq eq)
+      catch _ => return none
   | none =>
-    let equations := #[← prettyPrintEquation (← valueToEq v)]
-    return equations
+    try
+      let eq ← prettyPrintEquation (← valueToEq v)
+      return #[some eq]
+    catch _ =>
+      return #[none]
+
 
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : AnalyzeM DefinitionInfo := do
   let info ← Info.ofConstantVal v.toConstantVal
@@ -45,11 +50,10 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : AnalyzeM DefinitionInfo
   let sorried := v.value.hasSorry
 
   let equations ←
-    tryCatchRuntimeEx
-      (.some <$> computeEquations? v)
-      (fun err => do
-        IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {← err.toMessageData.toString}"
-        return none)
+    try some <$> computeEquations? v
+    catch err =>
+      IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {← err.toMessageData.toString}"
+      pure none
 
   return {
     toInfo := { info with sorried := sorried },
