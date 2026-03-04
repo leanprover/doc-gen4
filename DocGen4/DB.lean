@@ -68,7 +68,7 @@ structure WriteDB where
   saveAxiom (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
   saveOpaque (modName : String) (position : Int64) (safety : Lean.DefinitionSafety) : IO Unit
   saveDefinition (modName : String) (position : Int64) (isUnsafe : Bool) (hints : Lean.ReducibilityHints) (isNonComputable : Bool) : IO Unit
-  saveDefinitionEquation (modName : String) (position : Int64) (code : Option FormatCode) (sequence : Int64) : IO Unit
+  saveDefinitionEquation (modName : String) (position : Int64) (code : FormatCode) (sequence : Int64) : IO Unit
   saveInstance (modName : String) (position : Int64) (className : String) : IO Unit
   saveInstanceArg (modName : String) (position : Int64) (sequence : Int64) (typeName : String) : IO Unit
   saveInductive (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
@@ -285,11 +285,11 @@ private def WriteStmts.saveDefinition (s : WriteStmts) (modName : String) (posit
   s.saveDefinitionStmt.bind 5 isNonComputable
   run s.saveDefinitionStmt
 
-private def WriteStmts.saveDefinitionEquation (s : WriteStmts) (modName : String) (position : Int64) (code : Option FormatCode) (sequence : Int64) : IO Unit := withDbContext "write:insert:definition_equations" do
+private def WriteStmts.saveDefinitionEquation (s : WriteStmts) (modName : String) (position : Int64) (code : FormatCode) (sequence : Int64) : IO Unit := withDbContext "write:insert:definition_equations" do
   s.saveDefinitionEquationStmt.bind 1 modName
   s.saveDefinitionEquationStmt.bind 2 position
   s.saveDefinitionEquationStmt.bind 3 <|
-    code.filter (!·.exceedsLimit Process.equationLimit)
+    if code.exceedsLimit Process.equationLimit then none else some code
   s.saveDefinitionEquationStmt.bind 4 sequence
   run s.saveDefinitionEquationStmt
 
@@ -536,15 +536,21 @@ def updateModuleDb (values : DocstringValues)
                 db.saveOpaque modNameStr pos info.definitionSafety
               | .definitionInfo info =>
                 db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable
-                if let some eqns := info.equations then
-                  for h : j in 0...eqns.size do
-                    db.saveDefinitionEquation modNameStr pos eqns[j] j.toInt64
+                if let some equations := info.equations then
+                  let mut j : Int64 := 0
+                  for equation? in equations do
+                    if let some equation := equation? then
+                      db.saveDefinitionEquation modNameStr pos equation j
+                      j := j + 1
               | .instanceInfo info =>
                 -- Save definition data (InstanceInfo extends DefinitionInfo)
                 db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable
-                if let some eqns := info.equations then
-                  for h : j in 0...eqns.size do
-                    db.saveDefinitionEquation modNameStr pos eqns[j] j.toInt64
+                if let some equations := info.equations then
+                  let mut j : Int64 := 0
+                  for equation? in equations do
+                    if let some equation := equation? then
+                      db.saveDefinitionEquation modNameStr pos equation j
+                      j := j + 1
                 -- Save instance-specific data
                 db.saveInstance modNameStr pos info.className.toString
                 for h : j in 0...info.typeNames.size do
