@@ -382,8 +382,15 @@ private partial def normalizeFormat : (fmt : Std.Format) →  NormM Std.Format
           else
             let some decl := ti.lctx.find? canonId
               | addTag .otherExpr f'
-            -- The Lean pretty printer ignores the local instance array, so we can just pass #[] here
-            let ⟨typeFmt, typeInfos⟩ ← withLCtx ti.lctx #[] (PrettyPrinter.ppExprWithInfos decl.type)
+            -- The Lean pretty printer ignores the local instance array, so we can just pass #[] here.
+            -- Save/restore the name generator to prevent these inner calls from advancing the counter and
+            -- causing bound variable names to differ in subsequent prettyPrintTerm calls.
+            let savedNGen ← getNGen
+            let ⟨typeFmt, typeInfos⟩ ←
+              try
+                withLCtx ti.lctx #[] (PrettyPrinter.ppExprWithInfos decl.type)
+              finally
+                setNGen savedNGen
             let typeFmt' ← withReader ({ · with getInfo := typeInfos.get?, shallow := true }) do
               normalizeFormat typeFmt
             let localVarIdx := (← get).localVars.size

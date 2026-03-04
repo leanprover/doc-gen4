@@ -681,14 +681,33 @@ def allow_equation_elision_threshold(ctx: DiffContext) -> str | None:
         return None
     if not ctx.old_ancestors:
         return None
-    old_parent = ctx.old_ancestors[0]
-    if not isinstance(old_parent, Tag) or old_parent.name != "li":
-        return None
-    if "equation" not in old_parent.get("class", []):
-        return None
     elision_text = "One or more equations did not get rendered due to their size."
-    if old_parent.get_text(strip=True) == elision_text:
-        return "equation elision threshold difference"
+    old_parent = ctx.old_ancestors[0]
+    if not isinstance(old_parent, Tag):
+        return None
+    # Pattern 1: element added *inside* a <li class="equation"> that has the elision text.
+    # The new code renders the equation; old code replaced it with the elision message.
+    if old_parent.name == "li" and "equation" in old_parent.get("class", []):
+        if old_parent.get_text(strip=True) == elision_text:
+            return "equation elision threshold difference"
+    # Pattern 2: a new <li class="equation"> added to a <ul class="equations"> that
+    # already has an elision <li>.  This happens when the old code produced a single
+    # elision entry but the new code stores multiple equations that were previously elided.
+    if (
+        old_parent.name == "ul"
+        and "equations" in old_parent.get("class", [])
+        and ctx.new_elem
+        and isinstance(ctx.new_elem, Tag)
+        and ctx.new_elem.name == "li"
+        and "equation" in ctx.new_elem.get("class", [])
+    ):
+        for child in old_parent.children:
+            if (
+                isinstance(child, Tag)
+                and child.name == "li"
+                and child.get_text(strip=True) == elision_text
+            ):
+                return "equation elision threshold difference"
     return None
 
 
@@ -3387,8 +3406,8 @@ def main(args: argparse.Namespace | None = None) -> int:
         data_files_different=len(data_different),
         data_only_in_dir1=len(data_only_dir1),
         data_only_in_dir2=len(data_only_dir2),
-        census_total=census_total,
-        census_missing=len(census_missing),
+        census_total=census2_total,
+        census_missing=len(census2_missing),
         static_identical=static_identical,
         static_different=len(static_different),
         static_only_in_dir1=len(static_only_dir1),
