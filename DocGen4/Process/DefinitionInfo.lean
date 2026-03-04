@@ -36,11 +36,7 @@ def computeEquations? (v : DefinitionVal) : AnalyzeM (Array (Option FormatCode))
       try return some (← processEq eq)
       catch _ => return none
   | none =>
-    try
-      let eq ← prettyPrintEquation (← valueToEq v)
-      return #[some eq]
-    catch _ =>
-      return #[none]
+    return #[some (← prettyPrintEquation (← valueToEq v))]
 
 
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : AnalyzeM DefinitionInfo := do
