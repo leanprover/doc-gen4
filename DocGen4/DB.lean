@@ -68,7 +68,7 @@ structure WriteDB where
   saveAxiom (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
   saveOpaque (modName : String) (position : Int64) (safety : Lean.DefinitionSafety) : IO Unit
   saveDefinition (modName : String) (position : Int64) (isUnsafe : Bool) (hints : Lean.ReducibilityHints) (isNonComputable : Bool) : IO Unit
-  saveDefinitionEquation (modName : String) (position : Int64) (code : Option FormatCode) (sequence : Int64) : IO Unit
+  saveDefinitionEquation (modName : String) (position : Int64) (code : FormatCode) (sequence : Int64) : IO Unit
   saveInstance (modName : String) (position : Int64) (className : String) : IO Unit
   saveInstanceArg (modName : String) (position : Int64) (sequence : Int64) (typeName : String) : IO Unit
   saveInductive (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
@@ -285,11 +285,11 @@ private def WriteStmts.saveDefinition (s : WriteStmts) (modName : String) (posit
   s.saveDefinitionStmt.bind 5 isNonComputable
   run s.saveDefinitionStmt
 
-private def WriteStmts.saveDefinitionEquation (s : WriteStmts) (modName : String) (position : Int64) (code : Option FormatCode) (sequence : Int64) : IO Unit := withDbContext "write:insert:definition_equations" do
+private def WriteStmts.saveDefinitionEquation (s : WriteStmts) (modName : String) (position : Int64) (code : FormatCode) (sequence : Int64) : IO Unit := withDbContext "write:insert:definition_equations" do
   s.saveDefinitionEquationStmt.bind 1 modName
   s.saveDefinitionEquationStmt.bind 2 position
   s.saveDefinitionEquationStmt.bind 3 <|
-    code.filter (!·.exceedsLimit Process.equationLimit)
+    if code.exceedsLimit Process.equationLimit then none else some code
   s.saveDefinitionEquationStmt.bind 4 sequence
   run s.saveDefinitionEquationStmt
 
