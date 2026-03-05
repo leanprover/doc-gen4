@@ -536,21 +536,15 @@ def updateModuleDb (values : DocstringValues)
                 db.saveOpaque modNameStr pos info.definitionSafety
               | .definitionInfo info =>
                 db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable
-                if let some equations := info.equations then
-                  let mut j : Int64 := 0
-                  for equation? in equations do
-                    if let some equation := equation? then
-                      db.saveDefinitionEquation modNameStr pos equation j
-                      j := j + 1
+                if let some eqns := info.equations then
+                  for h : j in 0...eqns.size do
+                    db.saveDefinitionEquation modNameStr pos eqns[j] j.toInt64
               | .instanceInfo info =>
                 -- Save definition data (InstanceInfo extends DefinitionInfo)
                 db.saveDefinition modNameStr pos info.isUnsafe info.hints info.isNonComputable
-                if let some equations := info.equations then
-                  let mut j : Int64 := 0
-                  for equation? in equations do
-                    if let some equation := equation? then
-                      db.saveDefinitionEquation modNameStr pos equation j
-                      j := j + 1
+                if let some eqns := info.equations then
+                  for h : j in 0...eqns.size do
+                    db.saveDefinitionEquation modNameStr pos eqns[j] j.toInt64
                 -- Save instance-specific data
                 db.saveInstance modNameStr pos info.className.toString
                 for h : j in 0...info.typeNames.size do

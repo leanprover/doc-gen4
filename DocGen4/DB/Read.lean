@@ -273,13 +273,13 @@ private def ReadStmts.loadInfo (s : ReadStmts) (moduleName : String) (position :
   return { name, type, doc, args, declarationRange := declRange, attrs, sorried, render }
 
 open Lean SQLite.Blob in
-private def ReadStmts.loadEquations (s : ReadStmts) (moduleName : String) (position : Int64) : IO (Option (Array (Option FormatCode)) × Bool) := withDbContext "read:definition_equations" do
+private def ReadStmts.loadEquations (s : ReadStmts) (moduleName : String) (position : Int64) : IO (Option (Array FormatCode) × Bool) := withDbContext "read:definition_equations" do
   s.loadEqnsStmt.bind 1 moduleName
   s.loadEqnsStmt.bind 2 position
   if !(← s.loadEqnsStmt.step) then
     done s.loadEqnsStmt
     return (none, false)
-  let mut eqns : Array (Option FormatCode) := #[]
+  let mut eqns := #[]
   let mut wereOmitted := false
   let processRow : IO (Option FormatCode) := do
     let colType ← s.loadEqnsStmt.columnType 0
@@ -289,13 +289,15 @@ private def ReadStmts.loadEquations (s : ReadStmts) (moduleName : String) (posit
       let blob ← s.loadEqnsStmt.columnBlob 0
       return some (← readFormatCode blob)
   match (← processRow) with
-  | some code => eqns := eqns.push (some code)
-  | none => eqns := eqns.push none; wereOmitted := true
+  | some code => eqns := eqns.push code
+  | none => wereOmitted := true
   while (← s.loadEqnsStmt.step) do
     match (← processRow) with
-    | some code => eqns := eqns.push (some code)
-    | none => eqns := eqns.push none; wereOmitted := true
+    | some code => eqns := eqns.push code
+    | none => wereOmitted := true
   done s.loadEqnsStmt
+  if eqns.isEmpty && !wereOmitted then
+    return (none, false)
   return (some eqns, wereOmitted)
 
 open Lean SQLite.Blob in
@@ -466,7 +468,7 @@ where
       return some <| .opaqueInfo { toInfo := info, definitionSafety := safety }
     done s.readOpaqueStmt
     return none
-  readDefinitionData : IO (Option (Bool × ReducibilityHints × Bool × Option (Array (Option FormatCode)) × Bool)) := do
+  readDefinitionData : IO (Option (Bool × ReducibilityHints × Bool × Option (Array FormatCode) × Bool)) := do
     s.readDefinitionStmt.bind 1 moduleName
     s.readDefinitionStmt.bind 2 position
     if (← s.readDefinitionStmt.step) then

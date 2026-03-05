@@ -20,7 +20,7 @@ defined in `equationLimit` we stop trying since they:
 def equationsToHtml (i : Process.DefinitionInfo) : HtmlM (Array Html) := do
   if let some eqs := i.equations then
     if eqs.isEmpty && !i.equationsWereOmitted then return #[]
-    let equationsHtml ← eqs.iter.filterMap id |>.mapM equationToHtml |>.toArray
+    let equationsHtml ← eqs.mapM equationToHtml
     if i.equationsWereOmitted then
       return #[
         <details>
