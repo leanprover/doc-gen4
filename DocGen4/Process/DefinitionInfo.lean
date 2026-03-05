@@ -27,12 +27,16 @@ def processEq (eq : Name) : MetaM FormatCode := do
   let type ← (mkConstWithFreshMVarLevels eq >>= inferType)
   prettyPrintEquation type
 
-def computeEquations? (v : DefinitionVal) : AnalyzeM (Array FormatCode) := do
+def computeEquations? (v : DefinitionVal) : AnalyzeM (Array (Option FormatCode)) := do
   unless (← read).genEquations do return #[]
   let eqs? ← getEqnsFor? v.name
   match eqs? with
-  | some eqs => liftM (eqs.mapM processEq)
-  | none => return #[← prettyPrintEquation (← valueToEq v)]
+  | some eqs =>
+    eqs.mapM fun eq => do
+      try return some (← processEq eq)
+      catch _ => return none
+  | none =>
+    return #[some (← prettyPrintEquation (← valueToEq v))]
 
 
 def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : AnalyzeM DefinitionInfo := do

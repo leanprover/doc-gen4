@@ -125,7 +125,7 @@ Information about a `def` declaration, note that partial defs are handled by `Op
 structure DefinitionInfo extends Info where
   isUnsafe : Bool
   hints : ReducibilityHints
-  equations : Option (Array FormatCode)
+  equations : Option (Array (Option FormatCode))
   equationsWereOmitted : Bool := false
   isNonComputable : Bool
   deriving Inhabited
