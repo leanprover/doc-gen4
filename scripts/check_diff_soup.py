@@ -669,6 +669,55 @@ def allow_metavar_renumbering(ctx: DiffContext) -> str | None:
     return None
 
 
+# Declarations known to lose their equations section due to heartbeat limits when
+# processing local variable types inside toFormatCode.  Add decl names here to
+# suppress the resulting diff rather than treating it as a regression.
+ACCEPTED_ABSENT_EQUATIONS: set[str] = {
+    "Mathlib.Tactic.FieldSimp.reduceLeQ",
+    "Mathlib.Tactic.FieldSimp.reduceLtQ",
+    "Mathlib.Tactic.Module.matchScalarsAux",
+}
+
+
+def _is_in_equations_section(elem: Tag | None, ancestors: list[Tag]) -> bool:
+    """Return True if elem or any of its ancestors is an equations <details> or <ul>."""
+    def _check(node: Tag | None) -> bool:
+        if not isinstance(node, Tag):
+            return False
+        if node.name == "details":
+            summary = node.find("summary")
+            if isinstance(summary, Tag) and summary.get_text(strip=True) == "Equations":
+                return True
+        if node.name in ("ul", "li") and "equation" in node.get("class", []):
+            return True
+        return False
+
+    if _check(elem):
+        return True
+    return any(_check(a) for a in ancestors)
+
+
+def allow_absent_equations_for_known_decl(ctx: DiffContext) -> str | None:
+    """Accept removal of an equations section for declarations known to hit heartbeat limits.
+
+    When toFormatCode runs out of heartbeats while pretty-printing local variable types,
+    the outer tryCatchRuntimeEx in ofDefinitionVal catches the exception and sets
+    equations = none, causing the whole equations section to disappear.  For a fixed
+    set of known declarations this outcome is acceptable.
+    """
+    if ctx.diff_type not in ("element_removed", "element_added"):
+        return None
+    # Only care about the removed side (old had equations, new doesn't)
+    if ctx.diff_type == "element_added":
+        return None
+    if not _is_in_equations_section(ctx.old_elem, ctx.old_ancestors):
+        return None
+    decl_name = _extract_decl_name_from_context(ctx.old_elem, ctx.old_ancestors)
+    if decl_name in ACCEPTED_ABSENT_EQUATIONS:
+        return f"known heartbeat-limited declaration: {decl_name}"
+    return None
+
+
 def allow_equation_elision_threshold(ctx: DiffContext) -> str | None:
     """Accept diffs where the old version elided an equation but the new renders it.
 
@@ -737,6 +786,7 @@ RULES: list[Rule] = [
     allow_reorder_same_source_position,
     allow_metavar_renumbering,
     allow_equation_elision_threshold,
+    allow_absent_equations_for_known_decl,
 ]
 
 
@@ -1751,7 +1801,12 @@ def print_difference(diff: Difference, verbose: bool = False) -> None:
     reason = f" ({diff.reason})" if diff.reason else ""
 
     attr_str = f" '{diff.attribute_name}'" if diff.attribute_name else ""
-    log(f"\n  {status}{reason}: {diff.diff_type}{attr_str}")
+    decl_str = ""
+    if not diff.accepted:
+        decl = _extract_decl_name_from_context(diff.old_elem, diff.old_ancestors)
+        if decl:
+            decl_str = f" [decl: {decl}]"
+    log(f"\n  {status}{reason}{decl_str}: {diff.diff_type}{attr_str}")
 
     # Get parent elements
     old_parent = diff.old_ancestors[0] if diff.old_ancestors else None

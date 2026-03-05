@@ -296,7 +296,8 @@ private structure NormState where
   fvarMap : Std.HashMap FVarId Nat := {}
 
 /--
-Finds the canonical representative of an equivalence class of `FVarId`s, induced by `FVarAliasInfo`.
+Finds the canonical representative of an equivalence class of `FVarId`s with path compression.
+The state map stores parent pointers; roots are absent from the map.
 -/
 private partial def findCanonical (id : FVarId) : StateM (Std.HashMap FVarId FVarId) FVarId := do
   match (← get).get? id with
@@ -306,12 +307,27 @@ private partial def findCanonical (id : FVarId) : StateM (Std.HashMap FVarId FVa
     if root != parent then modify (·.insert id root)
     return root
 
-/-- Traverses the format tree, building a mapping from `FVarId`s to their canonical representative. -/
-private def collectAliasBase (infos : PrettyPrinter.InfoPerPos) : StateM (Std.HashMap FVarId FVarId) Unit := do
-  for (_, i) in infos do
-    if let .ofFVarAliasInfo ai := i then
-      let canon ← findCanonical ai.baseId
-      modify (·.insert ai.id canon)
+/--
+Single pass over `infos` that simultaneously collects:
+ * Alias edges `(id → baseId)` from `FVarAliasInfo` nodes (these don't necessarily point at canonical
+   representatives)
+ * Per-fvar `(LocalContext, LocalDecl)` from `TermInfo` nodes
+-/
+private def collectAliasesAndDecls (infos : PrettyPrinter.InfoPerPos) :
+    Std.HashMap FVarId FVarId × Std.HashMap FVarId (LocalContext × LocalDecl) := Id.run do
+  let mut aliases : Std.HashMap FVarId FVarId := {}
+  let mut allDecls : Std.HashMap FVarId (LocalContext × LocalDecl) := {}
+  for (_, info) in infos do
+    match info with
+    | .ofFVarAliasInfo ai =>
+      aliases := aliases.insert ai.id ai.baseId
+    | .ofTermInfo ti =>
+      if let .fvar fvarId := ti.expr.consumeMData then
+        allDecls := allDecls.alter fvarId fun
+          | some x => some x
+          | none => ti.lctx.find? fvarId |>.map (ti.lctx, ·)
+    | _ => ()
+  return (aliases, allDecls)
 
 private structure NormContext where
   getInfo : Nat → Option Info
@@ -320,7 +336,9 @@ private structure NormContext where
 
 private abbrev NormM := ReaderT NormContext (StateT NormState MetaM)
 
-/-- Emits a tag into the shared array (deduplicating) and wraps it around the given format. -/
+/--
+Emits a tag into the shared array (deduplicating) and wraps it around the given format.
+-/
 private def addTag (tag : RenderedCode.Tag) (f' : Std.Format) : NormM Std.Format := do
   let s ← get
   match s.tagIndex.get? tag with
@@ -377,32 +395,9 @@ private partial def normalizeFormat : (fmt : Std.Format) →  NormM Std.Format
           addTag .otherExpr f'
         else
           let canonId := (← read).canonicalFVars.getD fvarId fvarId
-          if let some localVarIdx := (← get).fvarMap.get? canonId then
-            addTag (.localVar localVarIdx ti.isBinder) f'
-          else
-            let some decl := ti.lctx.find? canonId
-              | addTag .otherExpr f'
-            -- The Lean pretty printer ignores the local instance array, so we can just pass #[]
-            -- here. We save/restore the name generator to prevent these inner calls from advancing
-            -- the counter and causing names to differ in subsequent prettyPrintTerm calls - this
-            -- makes it easier to compare outputs from different doc-gen4 versions during
-            -- development.
-            let savedNGen ← getNGen
-            let typeFmt? ←
-              try
-                let ⟨typeFmt, typeInfos⟩ ←
-                  try withLCtx ti.lctx #[] (PrettyPrinter.ppExprWithInfos decl.type)
-                  finally setNGen savedNGen
-                let f ← withReader ({ · with getInfo := typeInfos.get?, shallow := true }) do
-                  normalizeFormat typeFmt
-                pure (some f)
-              catch _ => pure none
-
-            let localVarIdx := (← get).localVars.size
-            modify fun s => { s with
-              localVars := s.localVars.push (decl.userName, typeFmt?)
-              fvarMap := s.fvarMap.insert canonId localVarIdx }
-            addTag (.localVar localVarIdx ti.isBinder) f'
+          match (← get).fvarMap.get? canonId with
+          | some localVarIdx => addTag (.localVar localVarIdx ti.isBinder) f'
+          | none => addTag .otherExpr f'
       | .const n _ => addTag (.const n) f'
       | .sort level =>
         let former := if level.isZero then .prop else if level.isSucc then .type else .sort
@@ -411,19 +406,82 @@ private partial def normalizeFormat : (fmt : Std.Format) →  NormM Std.Format
     | some _ => addTag .otherExpr f'
 
 /--
-Convert a `Lean.Format` and its associated info map to a `FormatCode`.
-The `lookup` function resolves tag indices to elaboration info.
+Canonicalizes information about local variable declarations.
 
-Two passes are made:
-1. `FVarAliasInfo` is collected in order to discover equivalence classes of local variables
-2. Semantic tags are simplified and normalized, de-duplicating them and discarding unneeded information.
+First, the alias mapping is made canonical via path compression, so each fvar points directly to its
+canonical representative.
+
+Next, the type of each canonical fvar is pretty-printed and saved in the `NormM` state.
+-/
+private def computeCanonDecls
+    (rawAliases : Std.HashMap FVarId FVarId)
+    (allDecls   : Std.HashMap FVarId (LocalContext × LocalDecl)) :
+    NormM (Std.HashMap FVarId FVarId) := do
+  -- Path-compress alias edges so that every alias maps directly to its canonical representative
+  let canonMap : Std.HashMap FVarId FVarId :=
+    (do for (id, _) in rawAliases do discard (findCanonical id) : StateM _ _).run rawAliases |>.2
+
+  let canonDecls := buildCanonDecls canonMap allDecls
+
+  for (canonId, (lctx, decl)) in canonDecls do
+    -- Save/restore the name generator so these inner calls don't advance the counter.
+    let savedNGen ← getNGen
+    let typeFmt? ←
+      try
+        let ⟨typeFmt, typeInfos⟩ ←
+          try
+            -- The Lean pretty printer ignores the local instance array, so we pass #[].
+            withLCtx lctx #[] (PrettyPrinter.ppExprWithInfos decl.type)
+          finally setNGen savedNGen
+        let f ← withReader ({ · with getInfo := typeInfos.get?, shallow := true }) do
+          normalizeFormat typeFmt
+        pure (some f)
+      catch _ => pure none
+    let localVarIdx := (← get).localVars.size
+    modify fun s => { s with
+      localVars := s.localVars.push (decl.userName, typeFmt?)
+      fvarMap   := s.fvarMap.insert canonId localVarIdx
+    }
+  return canonMap
+where
+  buildCanonDecls
+      (canonMap : Std.HashMap FVarId FVarId)
+      (allDecls : Std.HashMap FVarId (LocalContext × LocalDecl)) :
+      Std.HashMap FVarId (LocalContext × LocalDecl) :=
+    let direct := allDecls.fold (init := ({} : Std.HashMap FVarId (LocalContext × LocalDecl)))
+      fun acc fvarId (lctx, decl) =>
+        if canonMap.getD fvarId fvarId == fvarId then
+          acc.insert fvarId (lctx, decl)
+        else acc
+    allDecls.fold (init := direct) fun acc fvarId (lctx, _) =>
+      let canonId := canonMap.getD fvarId fvarId
+      if acc.contains canonId then acc
+      else match lctx.find? canonId with
+        | some canonDecl => acc.insert canonId (lctx, canonDecl)
+        | none => acc
+
+/--
+Convert a `Lean.Format` and its associated info map to a `FormatCode`.
+
+Two passes are made in `NormM`:
+1. `collectAliasesAndDecls` (pure) discovers equivalence classes of local variables and
+   collects their `LocalDecl`s.
+2. `computeCanonDecls` resolves aliases, then pretty-prints each canonical type with a
+   fresh heartbeat budget, storing results in `NormState`.
+3. `normalizeFormat` walks the main format, emitting tags and looking up fvar indices from
+   the pre-populated `NormState.fvarMap`.
 -/
 def toFormatCode (fmt : Lean.Format) (infos : PrettyPrinter.InfoPerPos) : MetaM FormatCode := do
-  let lookup := infos.get?
-  let canonMap := (collectAliasBase infos |>.run {}).2
-  let ctx : NormContext := { getInfo := lookup, canonicalFVars := canonMap, shallow := false }
-  let (fmt', state) ← normalizeFormat fmt |>.run ctx |>.run {}
+  let (rawAliases, allDecls) := collectAliasesAndDecls infos
+  let ctx : NormContext := { getInfo := infos.get?, canonicalFVars := {}, shallow := false }
+  let (fmt', state) ← normalize rawAliases allDecls |>.run ctx |>.run {}
   return { state with fmt := fmt' }
+where
+  normalize (rawAliases : Std.HashMap FVarId FVarId)
+      (allDecls : Std.HashMap FVarId (LocalContext × LocalDecl)) : NormM Lean.Format := do
+    let canonMap ← computeCanonDecls rawAliases allDecls
+    let c ← read
+    withReader (fun _ => { c with canonicalFVars := canonMap }) (normalizeFormat fmt)
 
 private partial def renderFormatCode (tags : Array RenderedCode.Tag) :
     TaggedText (Nat × Nat) → RenderedCode
