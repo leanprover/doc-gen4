@@ -770,6 +770,34 @@ def allow_equation_elision_threshold(ctx: DiffContext) -> str | None:
 # Rules and code comparison therefore validate that new link targets *exist*,
 # not that they point to the *same* declaration as before.
 #
+def allow_new_equations_all_elided(ctx: DiffContext) -> str | None:
+    """Accept element_added when a whole equations <details> block is newly added but only
+    contains the elision message ("too large to render").
+
+    This happens when the new branch successfully detects that equations exist but are too
+    large, while the old branch showed nothing (e.g. due to different heartbeat handling).
+    The result is strictly more informative than before.
+    """
+    if ctx.diff_type != "element_added":
+        return None
+    elem = ctx.new_elem
+    if not isinstance(elem, Tag):
+        return None
+    # The added element must be a <details> with <summary>Equations</summary>
+    if elem.name != "details":
+        return None
+    summary = elem.find("summary")
+    if not isinstance(summary, Tag) or summary.get_text(strip=True) != "Equations":
+        return None
+    # All <li class="equation"> must contain only the elision text
+    lis = elem.find_all("li", class_="equation")
+    if not lis:
+        return None
+    if all(li.get_text(strip=True) == _ELISION_TEXT for li in lis):
+        return "new equations section contains only elision placeholders"
+    return None
+
+
 # The following rules handled one-time migration differences from the pre-database
 # pipeline to the database-backed pipeline and are intentionally excluded here:
 #   allow_extends_id_wrapper, allow_empty_equations_removal,
@@ -787,6 +815,7 @@ RULES: list[Rule] = [
     allow_metavar_renumbering,
     allow_equation_elision_threshold,
     allow_absent_equations_for_known_decl,
+    allow_new_equations_all_elided,
 ]
 
 
