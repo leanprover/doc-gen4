@@ -5,7 +5,7 @@
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "afe450eaab63fbc37bcb400d4db827538fcab805",
+   "rev": "2f75765354fd15b1505a7783ed0bb270437d2041",
    "name": "leansqlite",
    "manifestFile": "lake-manifest.json",
    "inputRev": "main",
