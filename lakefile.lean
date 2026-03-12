@@ -24,7 +24,7 @@ require Cli from git
   "https://github.com/leanprover/lean4-cli" @ "main"
 
 require leansqlite from git
-  "https://github.com/david-christiansen/leansqlite" @ "main"
+  "https://github.com/kim-em/leansqlite" @ "suppress-reducibility-warning"
 
 /--
 Obtains the subdirectory of the Lean package relative to the root of the enclosing git repository.
