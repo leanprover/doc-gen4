@@ -57,7 +57,7 @@ def getKind : DocInfo → String
 | classInductiveInfo _ => "class"
 | ctorInfo _ => "ctor" -- TODO: kind ctor support in js
 
-def getType : DocInfo → RenderedCode
+def getType : DocInfo → FormatCode
 | axiomInfo i => i.type
 | theoremInfo i => i.type
 | opaqueInfo i => i.type

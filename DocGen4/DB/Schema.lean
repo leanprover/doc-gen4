@@ -54,7 +54,6 @@ scoped elab "inductiveRepr![" types:ident,* "]" : term => do
 end Internals
 
 open Internals in
-open Lean.Widget in
 /--
 The datatypes that are serialized to the database. If they change, then the database should be
 rebuilt.
@@ -63,7 +62,9 @@ def serializedCodeTypeDefs : String :=
   inductiveRepr![
     SortFormer,
     RenderedCode.Tag,
-    TaggedText
+    Std.Format.FlattenBehavior,
+    Std.Format,
+    FormatCode
   ]
 
 def getDb (dbFile : System.FilePath) : IO SQLite := do
@@ -257,7 +258,6 @@ CREATE TABLE IF NOT EXISTS definition_equations (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
   code BLOB,
-  text_length INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE

@@ -192,7 +192,7 @@ def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
     res ← tryCatchRuntimeEx
       (do
         let config := {
-          maxHeartbeats := 5000000,
+          maxHeartbeats := 10000000,
           options := ← getOptions,
           fileName := ← getFileName,
           fileMap := ← getFileMap,
