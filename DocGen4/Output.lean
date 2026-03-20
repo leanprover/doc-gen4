@@ -270,8 +270,10 @@ def htmlPathToModuleName (docDir : System.FilePath) (htmlPath : System.FilePath)
     if relPath.endsWith ".html" then
       let withoutExt := relPath.dropEnd 5
       -- Convert path separators to dots
-      let name := withoutExt.replace "/" "." |>.replace "\\" "."
-      some name.toName
+      let name :=
+        withoutExt.split (fun c => c == '/' || c == '\\')
+          |>.fold (init := Name.anonymous) fun n s => .str n s.copy
+      some name
     else
       none
 
@@ -296,7 +298,12 @@ partial def scanModuleHtmlFiles (docDir : System.FilePath) : IO (Array Name) := 
         if skipFiles.contains entry.fileName then continue
         -- Convert file path to module name
         if let some modName := htmlPathToModuleName docDir entryPath then
-          result := result.push modName
+          if modName.isAnonymous then
+            -- This would otherwise trigger an infinite recursion in `Hierarchy.insert!`. We report it here
+            -- because it's the most useful place for understanding a bug in `htmlPathToModuleName`.
+            IO.eprintln "Failed to convert {entryPath} to a module name"
+          else
+            result := result.push modName
     return result
 
   scanDir docDir
