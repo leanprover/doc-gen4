@@ -214,6 +214,7 @@ where
       <*> FromBinary.deserializer
       <*> FromBinary.deserializer
 
+@[implicit_reducible]
 def versoDocStringToBinary (values : DocstringValues) : ToBinary VersoDocString where
   serializer
     | {text, subsections}, b =>
@@ -222,6 +223,7 @@ def versoDocStringToBinary (values : DocstringValues) : ToBinary VersoDocString 
       have : ToBinary ElabBlock := ⟨toBinaryElabBlock values⟩
       b |> ToBinary.serializer text |> ToBinary.serializer subsections
 
+@[implicit_reducible]
 def versoDocStringFromBinary (values : DocstringValues) : FromBinary VersoDocString where
   deserializer := do
     -- TODO customizable handling of Verso docstring extension data
@@ -229,6 +231,7 @@ def versoDocStringFromBinary (values : DocstringValues) : FromBinary VersoDocStr
     have : FromBinary ElabBlock := ⟨fromBinaryElabBlock values⟩
     .mk <$> FromBinary.deserializer <*> FromBinary.deserializer
 
+@[implicit_reducible]
 def versoDocStringQueryParam (values : DocstringValues) : SQLite.QueryParam VersoDocString :=
   have := versoDocStringToBinary values
   .asBlob
