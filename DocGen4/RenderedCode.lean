@@ -3,8 +3,14 @@ Copyright (c) 2021 Henrik Böving. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving, David Thrane Christiansen
 -/
-import Lean
+module
 import SQLite
+public import SQLite.Blob.Classes
+public import Lean.Widget.InteractiveCode
+public import Lean.Widget.TaggedText
+public import Lean.Data.Json.FromToJson.Basic
+
+public section
 
 /-!
 # Rendered Code and Format Code
@@ -57,17 +63,17 @@ inductive RenderedCode.Tag where
   | localVar (idx : Nat) (isBinder : Bool)
 deriving BEq, Hashable, Repr, ToBinary, FromBinary
 
-partial instance [ToBinary α] : ToBinary (Lean.Widget.TaggedText α) where
+partial instance [ToBinary α] : ToBinary (TaggedText α) where
   serializer := go
 where
   go
     | .text s, b => b.push 0 |> ToBinary.serializer s
     | .tag a t, b => b.push 1 |> ToBinary.serializer a |> go t
     | .append xs, b =>
-      have : ToBinary (Lean.Widget.TaggedText α) := ⟨go⟩
+      have : ToBinary (TaggedText α) := ⟨go⟩
       b.push 2 |> ToBinary.serializer xs
 
-partial instance [FromBinary α] : FromBinary (Lean.Widget.TaggedText α) where
+partial instance [FromBinary α] : FromBinary (TaggedText α) where
   deserializer := go
 where
   go := do
@@ -84,7 +90,7 @@ A simplified representation of code with semantic tags for rendering.
 Unlike `CodeWithInfos`, this only contains the information needed for HTML rendering
 (links to declarations, syntax highlighting) and can be serialized to/from the database.
 -/
-def RenderedCode := Lean.Widget.TaggedText RenderedCode.Tag
+@[expose] def RenderedCode := Lean.Widget.TaggedText RenderedCode.Tag
 deriving Inhabited, BEq, Repr, ToBinary, FromBinary
 
 def RenderedCode.empty : RenderedCode := .append #[]
