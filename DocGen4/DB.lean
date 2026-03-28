@@ -3,12 +3,21 @@ Copyright (c) 2026 Lean FRO, LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: David Thrane Christiansen
 -/
-import DocGen4.RenderedCode
-import SQLite
+module
+public import Lean.DocString.Extension
+import Std.Sync.Mutex
+
+public import SQLite
+
 import DocGen4.Helpers
-import DocGen4.DB.VersoDocString
+public import DocGen4.DB.VersoDocString
 import DocGen4.DB.Schema
-import DocGen4.DB.Read
+public import DocGen4.DB.Read
+public import DocGen4.Process.Analyze
+public import DocGen4.Process.Base
+import DocGen4.Process.DocInfo
+import DocGen4.RenderedCode
+public section
 
 /-!
 # Writing the Database

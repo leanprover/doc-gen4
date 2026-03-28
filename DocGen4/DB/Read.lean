@@ -3,9 +3,18 @@ Copyright (c) 2026 Lean FRO, LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: David Thrane Christiansen
 -/
-import DocGen4.RenderedCode
+module
+public import Lean.Environment
+public import Std.Data.HashMap
+import Std.Sync.Mutex
+
 import SQLite
-import DocGen4.DB.VersoDocString
+public import SQLite.QueryParam
+
+public import DocGen4.DB.VersoDocString
+public import DocGen4.Process.Analyze
+import DocGen4.RenderedCode
+public section
 
 /-!
 # Reading from the Database
