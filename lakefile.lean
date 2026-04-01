@@ -200,6 +200,53 @@ target bibPrepass : FilePath := do
       }
     return outputFile
 
+/--
+`DOCGEN_SKIP_COREDOC = true` to prevent generating the documentations for the core library.
+`DOCGEN_SKIP_COREDOC = false` is default.
+-/
+def skipCoreDoc : IO Bool := do
+  match ← IO.getEnv "DOCGEN_SKIP_COREDOC" with
+  | .none | .some "" | .some "0" | .some "false" => pure false
+  | .some "true" | .some "1" => pure true
+  | _ => error "$DOCGEN_SKIP_COREDOC should have a boolean value."
+
+/--
+`DOCGEN_SKIP_SOURCE_PARSING = true` to prevent finding the source file and estimating the scope it defined to better prining for the scoped notations.
+In this case, it prints the notations with the top scope.
+`DOCGEN_SKIP_SOURCE_PARSING = false` is default.
+-/
+def skipSourceParsing : IO Bool := do
+  match ← IO.getEnv "DOCGEN_SKIP_SOURCE_PARSING" with
+  | .none | .some "" | .some "0" | .some "false" => pure false
+  | .some "true" | .some "1" => pure true
+  | _ => error "$DOCGEN_SKIP_SOURCE_PARSING should have a boolean value."
+
+/--
+`DOCGEN_ENABLE_LOG = true` to enable the log file.
+`DOCGEN_ENABLE_LOG = false` is default.
+
+Set `DOCGEN_LOG_PATH` to specify the path where the log file will be created. If not specified, it creates `Log.log` at the build directory.
+-/
+def logPath : IO (Option FilePath) := do
+  match ← IO.getEnv "DOCGEN_ENABLE_LOG" with
+  | .none | .some "" | .some "0" | .some "false" => pure none
+  | .some "true" | .some "1" =>
+    match ← IO.getEnv "DOCGEN_LOG_PATH" with
+    | .none | .some "" => pure (some "Log.log")
+    | .some fp => pure (some fp)
+  | _ => error "$DOCGEN_ENABLE_LOG should have a boolean value."
+
+def additionalArgs (buildDir : FilePath) : IO (Array String) := do
+  let args := if (← skipSourceParsing) then #["--skipparsing"] else #[]
+  match (← logPath) with
+  | none => pure args
+  | some fp => pure (args ++ #["--log", ToString.toString (buildDir / fp)])
+
+def clearLog (buildDir : FilePath) : IO Unit := do
+  match (← logPath) with
+  | none => pure ()
+  | some fp => removeFileIfExists (buildDir / fp)
+
 def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
@@ -215,7 +262,7 @@ def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
       buildFileUnlessUpToDate' markerFile do
         proc {
           cmd := exeFile.toString
-          args := #["genCore", "--build", buildDir.toString, component.toString, "api-docs.db"]
+          args := #["genCore", "--build", buildDir.toString, component.toString, "api-docs.db"] ++ (← additionalArgs buildDir)
           env := ← getAugmentedEnv
         }
         createParentDirs markerFile
@@ -241,7 +288,7 @@ The marker file participates in Lake's dependency tracking, allowing for increme
 module_facet docInfo (mod) : FilePath := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
-  let coreJob ← coreDocs.fetch
+  let coreJob ← if (← skipCoreDoc) then (pure (pure #[])) else coreDocs.fetch
   let modJob ← mod.leanArts.fetch
   -- Build all documentation for imported modules
   let imports ← (← mod.imports.fetch).await
@@ -264,7 +311,7 @@ module_facet docInfo (mod) : FilePath := do
               let srcUri ← uriJob.await
               proc {
                 cmd := exeFile.toString
-                args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
+                args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri] ++ (← additionalArgs buildDir)
                 env := ← getAugmentedEnv
               }
               createParentDirs markerFile
@@ -288,7 +335,7 @@ package_facet docInfo (pkg) : FilePath := do
   let ws ← getWorkspace
   let allLibs := ws.packages.flatMap (·.leanLibs)
   let libDocJobs := Job.collectArray <| ← allLibs.mapM (fetch <| ·.facet `docInfo)
-  let coreJobs ← coreDocs.fetch
+  let coreJobs ← if (← skipCoreDoc) then (pure (pure #[])) else coreDocs.fetch
   let dbPath := pkg.buildDir / "api-docs.db"
   coreJobs.bindM fun _ => do
     libDocJobs.mapM fun _ =>
@@ -324,7 +371,7 @@ Returns an array of all generated file paths.
 def generateHtmlDocs (markerName : String) (rootMods : Array Module) (description : String) : FetchM (Job (Array FilePath)) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
-  let coreJob ← coreDocs.fetch
+  let coreJob ← if (← skipCoreDoc) then (pure (pure #[])) else coreDocs.fetch
   let docInfoJobs := Job.collectArray <| ← rootMods.mapM (fetch <| ·.facet `docInfo)
   let buildDir := (← getRootPackage).buildDir
   let basePath := buildDir / "doc"
@@ -358,6 +405,7 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
   let coreRoots := #[`Init, `Std, `Lake, `Lean]
   let rootNames := rootMods.map (·.name) ++ coreRoots
   let manifestFile := buildDir / "doc-manifest.json"
+  clearLog buildDir
   coreJob.bindM fun _ => do
     docInfoJobs.bindM fun _ => do
       bibPrepassJob.bindM fun _ => do
