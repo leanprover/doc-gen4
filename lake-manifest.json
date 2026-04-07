@@ -1,11 +1,11 @@
-{"version": "1.1.0",
+{"version": "1.2.0",
  "packagesDir": ".lake/packages",
  "packages":
  [{"url": "https://github.com/leanprover/leansqlite",
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "45cdcef29e303040f64cfbeeb9bb67d029e03007",
+   "rev": "4dfd48ca35193382ddf4c64eef5cdd4f6091bef3",
    "name": "leansqlite",
    "manifestFile": "lake-manifest.json",
    "inputRev": "main",
@@ -62,4 +62,5 @@
    "inherited": true,
    "configFile": "lakefile.toml"}],
  "name": "«doc-gen4»",
- "lakeDir": ".lake"}
+ "lakeDir": ".lake",
+ "fixedToolchain": false}
