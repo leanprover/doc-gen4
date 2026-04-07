@@ -278,6 +278,15 @@ private def findLinkableParent (name2ModIdx : Std.HashMap Name ModuleIdx) (name 
     findLinkableParent name2ModIdx parent
   | .anonymous => none
 
+def splitWhitespaces (s : String) : String × String × String :=
+  let length := s.length
+  let s := s.trimAsciiStart
+  let front := "".pushn ' ' (length - s.positions.length)
+  let length := s.positions.length
+  let s := s.trimAsciiEnd.copy
+  let back := "".pushn ' ' (length - s.length)
+  (front, s, back)
+
 /--
 Extract the module name from a private name prefix like `_private.Init.Prelude.0`.
 Returns the module name (e.g., `Init.Prelude`).

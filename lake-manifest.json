@@ -1,4 +1,4 @@
-{"version": "1.1.0",
+{"version": "1.2.0",
  "packagesDir": ".lake/packages",
  "packages":
  [{"url": "https://github.com/leanprover/leansqlite",
@@ -62,4 +62,5 @@
    "inherited": true,
    "configFile": "lakefile.toml"}],
  "name": "«doc-gen4»",
- "lakeDir": ".lake"}
+ "lakeDir": ".lake",
+ "fixedToolchain": false}

@@ -54,8 +54,6 @@ where
     | '"' => some "&quot;"
     | _ => none
 
-
-
 def attributesToString (attrs : Array (String × String)) :String :=
   attrs.foldl (fun acc (k, v) => acc ++ " " ++ k ++ "=\"" ++ escape v ++ "\"") ""
 
