@@ -76,22 +76,34 @@ def getProjectCommit (directory : System.FilePath := "." ) : IO String := do
 def filteredPath (path : FilePath) : List String := path.components.filter (· != ".")
 
 /--
-Turns a Github git remote URL into an HTTPS Github URL.
-Three link types from git supported:
+Turns a git remote URL into an HTTPS base URL for source linking.
+Supported link types:
 - https://github.com/org/repo
 - https://github.com/org/repo.git
 - git@github.com:org/repo.git
+- https://github.example.com/org/repo (GitHub Enterprise)
+- https://codeberg.org/org/repo.git (Codeberg/Forgejo/Gitea)
+- git@host:org/repo.git (any SSH remote)
+
+Note: Source links use GitHub's `/blob/COMMIT/path` convention.
+This is correct for GitHub and GitHub Enterprise. For Codeberg/Forgejo/Gitea
+(which use `/src/commit/COMMIT/path`), the source links will not resolve.
+Use `DOCGEN_SRC=file` as a workaround for non-GitHub hosts.
 -/
 def getGithubBaseUrl (url : String) : Option String :=
-  if url.startsWith "git@github.com:" && url.endsWith ".git" then
-    let url := url.drop "git@github.com:".length
-    let url := url.dropEnd ".git".length
-    .some s!"https://github.com/{url}"
-  else if url.startsWith "https://github.com/" then
-    if url.endsWith ".git" then
-      .some <| url.dropEnd ".git".length |>.copy
-    else
-      .some url
+  -- git@host:org/repo.git → https://host/org/repo
+  if url.startsWith "git@" && url.endsWith ".git" then
+    let rest := url.drop "git@".length |>.dropEnd ".git".length |>.toString
+    match rest.splitOn ":" with
+    | [host, path] => .some s!"https://{host}/{path}"
+    | _ => .none
+  -- https://host/org/repo[.git]
+  else if url.startsWith "https://" then
+    let stripped := if url.endsWith ".git" then url.dropEnd ".git".length |>.copy else url
+    -- Verify at least host/org/repo structure
+    let afterScheme := stripped.drop "https://".length |>.toString
+    let parts := afterScheme.splitOn "/"
+    if parts.length >= 3 then .some stripped else .none
   else
     .none
 
