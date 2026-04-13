@@ -95,15 +95,15 @@ def getGithubBaseUrl (url : String) : Option String :=
   if url.startsWith "git@" && url.endsWith ".git" then
     let rest := url.drop "git@".length |>.dropEnd ".git".length |>.toString
     match rest.splitOn ":" with
-    | [host, path] => .some s!"https://{host}/{path}"
-    | _ => .none
+    | [host, path] => some s!"https://{host}/{path}"
+    | _ => none
   -- https://host/org/repo[.git]
   else if url.startsWith "https://" then
     let stripped := if url.endsWith ".git" then url.dropEnd ".git".length |>.copy else url
     -- Verify at least host/org/repo structure
     let afterScheme := stripped.drop "https://".length |>.toString
     let parts := afterScheme.splitOn "/"
-    if parts.length >= 3 then .some stripped else .none
+    if parts.length >= 3 then some stripped else none
   else
     .none
 
