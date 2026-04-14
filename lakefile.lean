@@ -269,19 +269,25 @@ module_facet docInfo (mod) : FilePath := do
   coreJob.bindM fun _ => do
     depDocJobs.bindM fun _ => do
       bibPrepassJob.bindM fun _ => do
-        exeJob.bindM fun exeFile => do
-          modJob.mapM fun _ => do
-            buildFileUnlessUpToDate' markerFile do
-              let uriJob ← fetch <| mod.facet `srcUri
-              let srcUri ← uriJob.await
-              proc {
-                cmd := exeFile.toString
-                args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
-                env := ← getAugmentedEnv
-              }
-              createParentDirs markerFile
-              IO.FS.writeFile markerFile ""
-            return markerFile
+        exeJob.mapM fun exeFile => do
+          -- Ensure oleans are built, because we need to import them while analyzing modules.
+          -- However, we don't include their trace; this means that doc output can be cached
+          -- independently of oleans.
+          let _ ← modJob.await
+          -- Trace the source file so that changes to the module trigger rebuilds. Because we depend
+          -- on the docInfo facet of imported modules, we also depend on their source code.
+          addTrace (← fetchFileTrace mod.leanFile (text := true))
+          buildFileUnlessUpToDate' markerFile do
+            let uriJob ← fetch <| mod.facet `srcUri
+            let srcUri ← uriJob.await
+            proc {
+              cmd := exeFile.toString
+              args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
+              env := ← getAugmentedEnv
+            }
+            createParentDirs markerFile
+            IO.FS.writeFile markerFile ""
+          return markerFile
 
 /--
 Populates the database with information for all modules in a library.
