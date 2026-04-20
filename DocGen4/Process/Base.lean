@@ -3,9 +3,10 @@ Copyright (c) 2022 Henrik Böving. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
-
-import Lean
-import DocGen4.RenderedCode
+module
+public import Lean.Meta.Basic
+public import DocGen4.RenderedCode
+public section
 
 namespace DocGen4.Process
 open Lean Widget Meta
@@ -35,7 +36,7 @@ structure NameInfo where
   /--
   The pretty printed type of this name.
   -/
-  type : RenderedCode
+  type : FormatCode
   /--
   The doc string of the name if it exists.
   -/
@@ -49,7 +50,7 @@ structure Arg where
   /--
   The pretty printed binder syntax itself.
   -/
-  binder : RenderedCode
+  binder : FormatCode
   /--
   Whether the binder is implicit.
   -/
@@ -125,7 +126,7 @@ Information about a `def` declaration, note that partial defs are handled by `Op
 structure DefinitionInfo extends Info where
   isUnsafe : Bool
   hints : ReducibilityHints
-  equations : Option (Array RenderedCode)
+  equations : Option (Array FormatCode)
   equationsWereOmitted : Bool := false
   isNonComputable : Bool
   deriving Inhabited
@@ -170,7 +171,7 @@ structure StructureParentInfo where
   /-- Name of the projection function. -/
   projFn : Name
   /-- Pretty printed type. -/
-  type : RenderedCode
+  type : FormatCode
 
 /--
 Information about a `structure` declaration.
@@ -230,21 +231,11 @@ def DocInfo.toInfo : DocInfo → Info
   | .ctorInfo info => info
 
 /--
-Turns an `Expr` into a pretty printed `RenderedCode`.
+Turns an `Expr` into a `FormatCode` for storage in the database.
 -/
-def prettyPrintTerm (expr : Expr) : MetaM RenderedCode := do
+def prettyPrintTerm (expr : Expr) : MetaM FormatCode := do
   let ⟨fmt, infos⟩ ← PrettyPrinter.ppExprWithInfos expr
-  let tt := TaggedText.prettyTagged fmt
-  let ctx := {
-    env := ← getEnv
-    mctx := ← getMCtx
-    options := ← getOptions
-    currNamespace := ← getCurrNamespace
-    openDecls := ← getOpenDecls
-    fileMap := default,
-    ngen := ← getNGen
-  }
-  return renderTagged (← tagCodeInfos ctx infos tt)
+  toFormatCode fmt infos
 
 def isInstance (declName : Name) : MetaM Bool := do
   return (instanceExtension.getState (← getEnv)).instanceNames.contains declName
