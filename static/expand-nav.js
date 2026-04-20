@@ -26,7 +26,7 @@ function expandNav() {
 }
 
 var navFrame = document.querySelector('.navframe');
-if (navFrame.contentDocument.readyState === "complete") {
+if (navFrame.contentDocument.readyState === "complete" && navFrame.contentDocument.URL !== 'about:blank') {
     expandNav();
 } else {
     navFrame.addEventListener('load', expandNav);
