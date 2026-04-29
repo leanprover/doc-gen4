@@ -15,10 +15,19 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
+  let logFilePath := match p.flag? "log" with
+    | some dir => some (dir.as! String)
+    | none => none
   let dbFile := p.positionalArg! "db" |>.as! String
   let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
   let sourceUri := p.positionalArg! "sourceUri" |>.as! String
-  let doc ← load <| .analyzeConcreteModules relevantModules
+  let skipParsing := p.hasFlag "skipparsing"
+  let doc ← load (.analyzeConcreteModules relevantModules) !skipParsing
+  match logFilePath with
+    | some dir =>
+      let hdl ← IO.FS.Handle.mk dir IO.FS.Mode.append
+      hdl.putStr (ToString.toString doc.log)
+    | none => pure ()
   updateModuleDb builtinDocstringValues doc buildDir dbFile (some sourceUri)
   return 0
 
@@ -26,9 +35,18 @@ def runGenCoreCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
+  let logFilePath := match p.flag? "log" with
+    | some dir => some (dir.as! String)
+    | none => none
   let dbFile := p.positionalArg! "db" |>.as! String
   let module := p.positionalArg! "module" |>.as! String |> String.toName
-  let doc ← load <| .analyzePrefixModules module
+  let skipParsing := p.hasFlag "skipparsing"
+  let doc ← load (.analyzePrefixModules module) !skipParsing
+  match logFilePath with
+    | some dir =>
+      let hdl ← IO.FS.Handle.mk dir IO.FS.Mode.append
+      hdl.putStr (ToString.toString doc.log)
+    | none => pure ()
   updateModuleDb builtinDocstringValues doc buildDir dbFile none
   return 0
 
@@ -150,6 +168,8 @@ def singleCmd := `[Cli|
 
   FLAGS:
     b, build : String; "Build directory."
+    skipparsing; "Skip Parsing for the local scope."
+    log : String; "Path for the log file"
 
   ARGS:
     module : String; "The module to document."
@@ -163,6 +183,8 @@ def genCoreCmd := `[Cli|
 
   FLAGS:
     b, build : String; "Build directory."
+    skipparsing; "Skip Parsing for the local scope."
+    log : String; "Path for the log file"
 
   ARGS:
     module : String; "The core module prefix to document (e.g., Init, Lean)."
