@@ -3,8 +3,13 @@ Copyright (c) 2026 Lean FRO, LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: David Thrane Christiansen
 -/
+module
+public meta import Lean.Elab.Term.TermElabM
+
+public import SQLite
+
 import DocGen4.RenderedCode
-import SQLite
+public section
 
 /-!
 # Database Schema and Initialization
@@ -30,7 +35,7 @@ Extracts a deterministic string representation of an inductive type, which is us
 database schemas in which blobs implicitly depend on serializations of datatypes. Includes
 constructor names and their types.
 -/
-private def inductiveRepr (env : Environment) (name : Name) : String := Id.run do
+private meta def inductiveRepr (env : Environment) (name : Name) : String := Id.run do
   let some (.inductInfo info) := env.find? name | return s!"not found: {name}"
   let mut s := s!"inductive {name} : {info.type}\n"
   for ctor in info.ctors do
@@ -54,7 +59,6 @@ scoped elab "inductiveRepr![" types:ident,* "]" : term => do
 end Internals
 
 open Internals in
-open Lean.Widget in
 /--
 The datatypes that are serialized to the database. If they change, then the database should be
 rebuilt.
@@ -63,7 +67,9 @@ def serializedCodeTypeDefs : String :=
   inductiveRepr![
     SortFormer,
     RenderedCode.Tag,
-    TaggedText
+    Std.Format.FlattenBehavior,
+    Std.Format,
+    FormatCode
   ]
 
 def getDb (dbFile : System.FilePath) : IO SQLite := do
@@ -257,7 +263,6 @@ CREATE TABLE IF NOT EXISTS definition_equations (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,
   code BLOB,
-  text_length INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
   PRIMARY KEY (module_name, position, sequence),
   FOREIGN KEY (module_name, position) REFERENCES name_info(module_name, position) ON DELETE CASCADE

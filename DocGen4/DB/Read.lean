@@ -3,9 +3,18 @@ Copyright (c) 2026 Lean FRO, LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: David Thrane Christiansen
 -/
-import DocGen4.RenderedCode
+module
+public import Lean.Environment
+public import Std.Data.HashMap
+import Std.Sync.Mutex
+
 import SQLite
-import DocGen4.DB.VersoDocString
+public import SQLite.QueryParam
+
+public import DocGen4.DB.VersoDocString
+public import DocGen4.Process.Analyze
+import DocGen4.RenderedCode
+public section
 
 /-!
 # Reading from the Database
@@ -65,11 +74,11 @@ def _root_.SQLite.Stmt.bind [SQLite.NullableQueryParam α] (stmt : SQLite.Stmt) 
   SQLite.NullableQueryParam.bind stmt index param
 
 open SQLite.Blob in
-/-- Reads `RenderedCode` from a blob. -/
-def readRenderedCode (blob : ByteArray) : IO RenderedCode := do
+/-- Reads `FormatCode` from a blob. -/
+def readFormatCode (blob : ByteArray) : IO FormatCode := do
   match fromBinary blob with
   | .ok code => return code
-  | .error e => throw <| IO.userError s!"Failed to deserialize RenderedCode: {e}"
+  | .error e => throw <| IO.userError s!"Failed to deserialize FormatCode: {e}"
 
 
 open Lean SQLite.Blob in
@@ -203,7 +212,7 @@ private def ReadStmts.loadArgs (s : ReadStmts) (moduleName : String) (position :
   let mut args := #[]
   while (← s.loadArgsStmt.step) do
     let binderBlob ← s.loadArgsStmt.columnBlob 0
-    let binder ← readRenderedCode binderBlob
+    let binder ← readFormatCode binderBlob
     let isImplicit := (← s.loadArgsStmt.columnInt64 1) != 0
     args := args.push { binder, implicit := isImplicit }
   done s.loadArgsStmt
@@ -264,7 +273,7 @@ private def ReadStmts.loadDeclarationRange (s : ReadStmts) (moduleName : String)
 
 open Lean SQLite.Blob in
 private def ReadStmts.loadInfo (s : ReadStmts) (moduleName : String) (position : Int64) (name : Name) (typeBlob : ByteArray) (sorried : Bool) (render : Bool) : IO Process.Info := do
-  let type ← readRenderedCode typeBlob
+  let type ← readFormatCode typeBlob
   let doc ← s.loadDocstring moduleName position
   let args ← s.loadArgs moduleName position
   let attrs ← s.loadAttrs moduleName position
@@ -273,7 +282,7 @@ private def ReadStmts.loadInfo (s : ReadStmts) (moduleName : String) (position :
   return { name, type, doc, args, declarationRange := declRange, attrs, sorried, render }
 
 open Lean SQLite.Blob in
-private def ReadStmts.loadEquations (s : ReadStmts) (moduleName : String) (position : Int64) : IO (Option (Array RenderedCode) × Bool) := withDbContext "read:definition_equations" do
+private def ReadStmts.loadEquations (s : ReadStmts) (moduleName : String) (position : Int64) : IO (Option (Array FormatCode) × Bool) := withDbContext "read:definition_equations" do
   s.loadEqnsStmt.bind 1 moduleName
   s.loadEqnsStmt.bind 2 position
   if !(← s.loadEqnsStmt.step) then
@@ -281,13 +290,13 @@ private def ReadStmts.loadEquations (s : ReadStmts) (moduleName : String) (posit
     return (none, false)
   let mut eqns := #[]
   let mut wereOmitted := false
-  let processRow : IO (Option RenderedCode) := do
+  let processRow : IO (Option FormatCode) := do
     let colType ← s.loadEqnsStmt.columnType 0
     if colType == .null then
       return none
     else
       let blob ← s.loadEqnsStmt.columnBlob 0
-      return some (← readRenderedCode blob)
+      return some (← readFormatCode blob)
   match (← processRow) with
   | some code => eqns := eqns.push code
   | none => wereOmitted := true
@@ -319,7 +328,7 @@ private def ReadStmts.loadStructureParents (s : ReadStmts) (moduleName : String)
   while (← s.loadStructureParentsStmt.step) do
     let projFn := (← s.loadStructureParentsStmt.columnText 0).toName
     let typeBlob ← s.loadStructureParentsStmt.columnBlob 1
-    let type ← readRenderedCode typeBlob
+    let type ← readFormatCode typeBlob
     parents := parents.push { projFn, type }
   done s.loadStructureParentsStmt
   return parents
@@ -332,7 +341,7 @@ private def ReadStmts.loadStructureFieldArgs (s : ReadStmts) (moduleName : Strin
   let mut args := #[]
   while (← s.loadFieldArgsStmt.step) do
     let binderBlob ← s.loadFieldArgsStmt.columnBlob 0
-    let binder ← readRenderedCode binderBlob
+    let binder ← readFormatCode binderBlob
     let isImplicit := (← s.loadFieldArgsStmt.columnInt64 1) != 0
     args := args.push { binder, implicit := isImplicit }
   done s.loadFieldArgsStmt
@@ -348,7 +357,7 @@ private def ReadStmts.loadStructureFields (s : ReadStmts) (moduleName : String) 
     let fieldSeq ← stmt.columnInt64 0
     let name := (← stmt.columnText 1).toName
     let typeBlob ← stmt.columnBlob 2
-    let type ← readRenderedCode typeBlob
+    let type ← readFormatCode typeBlob
     let isDirect := (← stmt.columnInt64 3) != 0
     -- Columns 4-14 come from LEFT JOINs on name_info, declaration_markdown_docstrings, declaration_verso_docstrings, declaration_ranges
     let projFound := (← stmt.columnType 4) != .null
@@ -397,7 +406,7 @@ private def ReadStmts.loadStructureConstructor (s : ReadStmts) (moduleName : Str
     let typeBlob ← s.loadStructCtorStmt.columnBlob 1
     let ctorPos ← s.loadStructCtorStmt.columnInt64 2
     done s.loadStructCtorStmt
-    let type ← readRenderedCode typeBlob
+    let type ← readFormatCode typeBlob
     let doc ← s.loadDocstring moduleName ctorPos
     return some { name, type, doc }
   done s.loadStructCtorStmt
@@ -468,7 +477,7 @@ where
       return some <| .opaqueInfo { toInfo := info, definitionSafety := safety }
     done s.readOpaqueStmt
     return none
-  readDefinitionData : IO (Option (Bool × ReducibilityHints × Bool × Option (Array RenderedCode) × Bool)) := do
+  readDefinitionData : IO (Option (Bool × ReducibilityHints × Bool × Option (Array FormatCode) × Bool)) := do
     s.readDefinitionStmt.bind 1 moduleName
     s.readDefinitionStmt.bind 2 position
     if (← s.readDefinitionStmt.step) then
