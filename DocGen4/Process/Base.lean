@@ -232,7 +232,9 @@ def DocInfo.toInfo : DocInfo → Info
 /--
 Turns an `Expr` into a pretty printed `RenderedCode`.
 -/
-def prettyPrintTerm (expr : Expr) : MetaM RenderedCode := do
+def prettyPrintTerm (scope : Array Name) (expr : Expr) : MetaM RenderedCode := withoutModifyingEnv do
+  for ns in scope do
+    activateScoped ns
   let ⟨fmt, infos⟩ ← PrettyPrinter.ppExprWithInfos expr
   let tt := TaggedText.prettyTagged fmt
   let ctx := {

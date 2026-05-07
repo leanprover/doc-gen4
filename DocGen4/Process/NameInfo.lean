@@ -64,9 +64,9 @@ def getDocString? (env : Environment) (name : Name) : IO (Option (String ⊕ Ver
     return (·.map .inl) (← Lean.findDocString? env name)
 
 
-def NameInfo.ofTypedName (n : Name) (t : Expr) : MetaM NameInfo := do
+def NameInfo.ofTypedName (scope : Array Name) (n : Name) (t : Expr) : MetaM NameInfo := do
   let env ← getEnv
-  return { name := n, type := ← prettyPrintTerm t, doc := ← getDocString? env n}
+  return { name := n, type := ← prettyPrintTerm scope t, doc := ← getDocString? env n}
 
 /--
 Pretty prints a `Lean.Parser.Term.bracketedBinder`.
@@ -99,7 +99,9 @@ private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) :
   }
   return renderTagged (← Widget.tagCodeInfos ctx infos tt)
 
-def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
+def Info.ofTypedName (scope : Array Name) (n : Name) (t : Expr) : MetaM Info := withoutModifyingEnv do
+  for ns in scope do
+    activateScoped ns
   -- Use the main signature delaborator. We need to run sanitization, parenthesization, and formatting ourselves
   -- to be able to extract the pieces of the signature right before they are formatted
   -- and then format them individually.
@@ -126,7 +128,8 @@ def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
     }
   | none => panic! s!"{n} is a declaration without position"
 
-def Info.ofConstantVal (v : ConstantVal) : MetaM Info := do
+
+def Info.ofConstantVal (scope : Array Name) (v : ConstantVal) : MetaM Info := do
   let e := Expr.const v.name (v.levelParams.map mkLevelParam)
-  ofTypedName v.name (← inferType e)
+  ofTypedName scope v.name (← inferType e)
 end DocGen4.Process
