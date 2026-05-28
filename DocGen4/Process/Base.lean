@@ -18,10 +18,9 @@ abbrev AnalyzeM : Type → Type := ReaderT DocGenOptions MetaM
 def versoDocToMarkdown (v : VersoDocString) : String :=
   let { text, subsections } := v
   Doc.MarkdownM.run' do
-    for b in text do
-      Doc.ToMarkdown.toMarkdown b
-    for p in subsections do
-      Doc.ToMarkdown.toMarkdown p
+    let textBlocks ← text.mapM Doc.ToMarkdown.toMarkdown
+    let subsectionBlocks ← subsections.mapM Doc.ToMarkdown.toMarkdown
+    return Doc.joinBlocks (textBlocks ++ subsectionBlocks)
 
 
 /--
