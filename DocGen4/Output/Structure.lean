@@ -27,7 +27,7 @@ def fieldToHtml (structName : Name) (f : Process.FieldInfo) : HtmlM Html := do
   let args ← f.args.mapM argToHtml
   if f.isDirect then
     let name := f.name.toString
-    let doc : Array HTML ←
+    let doc : Array Html ←
       if let some doc := f.doc then
         let renderedDoc ← docStringToHtml doc name
         pure #[<div class="structure_field_doc">[renderedDoc]</div>]
