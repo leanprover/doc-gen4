@@ -2,7 +2,7 @@ import Lean
 import DocGen4.Process
 import DocGen4.Output.Base
 import DocGen4.Output.Module
-import Lean.Data.RBMap
+import Std.Data.TreeSet
 
 namespace DocGen4.Output
 
@@ -50,9 +50,9 @@ structure JsonIndexedModule where
 
 structure JsonIndex where
   declarations : List (String × JsonIndexedDeclarationInfo) := []
-  instances : Std.HashMap String (RBTree String Ord.compare) := ∅
+  instances : Std.HashMap String (Std.TreeSet String) := ∅
   modules : Std.HashMap String JsonIndexedModule := ∅
-  instancesFor : Std.HashMap String (RBTree String Ord.compare) := ∅
+  instancesFor : Std.HashMap String (Std.TreeSet String) := ∅
 
 instance : ToJson JsonHeaderIndex where
   toJson idx := Json.mkObj <| idx.declarations.map (fun (k, v) => (k, toJson v))
