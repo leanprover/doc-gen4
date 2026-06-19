@@ -3,10 +3,19 @@ Copyright (c) 2026 Lean FRO, LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: David Thrane Christiansen
 -/
+module
+public import Lean.Elab.DocString.Builtin
+public import Lean.DocString.Extension
+
+import SQLite
+public import SQLite.Blob.Classes
+public import SQLite.Blob.Instances
+public import SQLite.QueryParam
+
 import DocGen4.Process
 import DocGen4.RenderedCode
-import SQLite
 import DocGen4.Helpers
+public section
 
 /-!
 # Verso Docstring Serialization

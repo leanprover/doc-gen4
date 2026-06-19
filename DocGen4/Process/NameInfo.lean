@@ -3,11 +3,17 @@ Copyright (c) 2022 Henrik Böving. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
-import Lean
+module
+public import Lean.DocString.Extension
+public import Lean.DocString.Types
+public import Lean.Environment
+public import Lean.Meta.Basic
+public import Lean.PrettyPrinter.Delaborator
 
-import DocGen4.Process.Base
+public import DocGen4.Process.Base
 import DocGen4.Process.Attributes
 import DocGen4.RenderedCode
+public section
 
 namespace DocGen4.Process
 open Lean Meta
@@ -71,33 +77,13 @@ def NameInfo.ofTypedName (n : Name) (t : Expr) : MetaM NameInfo := do
 /--
 Pretty prints a `Lean.Parser.Term.bracketedBinder`.
 -/
-private def prettyPrintBinder (stx : Syntax) (infos : SubExpr.PosMap Elab.Info) : MetaM RenderedCode := do
+private def prettyPrintBinder (stx : Syntax) (infos : SubExpr.PosMap Elab.Info) : MetaM FormatCode := do
   let fmt ← PrettyPrinter.format Parser.Term.bracketedBinder.formatter stx
-  let tt := Widget.TaggedText.prettyTagged fmt
-  let ctx := {
-    env := ← getEnv
-    mctx := ← getMCtx
-    options := ← getOptions
-    currNamespace := ← getCurrNamespace
-    openDecls := ← getOpenDecls
-    fileMap := default,
-    ngen := ← getNGen
-  }
-  return renderTagged (← Widget.tagCodeInfos ctx infos tt)
+  toFormatCode fmt infos
 
-private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) : MetaM RenderedCode := do
+private def prettyPrintTermStx (stx : Term) (infos : SubExpr.PosMap Elab.Info) : MetaM FormatCode := do
   let fmt ← PrettyPrinter.formatTerm stx
-  let tt := Widget.TaggedText.prettyTagged fmt
-  let ctx := {
-    env := ← getEnv
-    mctx := ← getMCtx
-    options := ← getOptions
-    currNamespace := ← getCurrNamespace
-    openDecls := ← getOpenDecls
-    fileMap := default,
-    ngen := ← getNGen
-  }
-  return renderTagged (← Widget.tagCodeInfos ctx infos tt)
+  toFormatCode fmt infos
 
 def Info.ofTypedName (n : Name) (t : Expr) : MetaM Info := do
   -- Use the main signature delaborator. We need to run sanitization, parenthesization, and formatting ourselves

@@ -3,11 +3,16 @@ Copyright (c) 2022 Henrik Böving. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
+module
 import Lean
+public import Lean.Expr
+public import Lean.Meta.Basic
 
-import DocGen4.Process.Base
+import DocGen4.Process.Attributes
+public import DocGen4.Process.Base
 import DocGen4.Process.NameInfo
 import DocGen4.Process.DefinitionInfo
+public section
 
 namespace DocGen4.Process
 

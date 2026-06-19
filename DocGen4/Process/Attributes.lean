@@ -1,5 +1,19 @@
-import Lean
+module
+public import Lean.Attributes
+public import Lean.Compiler.ExternAttr
+public import Lean.Compiler.InlineAttrs
+import Lean.Compiler.IR.UnboxResult
+import Lean.Compiler.NeverExtractAttr
+public import Lean.Compiler.Specialize
+import Lean.Elab.App
+public import Lean.Environment
+public import Lean.Linter.Deprecated
 import Lean.ReducibilityAttrs
+import Lean.Compiler.ImplementedByAttr
+import Lean.Compiler.ExportAttr
+import Lean.Meta.Tactic.Simp.Attr
+import Lean.Compiler.CSimpAttr
+public section
 
 namespace DocGen4
 

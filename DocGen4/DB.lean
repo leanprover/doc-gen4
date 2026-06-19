@@ -3,12 +3,21 @@ Copyright (c) 2026 Lean FRO, LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: David Thrane Christiansen
 -/
-import DocGen4.RenderedCode
-import SQLite
+module
+public import Lean.DocString.Extension
+import Std.Sync.Mutex
+
+public import SQLite
+
 import DocGen4.Helpers
-import DocGen4.DB.VersoDocString
+public import DocGen4.DB.VersoDocString
 import DocGen4.DB.Schema
-import DocGen4.DB.Read
+public import DocGen4.DB.Read
+public import DocGen4.Process.Analyze
+public import DocGen4.Process.Base
+import DocGen4.Process.DocInfo
+import DocGen4.RenderedCode
+public section
 
 /-!
 # Writing the Database
@@ -68,7 +77,7 @@ structure WriteDB where
   saveAxiom (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
   saveOpaque (modName : String) (position : Int64) (safety : Lean.DefinitionSafety) : IO Unit
   saveDefinition (modName : String) (position : Int64) (isUnsafe : Bool) (hints : Lean.ReducibilityHints) (isNonComputable : Bool) : IO Unit
-  saveDefinitionEquation (modName : String) (position : Int64) (code : RenderedCode) (sequence : Int64) : IO Unit
+  saveDefinitionEquation (modName : String) (position : Int64) (code : FormatCode) (sequence : Int64) : IO Unit
   saveInstance (modName : String) (position : Int64) (className : String) : IO Unit
   saveInstanceArg (modName : String) (position : Int64) (sequence : Int64) (typeName : String) : IO Unit
   saveInductive (modName : String) (position : Int64) (isUnsafe : Bool) : IO Unit
@@ -77,10 +86,10 @@ structure WriteDB where
   saveStructure (modName : String) (position : Int64) (isClass : Bool) : IO Unit
   saveStructureConstructor (modName : String) (position : Int64) (ctorPos : Int64) (info : Process.NameInfo) : IO Unit
   /-- Save minimal info to name_info for name lookups (not for rendering) -/
-  saveNameOnly (modName : String) (position : Int64) (kind : String) (name : Lean.Name) (type : RenderedCode) (declRange : Lean.DeclarationRange) : IO Unit
-  saveStructureParent (modName : String) (position : Int64) (sequence : Int32) (projectionFn : String) (type : RenderedCode) : IO Unit
-  saveStructureField (modName : String) (position : Int64) (sequence : Int64) (projName : String) (type : RenderedCode) (isDirect : Bool) : IO Unit
-  saveStructureFieldArg (modName : String) (position : Int64) (fieldSeq : Int64) (argSeq : Int64) (binder : RenderedCode) (isImplicit : Bool) : IO Unit
+  saveNameOnly (modName : String) (position : Int64) (kind : String) (name : Lean.Name) (type : FormatCode) (declRange : Lean.DeclarationRange) : IO Unit
+  saveStructureParent (modName : String) (position : Int64) (sequence : Int32) (projectionFn : String) (type : FormatCode) : IO Unit
+  saveStructureField (modName : String) (position : Int64) (sequence : Int64) (projName : String) (type : FormatCode) (isDirect : Bool) : IO Unit
+  saveStructureFieldArg (modName : String) (position : Int64) (fieldSeq : Int64) (argSeq : Int64) (binder : FormatCode) (isImplicit : Bool) : IO Unit
   /-- Save an internal name (like a recursor) that should link to its target declaration -/
   saveInternalName (name : Lean.Name) (targetModule : String) (targetPosition : Int64) : IO Unit
   /-- Save a tactic defined in this module -/
@@ -114,7 +123,7 @@ instance : SQLite.QueryParam Lean.ReducibilityHints where
     | .regular i => SQLite.QueryParam.bind stmt index i.toNat.toInt64
 
 open SQLite.Blob in
-instance : SQLite.QueryParam RenderedCode where
+instance : SQLite.QueryParam FormatCode where
   bind stmt index code := Id.run do
     let str := ToBinary.serializer code .empty
     SQLite.QueryParam.bind stmt index str
@@ -172,7 +181,7 @@ private def WriteStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO
     saveAxiomStmt := ← sqlite.prepare "INSERT INTO axioms (module_name, position, is_unsafe) VALUES (?, ?, ?)"
     saveOpaqueStmt := ← sqlite.prepare "INSERT INTO opaques (module_name, position, safety) VALUES (?, ?, ?)"
     saveDefinitionStmt := ← sqlite.prepare "INSERT INTO definitions (module_name, position, is_unsafe, hints, is_noncomputable) VALUES (?, ?, ?, ?, ?)"
-    saveDefinitionEquationStmt := ← sqlite.prepare "INSERT INTO definition_equations (module_name, position, code, text_length, sequence) VALUES (?, ?, ?, ?, ?)"
+    saveDefinitionEquationStmt := ← sqlite.prepare "INSERT INTO definition_equations (module_name, position, code, sequence) VALUES (?, ?, ?, ?)"
     saveInstanceStmt := ← sqlite.prepare "INSERT INTO instances (module_name, position, class_name) VALUES (?, ?, ?)"
     saveInstanceArgStmt := ← sqlite.prepare "INSERT INTO instance_args (module_name, position, sequence, type_name) VALUES (?, ?, ?, ?)"
     saveInductiveStmt := ← sqlite.prepare "INSERT INTO inductives (module_name, position, is_unsafe) VALUES (?, ?, ?)"
@@ -285,15 +294,12 @@ private def WriteStmts.saveDefinition (s : WriteStmts) (modName : String) (posit
   s.saveDefinitionStmt.bind 5 isNonComputable
   run s.saveDefinitionStmt
 
-private def WriteStmts.saveDefinitionEquation (s : WriteStmts) (modName : String) (position : Int64) (code : RenderedCode) (sequence : Int64) : IO Unit := withDbContext "write:insert:definition_equations" do
-  let textLength := RenderedCode.textLength code
+private def WriteStmts.saveDefinitionEquation (s : WriteStmts) (modName : String) (position : Int64) (code : FormatCode) (sequence : Int64) : IO Unit := withDbContext "write:insert:definition_equations" do
   s.saveDefinitionEquationStmt.bind 1 modName
   s.saveDefinitionEquationStmt.bind 2 position
   s.saveDefinitionEquationStmt.bind 3 <|
-    if textLength < Process.equationLimit then some code
-    else none
-  s.saveDefinitionEquationStmt.bind 4 textLength.toInt64
-  s.saveDefinitionEquationStmt.bind 5 sequence
+    if code.exceedsLimit Process.equationLimit then none else some code
+  s.saveDefinitionEquationStmt.bind 4 sequence
   run s.saveDefinitionEquationStmt
 
 private def WriteStmts.saveInstance (s : WriteStmts) (modName : String) (position : Int64) (className : String) : IO Unit := withDbContext "write:insert:instances" do
@@ -345,7 +351,7 @@ private def WriteStmts.saveStructureConstructor (s : WriteStmts) (modName : Stri
   | some (.inr v) => s.saveVersoDocstring modName ctorPos v
   | none => pure ()
 
-private def WriteStmts.saveStructureParent (s : WriteStmts) (modName : String) (position : Int64) (sequence : Int32) (projectionFn : String) (type : RenderedCode) : IO Unit := withDbContext "write:insert:structure_parents" do
+private def WriteStmts.saveStructureParent (s : WriteStmts) (modName : String) (position : Int64) (sequence : Int32) (projectionFn : String) (type : FormatCode) : IO Unit := withDbContext "write:insert:structure_parents" do
   s.saveStructureParentStmt.bind 1 modName
   s.saveStructureParentStmt.bind 2 position
   s.saveStructureParentStmt.bind 3 sequence
@@ -354,7 +360,7 @@ private def WriteStmts.saveStructureParent (s : WriteStmts) (modName : String) (
   run s.saveStructureParentStmt
 
 -- Store projection function name directly; lookup happens at load time
-private def WriteStmts.saveStructureField (s : WriteStmts) (modName : String) (position : Int64) (sequence : Int64) (projName : String) (type : RenderedCode) (isDirect : Bool) : IO Unit := withDbContext "write:insert:structure_fields" do
+private def WriteStmts.saveStructureField (s : WriteStmts) (modName : String) (position : Int64) (sequence : Int64) (projName : String) (type : FormatCode) (isDirect : Bool) : IO Unit := withDbContext "write:insert:structure_fields" do
   s.saveStructureFieldStmt.bind 1 modName
   s.saveStructureFieldStmt.bind 2 position
   s.saveStructureFieldStmt.bind 3 sequence
@@ -363,7 +369,7 @@ private def WriteStmts.saveStructureField (s : WriteStmts) (modName : String) (p
   s.saveStructureFieldStmt.bind 6 isDirect
   run s.saveStructureFieldStmt
 
-private def WriteStmts.saveStructureFieldArg (s : WriteStmts) (modName : String) (position : Int64) (fieldSeq : Int64) (argSeq : Int64) (binder : RenderedCode) (isImplicit : Bool) : IO Unit := withDbContext "write:insert:structure_field_args" do
+private def WriteStmts.saveStructureFieldArg (s : WriteStmts) (modName : String) (position : Int64) (fieldSeq : Int64) (argSeq : Int64) (binder : FormatCode) (isImplicit : Bool) : IO Unit := withDbContext "write:insert:structure_field_args" do
   s.saveStructureFieldArgStmt.bind 1 modName
   s.saveStructureFieldArgStmt.bind 2 position
   s.saveStructureFieldArgStmt.bind 3 fieldSeq
@@ -372,7 +378,7 @@ private def WriteStmts.saveStructureFieldArg (s : WriteStmts) (modName : String)
   s.saveStructureFieldArgStmt.bind 6 isImplicit
   run s.saveStructureFieldArgStmt
 
-private def WriteStmts.saveNameOnly (s : WriteStmts) (modName : String) (position : Int64) (kind : String) (name : Lean.Name) (type : RenderedCode) (declRange : Lean.DeclarationRange) : IO Unit := withDbContext "write:insert:name_info:nameonly" do
+private def WriteStmts.saveNameOnly (s : WriteStmts) (modName : String) (position : Int64) (kind : String) (name : Lean.Name) (type : FormatCode) (declRange : Lean.DeclarationRange) : IO Unit := withDbContext "write:insert:name_info:nameonly" do
   s.saveNameOnlyStmt.bind 1 modName
   s.saveNameOnlyStmt.bind 2 position
   s.saveNameOnlyStmt.bind 3 kind

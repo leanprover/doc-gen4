@@ -3,16 +3,17 @@ Copyright (c) 2022 Henrik Böving. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
-
+module
 import Lean.Elab.Tactic.Doc
 import Lean.Meta.Basic
 import Lean.Parser.Extension
 import Std.Data.HashMap
 import Std.Data.HashSet
 
-import DocGen4.Process.Base
+public import DocGen4.Process.Base
 import DocGen4.Process.Hierarchy
 import DocGen4.Process.DocInfo
+public section
 
 namespace DocGen4.Process
 
@@ -192,7 +193,7 @@ def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
     res ← tryCatchRuntimeEx
       (do
         let config := {
-          maxHeartbeats := 5000000,
+          maxHeartbeats := 10000000,
           options := ← getOptions,
           fileName := ← getFileName,
           fileMap := ← getFileMap,
@@ -226,6 +227,7 @@ def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
 
 open Std (Iterator Iter)
 
+@[expose]
 def filterDocInfo [Iterator α Id ModuleMember] (ms : @Iter α ModuleMember) :=
   ms.filterMap fun
     | ModuleMember.docInfo i => some i
