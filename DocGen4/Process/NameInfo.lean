@@ -52,14 +52,15 @@ where
 
 open Lean.Parser.Tactic.Doc in
 open Lean.Parser.Term.Doc in
-def getDocString? (env : Environment) (name : Name) : IO (Option (String ⊕ VersoDocString)) := do
+def getDocString? (env : Environment) (name : Name) : IO (Option (String ⊕ (VersoDocString × String))) := do
   let name := alternativeOfTactic env name |>.getD name
   match (← findInternalDocString? env name) with
   | none => return none
   | some (.inr verso) =>
     let exts := getTacticExtensionText env name |>.map (#[·]) |>.getD #[]
     let spellings := getRecommendedSpellingText env name |>.map (#[·]) |>.getD #[]
-    return some <| .inr <| { verso with text := verso.text ++ exts ++ spellings }
+    let verso := { verso with text := verso.text ++ exts ++ spellings }
+    return some <| .inr (verso, ← versoDocToMarkdown env verso)
   | some (.inl _) =>
     return (·.map .inl) (← Lean.findDocString? env name)
 

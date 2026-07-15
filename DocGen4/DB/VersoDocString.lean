@@ -13,8 +13,8 @@ import DocGen4.Helpers
 
 Verso docstrings (`VersoDocString`) contain a tree of `Doc.Block`/`Doc.Inline` nodes, which can
 include extension points (`ElabInline`/`ElabBlock`) which are opaque `Dynamic` values identified by
-`Name`. Different Lean packages can register their own extension types, so we can't know all
-possible types ahead of time.
+their type `Name`. Different Lean packages can register their own extension types, so we can't know
+all possible types ahead of time.
 
 The serialization strategy is:
 * For each `ElabInline`/`ElabBlock`, look up a handler by name in `DocstringValues`.
@@ -55,10 +55,12 @@ private def toBinaryElab (vals : DocstringValues) (name : Name) (val : Dynamic) 
     b.push 1 |> ToBinary.serializer name |> ToBinary.serializer payload.size |> (· ++ payload)
 
 def toBinaryElabInline (vals : DocstringValues) : Serializer ElabInline
-  | { name, val }, b => toBinaryElab vals name val b
+  | .custom val, b => toBinaryElab vals val.typeName val b
+  | .deferred index, b => b.push 2 |> ToBinary.serializer index
 
 def toBinaryElabBlock (vals : DocstringValues) : Serializer ElabBlock
-  | { name, val }, b => toBinaryElab vals name val b
+  | .custom val, b => toBinaryElab vals val.typeName val b
+  | .deferred index, b => b.push 2 |> ToBinary.serializer index
 
 structure Unknown where
 deriving BEq, Hashable, Ord, DecidableEq, Inhabited, TypeName
@@ -66,30 +68,35 @@ deriving BEq, Hashable, Ord, DecidableEq, Inhabited, TypeName
 instance : Subsingleton Unknown where
   allEq := by intros; rfl
 
-private def fromBinaryElab (vals : DocstringValues) (label : String) : Deserializer (Name × Dynamic) := do
+private def fromBinaryElab (vals : DocstringValues) (label : String) : Deserializer (Dynamic ⊕ Nat) := do
   match (← Deserializer.byte) with
   | 0 =>
-    let name ← FromBinary.deserializer
-    pure (`unknown ++ name, .mk Unknown.mk)
+    let _ : Name ← FromBinary.deserializer
+    pure (.inl (.mk Unknown.mk))
   | 1 =>
     let name ← FromBinary.deserializer
     let len : Nat ← FromBinary.deserializer
     match vals.handlers.get? name with
     | none =>
       let _ ← Deserializer.nbytes len
-      pure (`unknown ++ name, .mk Unknown.mk)
+      pure (.inl (.mk Unknown.mk))
     | some d =>
       let val ← d.deserialize
-      pure (name, val)
-  | other => throw s!"Expected 0 or 1 for `{label}`'s tag, got `{other}`"
+      pure (.inl val)
+  | 2 =>
+    let index : Nat ← FromBinary.deserializer
+    pure (.inr index)
+  | other => throw s!"Expected 0, 1, or 2 for `{label}`'s tag, got `{other}`"
 
 def fromBinaryElabInline (vals : DocstringValues) : Deserializer ElabInline := do
-  let (name, val) ← fromBinaryElab vals "ElabInline"
-  pure { name, val }
+  match (← fromBinaryElab vals "ElabInline") with
+  | .inl val => pure (.custom val)
+  | .inr index => pure (.deferred index)
 
 def fromBinaryElabBlock (vals : DocstringValues) : Deserializer ElabBlock := do
-  let (name, val) ← fromBinaryElab vals "ElabBlock"
-  pure { name, val }
+  match (← fromBinaryElab vals "ElabBlock") with
+  | .inl val => pure (.custom val)
+  | .inr index => pure (.deferred index)
 
 partial instance [ToBinary i] : ToBinary (Doc.Inline i) where
   serializer := go

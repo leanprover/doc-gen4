@@ -381,12 +381,12 @@ partial def findAllReferences (refsMap : Std.HashMap String BibItem) (s : String
     ret
 
 /-- Convert docstring to Html. -/
-def docStringToHtml (docString : String ⊕ VersoDocString) (funName : String) : HtmlM (Array Html) := do
+def docStringToHtml (docString : String ⊕ (VersoDocString × String)) (funName : String) : HtmlM (Array Html) := do
   let docString :=
     match docString with
     | .inl md => md
     -- TODO: natively render Verso docstrings
-    | .inr v => versoDocToMarkdown v
+    | .inr (_, md) => md
   let refsMarkdown := "\n\n" ++ (String.join <|
     (findAllReferences (← read).refsMap docString).toList.map fun s =>
       s!"[{s}]: references.html#ref_{s}\n")

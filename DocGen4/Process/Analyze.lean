@@ -110,7 +110,7 @@ def getName : ModuleMember → Name
 | docInfo i => i.getName
 | modDoc _ => Name.anonymous
 
-def getDocString : ModuleMember → Option (String ⊕ VersoDocString)
+def getDocString : ModuleMember → Option (String ⊕ (VersoDocString × String))
 | docInfo i => i.getDocString
 | modDoc i => some (.inl i.doc)
 

@@ -86,10 +86,15 @@ structure WriteDB where
   /-- Save a tactic defined in this module -/
   saveTactic (modName : String) (tactic : Process.TacticInfo Process.MarkdownDocstring) : IO Unit
 
-def WriteDB.saveDocstring (db : WriteDB) (modName : String) (position : Int64) (text : String ⊕ Lean.VersoDocString) : IO Unit :=
+def WriteDB.saveDocstring (db : WriteDB) (modName : String) (position : Int64) (text : String ⊕ (Lean.VersoDocString × String)) : IO Unit :=
   match text with
   | .inl md => db.saveMarkdownDocstring modName position md
-  | .inr v => db.saveVersoDocstring modName position v
+  | .inr (v, md) => do
+    -- Save the pre-rendered Markdown alongside the Verso structure; the Markdown is used for
+    -- rendering (which requires no `Environment`) while the structure is preserved for future
+    -- native Verso rendering.
+    db.saveVersoDocstring modName position v
+    db.saveMarkdownDocstring modName position md
 
 instance : Coe WriteDB SQLite where
   coe := WriteDB.sqlite
@@ -245,7 +250,9 @@ private def WriteStmts.saveInfo (s : WriteStmts) (modName : String) (position : 
   run s.saveInfoStmt
   match info.doc with
   | some (.inl md) => s.saveMarkdownDocstring modName position md
-  | some (.inr v) => s.saveVersoDocstring modName position v
+  | some (.inr (v, md)) => do
+    s.saveVersoDocstring modName position v
+    s.saveMarkdownDocstring modName position md
   | none => pure ()
   for h : j in 0...info.args.size do
     let arg := info.args[j]
@@ -342,7 +349,9 @@ private def WriteStmts.saveStructureConstructor (s : WriteStmts) (modName : Stri
   run s.saveStructureConstructorStmt
   match info.doc with
   | some (.inl md) => s.saveMarkdownDocstring modName ctorPos md
-  | some (.inr v) => s.saveVersoDocstring modName ctorPos v
+  | some (.inr (v, md)) => do
+    s.saveVersoDocstring modName ctorPos v
+    s.saveMarkdownDocstring modName ctorPos md
   | none => pure ()
 
 private def WriteStmts.saveStructureParent (s : WriteStmts) (modName : String) (position : Int64) (sequence : Int32) (projectionFn : String) (type : RenderedCode) : IO Unit := withDbContext "write:insert:structure_parents" do

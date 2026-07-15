@@ -105,7 +105,7 @@ def getAttrs : DocInfo → Array String
 | classInductiveInfo i => i.attrs
 | ctorInfo i => i.attrs
 
-def getDocString : DocInfo → Option (String ⊕ VersoDocString)
+def getDocString : DocInfo → Option (String ⊕ (VersoDocString × String))
 | axiomInfo i => i.doc
 | theoremInfo i => i.doc
 | opaqueInfo i => i.doc
@@ -120,7 +120,7 @@ def getDocString : DocInfo → Option (String ⊕ VersoDocString)
 def getMarkdownDocString (i : DocInfo) : Option String :=
   i.getDocString.map fun
     | .inl md => md
-    | .inr v => versoDocToMarkdown v
+    | .inr (_, md) => md
 
 def shouldRender : DocInfo → Bool
 | axiomInfo i => i.render
