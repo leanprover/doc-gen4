@@ -91,6 +91,26 @@ The different options are:
 ## Disabling equations
 Generation of equations for definitions is enabled by default, but can be disabled by setting the `DISABLE_EQUATIONS` environment variable to `1`.
 
+## Documenting a project without its dependencies (interproject linking)
+By default `doc-gen4` documents a library together with its whole import closure, so a project
+built on top of a large dependency such as [mathlib4](https://github.com/leanprover-community/mathlib4)
+generates the dependency's documentation too (often several GB). If the dependency already
+publishes its own documentation, you can instead generate pages for *only your own* modules and
+link every reference to the dependency out to its hosted docs, by setting two environment variables:
+
+ * `DOCGEN_LOCAL_MODULE_ROOTS` — a comma-separated list of the top-level module namespaces that
+   belong to your project, e.g. `MyProject` (or `MyProject,MyProjectTest`). Modules whose root is
+   not in this list are treated as *external*: their pages are not generated.
+ * `DOCGEN_DEPS_DOCS_URL` — the base URL of the dependency's documentation site, e.g.
+   `https://leanprover-community.github.io/mathlib4_docs`.
+
+With both set, references to a declaration in an external module link into that site's `/find`
+resolver (`…/find/?pattern=<declaration>#doc`), which looks the declaration up by name and is
+therefore robust to the dependency's documentation being built from a slightly different revision
+than the one you are linking against; module-level links point directly at the corresponding page.
+When `DOCGEN_LOCAL_MODULE_ROOTS` is unset the behaviour is unchanged, i.e. the full import closure
+is documented.
+
 ## How does `docs#Nat.add` from the Lean Zulip work?
 If someone sends a message that contains `docs#Nat.add` on the Lean Zulip this will
 automatically link to `Nat.add` from the `mathlib4` documentation. The way that this

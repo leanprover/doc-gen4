@@ -89,13 +89,22 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let linkCtx ← db.loadLinkingContext
 
   -- Determine which modules to generate HTML for
-  let targetModules ←
+  let targetModulesAll ←
     if moduleRoots.isEmpty then
       pure linkCtx.moduleNames
     else
       db.getTransitiveImports moduleRoots
 
-  let baseConfig ← getSimpleBaseContext buildDir (Hierarchy.fromArray targetModules)
+  let baseConfig ← getSimpleBaseContext buildDir (Hierarchy.fromArray targetModulesAll)
+
+  -- Interproject linking: when `localModuleRoots` is configured (via `DOCGEN_LOCAL_MODULE_ROOTS`),
+  -- only generate pages for the project's own modules. The excluded (external, e.g. Mathlib)
+  -- modules stay in the linking context so references to them still resolve, but their links
+  -- point at the dependency documentation site instead of local pages (see `moduleIsExternal`).
+  let targetModules :=
+    if baseConfig.localModuleRoots.isEmpty then targetModulesAll
+    else targetModulesAll.filter (fun m => baseConfig.localModuleRoots.contains m.getRoot)
+
   -- Add `references` pseudo-module to hierarchy only when bibliography data exists
   let hierarchy := Hierarchy.fromArray
     (if baseConfig.refs.isEmpty then targetModules else targetModules.push `references)

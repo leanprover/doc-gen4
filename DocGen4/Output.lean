@@ -184,12 +184,30 @@ def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) :
     | .error err =>
       throw <| IO.userError s!"Failed to parse 'references.json': {err}"
     | .ok (refs : Array BibItem) =>
+      -- Optional interproject linking: a documentation site for this project's dependencies
+      -- (e.g. Mathlib) plus the set of module namespaces that are local to this project. When
+      -- both are set, modules outside `localModuleRoots` are treated as external — their pages
+      -- are not generated and references to them link to `depsDocsUrl?`. See
+      -- `SiteBaseContext.depsDocsUrl?`, `SiteBaseContext.localModuleRoots`, and `moduleIsExternal`.
+      let depsDocsUrl? ← do
+        match ← IO.getEnv "DOCGEN_DEPS_DOCS_URL" with
+        | some url =>
+          let u := url.trimAscii.copy
+          if u.isEmpty then pure none else pure (some u)
+        | none => pure none
+      let localModuleRoots ← do
+        match ← IO.getEnv "DOCGEN_LOCAL_MODULE_ROOTS" with
+        | some s =>
+          pure <| s.splitOn "," |>.map (·.trimAscii.copy) |>.filter (! ·.isEmpty) |>.map String.toName |>.toArray
+        | none => pure #[]
       return {
         buildDir := buildDir
         depthToRoot := 0
         currentName := none
         hierarchy := hierarchy
         refs := refs
+        depsDocsUrl?
+        localModuleRoots
       }
 
 def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) (tacticInfo : Array (Process.TacticInfo Html)) : IO Unit := do
