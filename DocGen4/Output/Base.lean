@@ -70,6 +70,23 @@ structure SiteBaseContext where
   The list of references, as an array.
   -/
   refs : Array BibItem
+  /--
+  Base URL of a documentation site for this project's dependencies, e.g. Mathlib's
+  `https://leanprover-community.github.io/mathlib4_docs`. Set via the `DOCGEN_DEPS_DOCS_URL`
+  environment variable. When set together with `localModuleRoots`, references to declarations
+  that live in *external* modules (see `localModuleRoots`) are linked into that site's `/find`
+  resolver — which looks a declaration up by name, tolerating version skew — instead of being
+  linked locally. `none` reproduces the previous behaviour.
+  -/
+  depsDocsUrl? : Option String := none
+  /--
+  The top-level module namespaces that belong to *this* project, e.g. `#[`TauCeti]`. Set via
+  the `DOCGEN_LOCAL_MODULE_ROOTS` environment variable (comma-separated). A module is
+  "external" when this array is non-empty and the module's root is not one of these — its pages
+  are not generated and references to it link to `depsDocsUrl?`. Empty (the default) means
+  every module is local, reproducing the previous behaviour.
+  -/
+  localModuleRoots : Array Name := #[]
 
 /--
 Declaration decorator function type: given a module name, declaration name, and declaration kind,
@@ -183,11 +200,46 @@ def templateExtends {α β} {m} [Bind m] (base : α → m β) (new : m α) : m �
 def templateLiftExtends {α β} {m n} [Bind m] [MonadLiftT n m] (base : α → n β) (new : m α) : m β :=
   new >>= (monadLift ∘ base)
 /--
-Returns the doc-gen4 link to a module name.
+The base URL of the dependency documentation site, with any trailing slash removed, or `none`
+when interproject linking is not configured.
 -/
-def moduleNameToLink (n : Name) : BaseHtmlM String := do
+def depsDocsBaseUrl? : BaseHtmlM (Option String) := do
+  match (← read).depsDocsUrl? with
+  | some url => return some (if url.endsWith "/" then (url.dropEnd 1).copy else url)
+  | none => return none
+
+/--
+Whether `mod` belongs to an external dependency rather than to this project, and therefore
+should be linked to `depsDocsUrl?` instead of documented locally. A module is external only
+when `localModuleRoots` is non-empty (interproject linking enabled) and the module's root
+namespace is not among them.
+-/
+def moduleIsExternal (mod : Name) : BaseHtmlM Bool := do
+  let roots := (← read).localModuleRoots
+  if roots.isEmpty then
+    return false
+  else
+    return !roots.contains mod.getRoot
+
+/-- The relative on-site path for a module, e.g. `../Foo/Bar.html`. -/
+def moduleOnSitePath (n : Name) : BaseHtmlM String := do
   let parts := n.components.map (Name.toString (escape := False))
   return (← getRoot) ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+
+/--
+Returns the doc-gen4 link to a module name. For a module belonging to an external dependency
+(see `moduleIsExternal`), this points at the configured dependency documentation site; for a
+local module it is a relative on-site link, as before.
+-/
+def moduleNameToLink (n : Name) : BaseHtmlM String := do
+  match ← depsDocsBaseUrl? with
+  | some base =>
+    if ← moduleIsExternal n then
+      let parts := n.components.map (Name.toString (escape := False))
+      return base ++ "/" ++ (parts.intersperse "/").foldl (· ++ ·) "" ++ ".html"
+    else
+      moduleOnSitePath n
+  | none => moduleOnSitePath n
 
 /--
 Returns the HTML doc-gen4 link to a module name.
@@ -226,11 +278,18 @@ are used in documentation generation, notably JS and CSS ones.
 end Static
 
 /--
-Returns the doc-gen4 link to a declaration name.
+Returns the doc-gen4 link to a declaration name. When the declaration lives in an external
+dependency module (see `moduleIsExternal`), the link goes to the dependency documentation
+site's `/find` resolver, which looks the declaration up by name — this is robust to the
+dependency's docs being built from a slightly different revision than the one linked against.
+Otherwise it is a local relative link, as before.
 -/
 def declNameToLink (name : Name) : HtmlM String := do
   let res ← getResult
   let module := res.moduleNames[res.name2ModIdx[name]!.toNat]!
+  if let some base ← depsDocsBaseUrl? then
+    if ← moduleIsExternal module then
+      return base ++ "/find/?pattern=" ++ name.toString ++ "#doc"
   return (← moduleNameToLink module) ++ "#" ++ name.toString
 
 /--
