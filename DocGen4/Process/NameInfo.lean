@@ -47,7 +47,25 @@ where
     .mk <| (#[.para ·]) <| match additionalInfoLines with
     | none | some [] => firstLine ++ #[.text ".", .linebreak "\n", .linebreak "\n"]
     | some [l] => firstLine ++ #[.text s!" ({l.trimAsciiEnd}).", .linebreak "\n", .linebreak "\n"]
-    | some ls => firstLine ++ #[.text ".", .linebreak "\n", .linebreak "\n", .text (String.join ls), .linebreak "\n", .linebreak "\n"]
+    | some ls => firstLine ++ #[.text ".", .linebreak "\n", .linebreak "\n", .text (joinAdditionalInfo ls),
+        .linebreak "\n", .linebreak "\n"]
+  /--
+  Join wrapped `recommended_spelling` description lines with spaces, while blank lines
+  remain paragraph boundaries.
+  -/
+  joinAdditionalInfo (ls : List String) : String := Id.run do
+    let mut paras : Array String := #[]
+    let mut cur : Array String := #[]
+    for l in ls do
+      if l.isEmpty then
+        if cur.size ≠ 0 then
+          paras := paras.push (" ".intercalate cur.toList)
+          cur := #[]
+      else
+        cur := cur.push l.trimAsciiEnd
+    if cur.size ≠ 0 then
+      paras := paras.push (" ".intercalate cur.toList)
+    "\n\n".intercalate paras.toList
 
 
 open Lean.Parser.Tactic.Doc in
