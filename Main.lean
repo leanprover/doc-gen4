@@ -101,6 +101,19 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   -- only generate pages for the project's own modules. The excluded (external, e.g. Mathlib)
   -- modules stay in the linking context so references to them still resolve, but their links
   -- point at the dependency documentation site instead of local pages (see `moduleIsExternal`).
+  let missingDocsRoots := targetModulesAll.foldl (init := #[]) fun roots mod =>
+    let root := mod.getRoot
+    if !baseConfig.localModuleRoots.isEmpty &&
+        !baseConfig.localModuleRoots.contains root &&
+        (baseConfig.depsDocsUrlFor? mod).isNone &&
+        !roots.contains root then
+      roots.push root
+    else
+      roots
+  if !missingDocsRoots.isEmpty then
+    let roots := ", ".intercalate <| missingDocsRoots.toList.map Name.toString
+    throw <| IO.userError s!"No dependency documentation URL configured for external module roots: {roots}. Set DOCGEN_DEPS_DOCS_URLS or DOCGEN_DEPS_DOCS_URL."
+
   let targetModules :=
     if baseConfig.localModuleRoots.isEmpty then targetModulesAll
     else targetModulesAll.filter (fun m => baseConfig.localModuleRoots.contains m.getRoot)
