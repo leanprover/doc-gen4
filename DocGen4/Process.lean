@@ -9,6 +9,7 @@ import DocGen4.Process.Attributes
 import DocGen4.Process.AxiomInfo
 import DocGen4.Process.Base
 import DocGen4.Process.ClassInfo
+import DocGen4.Process.DeclMath
 import DocGen4.Process.DefinitionInfo
 import DocGen4.Process.DocInfo
 import DocGen4.Process.Hierarchy

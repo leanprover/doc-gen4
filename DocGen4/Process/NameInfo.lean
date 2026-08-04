@@ -7,6 +7,7 @@ import Lean
 
 import DocGen4.Process.Base
 import DocGen4.Process.Attributes
+import DocGen4.Process.DeclMath
 import DocGen4.RenderedCode
 
 namespace DocGen4.Process
@@ -71,15 +72,26 @@ open Lean.Parser.Tactic.Doc in
 open Lean.Parser.Term.Doc in
 def getDocString? (env : Environment) (name : Name) : IO (Option (String ⊕ (VersoDocString × String))) := do
   let name := alternativeOfTactic env name |>.getD name
+  -- Extra rendered documentation attached by a downstream library (see `DocGen4.Process.DeclMath`),
+  -- appended to the docstring's Markdown so it flows through the normal, MathJax-processed docstring
+  -- rendering path (`Output.docStringToHtml` consumes exactly this Markdown for both cases below).
+  let math? := getDeclMath? env name
+  let appendMath (md : String) : String :=
+    match math? with
+    | some m => md ++ "\n\n" ++ m
+    | none   => md
   match (← findInternalDocString? env name) with
-  | none => return none
+  | none => return math?.map .inl
   | some (.inr verso) =>
     let exts := getTacticExtensionText env name |>.map (#[·]) |>.getD #[]
     let spellings := getRecommendedSpellingText env name |>.map (#[·]) |>.getD #[]
     let verso := { verso with text := verso.text ++ exts ++ spellings }
-    return some <| .inr (verso, ← versoDocToMarkdown env verso)
+    return some <| .inr (verso, appendMath (← versoDocToMarkdown env verso))
   | some (.inl _) =>
-    return (·.map .inl) (← Lean.findDocString? env name)
+    match (← Lean.findDocString? env name), math? with
+    | some doc, _      => return some (.inl (appendMath doc))
+    | none,     some m => return some (.inl m)
+    | none,     none   => return none
 
 
 def NameInfo.ofTypedName (n : Name) (t : Expr) : MetaM NameInfo := do
