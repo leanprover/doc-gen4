@@ -18,7 +18,7 @@ def envOfImports (imports : Array Name) : IO Environment := do
 Load a list of modules from the current Lean search path into an `Environment`
 to process for documentation.
 -/
-def load (task : Process.AnalyzeTask) : IO Process.AnalyzerResult := do
+def load (task : Process.AnalyzeTask) (sourceParsing : Bool := true) : IO Process.AnalyzerResult := do
   initSearchPath (← findSysroot)
   let env ← envOfImports task.getLoad
   let config := {
@@ -35,6 +35,6 @@ def load (task : Process.AnalyzeTask) : IO Process.AnalyzerResult := do
     fileMap := default,
   }
 
-  Prod.fst <$> Meta.MetaM.toIO (Process.process task) config { env := env } {} {}
+  Prod.fst <$> Meta.MetaM.toIO (Process.process task sourceParsing) config { env := env } {} {}
 
 end DocGen4

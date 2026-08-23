@@ -12,11 +12,11 @@ namespace DocGen4.Process
 
 open Lean Meta
 
-def AxiomInfo.ofAxiomVal (v : AxiomVal) : MetaM AxiomInfo := do
-  let info ← Info.ofConstantVal v.toConstantVal
+def AxiomInfo.ofAxiomVal (scope : Array Name) (v : AxiomVal) : MetaM AxiomInfo := do
+  let info ← Info.ofConstantVal scope v.toConstantVal
   return {
     toInfo := info,
     isUnsafe := v.isUnsafe
-  } 
+  }
 
 end DocGen4.Process

@@ -13,12 +13,12 @@ import DocGen4.Process.InductiveInfo
 
 namespace DocGen4.Process
 
-open Lean Meta 
+open Lean Meta
 
-def ClassInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInfo := do
-  StructureInfo.ofInductiveVal v
+def ClassInfo.ofInductiveVal (scope : Array Name) (v : InductiveVal) : MetaM ClassInfo := do
+  StructureInfo.ofInductiveVal scope v
 
-def ClassInductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM ClassInductiveInfo := do
-  InductiveInfo.ofInductiveVal v
+def ClassInductiveInfo.ofInductiveVal (scope : Array Name) (v : InductiveVal) : MetaM ClassInductiveInfo := do
+  InductiveInfo.ofInductiveVal scope v
 
 end DocGen4.Process

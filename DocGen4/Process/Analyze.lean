@@ -13,6 +13,7 @@ import Std.Data.HashSet
 import DocGen4.Process.Base
 import DocGen4.Process.Hierarchy
 import DocGen4.Process.DocInfo
+import DocGen4.Process.SourceParsing
 
 namespace DocGen4.Process
 
@@ -92,6 +93,10 @@ structure AnalyzerResult where
   empty.
   -/
   containedNames : Std.HashMap Name (Std.HashSet Name) := {}
+  /--
+  A log used for Debugging an analyzed result
+   -/
+  log : Format := ""
   deriving Inhabited
 
 namespace ModuleMember
@@ -168,7 +173,7 @@ def mkOptions : IO DocGenOptions := do
 Run the doc-gen analysis on all modules that are loaded into the `Environment`
 of this `MetaM` run and mentioned by the `AnalyzeTask`.
 -/
-def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
+def process (task : AnalyzeTask) (sourceParsing : Bool := true) : MetaM AnalyzerResult := do
   let env ← getEnv
   let allModules := env.header.moduleNames
   let relevantModules :=
@@ -183,11 +188,33 @@ def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
 
   let options ← liftM mkOptions
 
+  let mut modScope := Std.HashMap.emptyWithCapacity
+  let mut log : Format := ""
+
+  if sourceParsing then
+    for n in relevantModules do
+      let sinfo ← getScopeInfo n
+      modScope := modScope.insertIfNew n sinfo.1
+      log := log ++ .line ++ sinfo.2
+
+  let modScopeDefault := Std.HashMap.map (fun _ m ↦ maximalScope m) modScope
+
   for (name, cinfo) in env.constants do
     let some modidx := env.getModuleIdxFor? name | unreachable!
     let moduleName := allModules[modidx]!
     if !relevantModules.contains moduleName then
       continue
+
+    let scope :=
+      if sourceParsing then
+        match modScope[moduleName]? with
+        | none => #[]
+        | some m =>
+          match m[name]? with
+          | none => modScopeDefault[moduleName]!
+          | some sc => sc
+      else
+        #[]
 
     res ← tryCatchRuntimeEx
       (do
@@ -197,7 +224,7 @@ def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
           fileName := ← getFileName,
           fileMap := ← getFileMap,
         }
-        let analysis ← Prod.fst <$> ((DocInfo.ofConstant (name, cinfo)).run options).toIO config { env := env } {} {}
+        let analysis ← Prod.fst <$> ((DocInfo.ofConstant scope (name, cinfo)).run options).toIO config { env := env } {} {}
         if let some dinfo := analysis then
           let moduleName := allModules[modidx]!
           let module := res[moduleName]!
@@ -222,6 +249,7 @@ def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
     name2ModIdx := env.const2ModIdx,
     moduleNames := allModules,
     moduleInfo := res,
+    log := log
   }
 
 open Std (Iterator Iter)
