@@ -3,8 +3,10 @@ Copyright (c) 2026 Lean FRO, LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: David Thrane Christiansen
 -/
+module
 import Std.Data.Iterators
 
+public section
 namespace DocGen4
 
 open Std Iterators
@@ -19,6 +21,7 @@ structure ChunkArray α where
 def chunked (xs : Array α) (n : Nat) (ok : n > 0 := by grind) : Iter (α := ChunkArray α) (Subarray α) :=
   Iter.mk (ChunkArray.mk xs n 0)
 
+@[expose]
 def ChunkArray.PlausibleStep (it : IterM (α := ChunkArray α) m (Subarray α)) :
     (step : IterStep (IterM (α := ChunkArray α) m (Subarray α)) (Subarray α)) → Prop
   | .yield it' v  =>

@@ -3,10 +3,14 @@ Copyright (c) 2022 Henrik Böving. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
-import Lean
+module
+public import Lean.Declaration
+public import Lean.Meta.Basic
 
-import DocGen4.Process.Base
+public import DocGen4.Process.Base
 import DocGen4.Process.NameInfo
+public section
+
 
 namespace DocGen4.Process
 
@@ -17,6 +21,6 @@ def AxiomInfo.ofAxiomVal (v : AxiomVal) : MetaM AxiomInfo := do
   return {
     toInfo := info,
     isUnsafe := v.isUnsafe
-  } 
+  }
 
 end DocGen4.Process

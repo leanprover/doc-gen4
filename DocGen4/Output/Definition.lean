@@ -8,8 +8,8 @@ namespace Output
 open scoped DocGen4.Jsx
 open Lean Widget
 
-def equationToHtml (c : RenderedCode) : HtmlM Html := do
-  return <li class="equation">[← renderedCodeToHtml c]</li>
+def equationToHtml (c : FormatCode) : HtmlM Html := do
+  return <li class="equation">[← formatCodeToHtml c]</li>
 
 /--
 Attempt to render all `simp` equations for this definition. At a size

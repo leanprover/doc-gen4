@@ -3,10 +3,17 @@ Copyright (c) 2022 Henrik Böving. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
-import Lean
+module
+import Lean.Compiler.NoncomputableAttr
+import Lean.Declaration
+public import Lean.Meta.Basic
+public import Lean.Meta.Eqns
+import Lean.Meta.Tactic.Intro
 
-import DocGen4.Process.Base
+public import DocGen4.Process.Base
 import DocGen4.Process.NameInfo
+public import DocGen4.RenderedCode
+public section
 
 namespace DocGen4.Process
 
@@ -20,14 +27,14 @@ def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
       let type ← mkForallFVars xs type
       return type
 
-def prettyPrintEquation (expr : Expr) : MetaM RenderedCode :=
+def prettyPrintEquation (expr : Expr) : MetaM FormatCode :=
   Meta.forallTelescope expr.consumeMData (fun _ e => prettyPrintTerm e)
 
-def processEq (eq : Name) : MetaM RenderedCode := do
+def processEq (eq : Name) : MetaM FormatCode := do
   let type ← (mkConstWithFreshMVarLevels eq >>= inferType)
   prettyPrintEquation type
 
-def computeEquations? (v : DefinitionVal) : AnalyzeM (Array RenderedCode) := do
+def computeEquations? (v : DefinitionVal) : AnalyzeM (Array FormatCode) := do
   unless (← read).genEquations do return #[]
   let eqs? ← getEqnsFor? v.name
   match eqs? with

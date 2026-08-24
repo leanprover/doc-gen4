@@ -35,7 +35,7 @@ def fieldToHtml (structName : Name) (f : Process.FieldInfo) : HtmlM Html := do
         pure #[]
     pure
       <li id={name} class="structure_field">
-        <div class="structure_field_info">{shortName} [args] {" : "} [← renderedCodeToHtml f.type]</div>
+        <div class="structure_field_info">{shortName} [args] {" : "} [← formatCodeToHtml f.type]</div>
         [doc]
       </li>
   else
@@ -69,7 +69,7 @@ def fieldToHtml (structName : Name) (f : Process.FieldInfo) : HtmlM Html := do
     let projName := structName ++ getShort' f.name
     let inner :=
       <div class="structure_field_info">
-        <a href={← declNameToLink f.name}>{shortName}</a> [args] {" : "} [← renderedCodeToHtml f.type]
+        <a href={← declNameToLink f.name}>{shortName}</a> [args] {" : "} [← formatCodeToHtml f.type]
       </div>
     if (← getResult).containedNames[structName]?.any (·.contains projName) then
       let name := projName.toString
