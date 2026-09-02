@@ -6,6 +6,7 @@ Authors: Wojciech Nawrocki, Sebastian Ullrich, Henrik Böving
 -/
 import Lean.Data.Json
 import Lean.Parser
+import Lean.Data.Html
 
 /-! This module defines:
 - a representation of HTML trees
@@ -15,19 +16,6 @@ import Lean.Parser
 namespace DocGen4
 
 open Lean
-
-inductive Html where
-  -- TODO(WN): it's nameless for shorter JSON; re-add names when we have deriving strategies for From/ToJson
-  -- element (tag : String) (flatten : Bool) (attrs : Array HtmlAttribute) (children : Array Html)
-  | element : String → Bool → Array (String × String) → Array Html → Html
-  /-- A text node, which will be escaped in the output -/
-  | text : String → Html
-  /-- An arbitrary string containing HTML -/
-  | raw : String → Html
-  deriving Repr, BEq, Inhabited, FromJson, ToJson
-
-instance : Coe String Html :=
-  ⟨Html.text⟩
 
 namespace Html
 
@@ -57,25 +45,11 @@ where
 def attributesToString (attrs : Array (String × String)) :String :=
   attrs.foldl (fun acc (k, v) => acc ++ " " ++ k ++ "=\"" ++ escape v ++ "\"") ""
 
--- TODO: Termination proof
-partial def toStringAux : Html → String
-| element tag false attrs #[text s] => s!"<{tag}{attributesToString attrs}>{escape s}</{tag}>\n"
-| element tag false attrs #[raw s] => s!"<{tag}{attributesToString attrs}>{s}</{tag}>\n"
-| element tag false attrs #[child] => s!"<{tag}{attributesToString attrs}>\n{child.toStringAux}</{tag}>\n"
-| element tag false attrs children => s!"<{tag}{attributesToString attrs}>\n{children.foldl (· ++ toStringAux ·) ""}</{tag}>\n"
-| element tag true attrs children => s!"<{tag}{attributesToString attrs}>{children.foldl (· ++ toStringAux ·) ""}</{tag}>"
-| text s => escape s
-| raw s => s
-
-def toString (html : Html) : String :=
-  html.toStringAux.trimAsciiEnd.copy
-
 partial def textLength : Html → Nat
-| raw s => s.length  -- measures lengths of escape sequences too!
-| text s => s.length
-| element _ _ _ children =>
-  let lengths := children.map textLength
-  lengths.foldl Nat.add 0
+  | .raw s => s.length  -- measures lengths of escape sequences too!
+  | .text s => s.length
+  | .element _ _ c => textLength c
+  | .seq s => s.foldl (· + textLength ·) 0
 
 end Html
 
@@ -149,10 +123,10 @@ macro_rules
   | `(<$n $attrs* />) => do
     let kind := quote (toString n.getId)
     let attrs ← translateAttrs attrs
-    `(Html.element $kind true $attrs #[])
+    `(Html.element $kind $attrs (.seq #[]))
   | `(<$n $attrs* >$children*</$m>) => do
     let (tag, children) ← htmlHelper n children m
-    `(Html.element $(quote tag) true $(← translateAttrs attrs) $children)
+    `(Html.element $(quote tag) $(← translateAttrs attrs) (.seq $children))
 
 end Jsx
 
@@ -161,4 +135,30 @@ as the resulting HTML in editors which support it. -/
 class ToHtmlFormat (α : Type u) where
   formatHtml : α → Html
 
+/-! ## Deprecation aliases -/
+-- TODO: Remove aliases later.
+
+-- Constants with same name and type are re-exported in the old namespace.
+export Lean (Html Html.text Html.raw)
+
+-- Constants whose name or type changed become deprecated protected abbrevs in the old namespace.
+set_option linter.unusedVariables false in
+@[deprecated Lean.Html.element +typeChanged (since := "2026-09-02")]
+protected abbrev Html.element (tag : String) (flatten : Bool) (attrs : Array (String × String)) (children : Array Html) :=
+  Lean.Html.element tag attrs (.ofCollection children)
+
+@[deprecated Lean.Html.render (since := "2026-09-02")]
+protected abbrev Html.toString (html : Html) : String :=
+  Lean.Html.render html
+
 end DocGen4
+
+-- Constants whose name or type changed, and which are commonly used with dot notation,
+-- also get a deprecated alias in the new namespace.
+namespace Lean.Html
+
+@[deprecated Lean.Html.render (since := "2026-09-02")]
+protected abbrev toString (html : Html) : String :=
+  Lean.Html.render html
+
+end Lean.Html
