@@ -179,7 +179,7 @@ def autoLinkInline (ss : Array String) : HtmlM (Array Html) := do
     for part in parts do
       match ← nameToLink? part with
       | some link =>
-        result := result.push <| Html.element "a" true #[("href", link)] #[Html.text part]
+        result := result.push <| .element "a" #[("href", link)] #[Html.text part]
       | none =>
         let sHead := part.dropEndWhile (· != '.') |>.copy
         let sTail := part.takeEndWhile (· != '.') |>.copy
@@ -187,7 +187,7 @@ def autoLinkInline (ss : Array String) : HtmlM (Array Html) := do
         | some link =>
           if !sHead.isEmpty then
             result := result.push <| Html.text sHead
-          result := result.push <| Html.element "a" true #[("href", link)] #[Html.text sTail]
+          result := result.push <| .element "a" #[("href", link)] #[Html.text sTail]
         | none =>
           result := result.push <| Html.text part
   return result
@@ -211,16 +211,16 @@ partial def renderText (t : MD4Lean.Text) (funName : String) (inLink : Bool := f
   | .entity s => return #[Html.raw s]
   | .em ts =>
     let inner ← renderTexts ts funName inLink
-    return #[Html.element "em" true #[] inner]
+    return #[.element "em" #[] inner]
   | .strong ts =>
     let inner ← renderTexts ts funName inLink
-    return #[Html.element "strong" true #[] inner]
+    return #[.element "strong" #[] inner]
   | .u ts =>
     let inner ← renderTexts ts funName inLink
-    return #[Html.element "u" true #[] inner]
+    return #[.element "u" #[] inner]
   | .del ts =>
     let inner ← renderTexts ts funName inLink
-    return #[Html.element "del" true #[] inner]
+    return #[.element "del" #[] inner]
   | .a href title _isAuto children =>
     let hrefStr := attrTextToString href
     let titleStr := attrTextToString title
@@ -240,13 +240,13 @@ partial def renderText (t : MD4Lean.Text) (funName : String) (inLink : Bool := f
       let mut attrs : Array (String × String) := #[("href", extHref)]
       attrs := attrs.push ("title", bibitem.plaintext)
       attrs := attrs.push ("id", s!"_backref_{newBackref.index}")
-      return #[Html.element "a" true attrs newChildren]
+      return #[.element "a" attrs newChildren]
     | .none =>
       let childrenHtml ← renderTexts children funName (inLink := true)
       let mut attrs : Array (String × String) := #[("href", extHref)]
       if !titleStr.isEmpty then
         attrs := attrs.push ("title", titleStr)
-      return #[Html.element "a" true attrs childrenHtml]
+      return #[.element "a" attrs childrenHtml]
   | .img src title alt =>
     let srcStr := Html.escape (attrTextToString src)
     let titleStr := Html.escape (attrTextToString title)
@@ -262,7 +262,7 @@ partial def renderText (t : MD4Lean.Text) (funName : String) (inLink : Bool := f
         pure #[Html.text (String.join ss.toList)]
       else
         autoLinkInline ss
-    return #[Html.element "code" true #[] inner]
+    return #[.element "code" #[] inner]
   -- Math is rendered with dollar signs because MathJax will later render them
   | .latexMath ss =>
     let content := String.join ss.toList
@@ -274,7 +274,7 @@ partial def renderText (t : MD4Lean.Text) (funName : String) (inLink : Bool := f
   | .wikiLink target children =>
     let inner ← renderTexts children funName inLink
     let targetStr := attrTextToString target
-    return #[Html.element "x-wikilink" true #[("data-target", targetStr)] inner]
+    return #[.element "x-wikilink" #[("data-target", targetStr)] inner]
 
 /-- Render an array of `MD4Lean.Text` inline elements to HTML. -/
 partial def renderTexts (texts : Array MD4Lean.Text) (funName : String) (inLink : Bool := false) : HtmlM (Array Html) := do
@@ -291,13 +291,13 @@ partial def renderBlock (block : MD4Lean.Block) (funName : String) (tight : Bool
     if tight then
       return inner
     else
-      return #[Html.element "p" true #[] inner]
+      return #[.element "p" #[] inner]
   | .ul isTight _mark items =>
     let mut lis : Array Html := #[]
     for item in items do
       let liHtml ← renderLi item funName isTight
       lis := lis ++ liHtml
-    return #[Html.element "ul" true #[] lis]
+    return #[.element "ul" #[] lis]
   | .ol isTight start _mark items =>
     let mut lis : Array Html := #[]
     for item in items do
@@ -305,15 +305,15 @@ partial def renderBlock (block : MD4Lean.Block) (funName : String) (tight : Bool
       lis := lis ++ liHtml
     let attrs : Array (String × String) :=
       if start != 1 then #[("start", toString start)] else #[]
-    return #[Html.element "ol" true attrs lis]
+    return #[.element "ol" attrs lis]
   | .hr => return #[Html.raw "<hr>\n"]
   | .header level texts =>
     let id := mdGetHeadingId texts
     let inner ← renderTexts texts funName
-    let anchor := Html.element "a" true #[("class", "hover-link"), ("href", s!"#{id}")] #[Html.text "#"]
+    let anchor := .element "a" #[("class", "hover-link"), ("href", s!"#{id}")] #[Html.text "#"]
     let children := inner.push (Html.text " ") |>.push anchor
     let tag := s!"h{level}"
-    return #[Html.element tag true #[("id", id), ("class", "markdown-heading")] children]
+    return #[.element tag #[("id", id), ("class", "markdown-heading")] children]
   | .code _info lang _fenceChar content =>
     let langStr := attrTextToString lang
     let codeAttrs : Array (String × String) :=
@@ -323,31 +323,31 @@ partial def renderBlock (block : MD4Lean.Block) (funName : String) (tight : Bool
         autoLinkInline content
       else
         pure #[Html.text (String.join content.toList)]
-    let codeElem := Html.element "code" true codeAttrs inner
-    return #[Html.element "pre" true #[] #[codeElem]]
+    let codeElem : Html := .element "code" codeAttrs inner
+    return #[.element "pre" #[] #[codeElem]]
   | .html content =>
     return #[Html.raw (String.join content.toList)]
   | .blockquote blocks =>
     let mut inner : Array Html := #[]
     for b in blocks do
       inner := inner ++ (← renderBlock b funName)
-    return #[Html.element "blockquote" true #[] inner]
+    return #[.element "blockquote" #[] inner]
   | .table head body =>
     let mut headCells : Array Html := #[]
     for cell in head do
       let cellHtml ← renderTexts cell funName
-      headCells := headCells.push (Html.element "th" true #[] cellHtml)
-    let headRow := Html.element "tr" true #[] headCells
-    let thead := Html.element "thead" true #[] #[headRow]
+      headCells := headCells.push (.element "th" #[] cellHtml)
+    let headRow : Html := .element "tr" #[] headCells
+    let thead := .element "thead" #[] #[headRow]
     let mut bodyRows : Array Html := #[]
     for row in body do
       let mut rowCells : Array Html := #[]
       for cell in row do
         let cellHtml ← renderTexts cell funName
-        rowCells := rowCells.push (Html.element "td" true #[] cellHtml)
-      bodyRows := bodyRows.push (Html.element "tr" true #[] rowCells)
-    let tbody := Html.element "tbody" true #[] bodyRows
-    return #[Html.element "table" true #[] #[thead, tbody]]
+        rowCells := rowCells.push (.element "td" #[] cellHtml)
+      bodyRows := bodyRows.push (.element "tr" #[] rowCells)
+    let tbody : Html := .element "tbody" #[] bodyRows
+    return #[.element "table" #[] #[thead, tbody]]
 
 /-- Render a list item to HTML. -/
 partial def renderLi (li : MD4Lean.Li MD4Lean.Block) (funName : String) (tight : Bool) : HtmlM (Array Html) := do
@@ -360,7 +360,7 @@ partial def renderLi (li : MD4Lean.Li MD4Lean.Block) (funName : String) (tight :
       inner := inner.push (Html.raw "<input type=\"checkbox\" disabled=\"\">")
   for b in li.contents do
     inner := inner ++ (← renderBlock b funName tight)
-  return #[Html.element "li" true #[] inner]
+  return #[.element "li" #[] inner]
 
 end
 

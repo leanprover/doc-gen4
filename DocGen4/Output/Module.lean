@@ -43,7 +43,7 @@ and name.
 -/
 def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
-  nodes := nodes.push <| Html.element "span" false #[("class", "decl_kind")] #[doc.getKindDescription]
+  nodes := nodes.push <| .element "span" #[("class", "decl_kind")] #[Html.text doc.getKindDescription]
   -- TODO: Can we inline if-then-else and avoid repeating <span> here?
   if doc.getSorried then
     nodes := nodes.push <span class="decl_name" title="declaration uses 'sorry'"> {← declNameToHtmlBreakWithinLink doc.getName} </span>
@@ -57,7 +57,7 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   | DocInfo.classInfo i => nodes := nodes.append (← structureInfoHeader i)
   | _ => nodes := nodes
 
-  nodes := nodes.push <| Html.element "span" true #[("class", "decl_args")] #[" :"]
+  nodes := nodes.push <| .element "span" #[("class", "decl_args")] #[Html.text " :"]
   nodes := nodes.push <div class="decl_type">[← renderedCodeToHtml doc.getType]</div>
   return <div class="decl_header"> [nodes] </div>
 
@@ -89,7 +89,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   let attrsHtml :=
     if attrs.size > 0 then
       let attrStr := "@[" ++ String.intercalate ", " doc.getAttrs.toList ++ "]"
-      #[Html.element "div" false #[("class", "attributes")] #[attrStr]]
+      #[.element "div" #[("class", "attributes")] #[Html.text attrStr]]
     else
       #[]
   -- custom decoration (e.g., verification badges from external tools)
@@ -184,7 +184,7 @@ def moduleToHtml (module : Process.Module) : HtmlM Html := withTheReader SiteBas
   let memberNames := filterDocInfo relevantMembers.iter |>.map DocInfo.getName |>.toArray
   templateLiftExtends (baseHtmlGenerator module.name.toString) <| pure #[
     ← internalNav memberNames module.name,
-    Html.element "main" false #[] memberDocs
+    .element "main" #[] memberDocs
   ]
 
 end Output
