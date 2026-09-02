@@ -135,12 +135,16 @@ as the resulting HTML in editors which support it. -/
 class ToHtmlFormat (α : Type u) where
   formatHtml : α → Html
 
--- TODO: Remove re-exports and aliases later.
+/-! ## Deprecation aliases -/
+-- TODO: Remove aliases later.
 
+-- Constants with same name and type are re-exported in the old namespace.
 export Lean (Html Html.text Html.raw)
 
+-- Constants whose name or type changed become deprecated protected abbrevs in the old namespace.
+set_option linter.unusedVariables false in
 @[deprecated Lean.Html.element +typeChanged (since := "2026-09-02")]
-protected abbrev Html.element (tag : String) (_flatten : Bool) (attrs : Array (String × String)) (children : Array Html) :=
+protected abbrev Html.element (tag : String) (flatten : Bool) (attrs : Array (String × String)) (children : Array Html) :=
   Lean.Html.element tag attrs (.ofCollection children)
 
 @[deprecated Lean.Html.render (since := "2026-09-02")]
@@ -148,3 +152,13 @@ protected abbrev Html.toString (html : Html) : String :=
   Lean.Html.render html
 
 end DocGen4
+
+-- Constants whose name or type changed, and which are commonly used with dot notation,
+-- also get a deprecated alias in the new namespace.
+namespace Lean.Html
+
+@[deprecated Lean.Html.render (since := "2026-09-02")]
+protected abbrev toString (html : Html) : String :=
+  Lean.Html.render html
+
+end Lean.Html
