@@ -49,13 +49,13 @@ def htmlOutputSetup (config : SiteBaseContext) (tacticInfo : Array (Process.Tact
   FS.createDirAll <| declarationsBasePath config.buildDir
 
   -- All the doc-gen static stuff
-  let indexHtml := ReaderT.run index config |>.toString
-  let notFoundHtml := ReaderT.run notFound config |>.toString
-  let foundationalTypesHtml := ReaderT.run foundationalTypes config |>.toString
-  let navbarHtml := ReaderT.run navbar config |>.toString
-  let searchHtml := ReaderT.run search config |>.toString
-  let referencesHtml := ReaderT.run (references (← collectBackrefs config.buildDir)) config |>.toString
-  let tacticsHtml := ReaderT.run (tactics tacticInfo) config |>.toString
+  let indexHtml := ReaderT.run index config |>.render
+  let notFoundHtml := ReaderT.run notFound config |>.render
+  let foundationalTypesHtml := ReaderT.run foundationalTypes config |>.render
+  let navbarHtml := ReaderT.run navbar config |>.render
+  let searchHtml := ReaderT.run search config |>.render
+  let referencesHtml := ReaderT.run (references (← collectBackrefs config.buildDir)) config |>.render
+  let tacticsHtml := ReaderT.run (tactics tacticInfo) config |>.render
   let docGenStatic := #[
     ("style.css", styleCss),
     ("favicon.svg", faviconSvg),
@@ -80,7 +80,7 @@ def htmlOutputSetup (config : SiteBaseContext) (tacticInfo : Array (Process.Tact
   for (fileName, content) in docGenStatic do
     FS.writeFile (basePath config.buildDir / fileName) content
 
-  let findHtml := ReaderT.run find { config with depthToRoot := 1 } |>.toString
+  let findHtml := ReaderT.run find { config with depthToRoot := 1 } |>.render
   let findStatic := #[
     ("index.html", findHtml),
     ("find.js", findJs)
@@ -147,7 +147,7 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
         let filePath := baseConfig.buildDir / relFilePath
         if let .some d := filePath.parent then
           FS.createDirAll d
-        FS.writeFile filePath moduleHtml.toString
+        FS.writeFile filePath moduleHtml.render
 
         -- Write backrefs JSON
         FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json")
@@ -335,7 +335,7 @@ def updateNavbarFromDisk (buildDir : System.FilePath) : IO Unit := do
     refs := refs
   }
   -- Regenerate navbar
-  let navbarHtml := ReaderT.run navbar baseConfig |>.toString
+  let navbarHtml := ReaderT.run navbar baseConfig |>.render
   FS.writeFile (docDir / "navbar.html") navbarHtml
 
 end DocGen4
