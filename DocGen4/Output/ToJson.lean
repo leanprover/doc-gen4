@@ -124,7 +124,7 @@ def DocInfo.toJson (sourceLinker : Option DeclarationRange → String) (info : P
   let docLink ← declNameToLink info.getName
   let sourceLink := sourceLinker info.getDeclarationRange
   let line := info.getDeclarationRange.pos.line
-  let header := (← docInfoHeader info).toString
+  let header := (← docInfoHeader info).render
   let info := { name, kind, doc, docLink, sourceLink, line }
   return { info, header }
 
