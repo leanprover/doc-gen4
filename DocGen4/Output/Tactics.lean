@@ -24,10 +24,13 @@ def TacticInfo.docStringToHtml (tac : TacticInfo MarkdownDocstring) : Output.Htm
 Render the HTML for a single tactic.
 -/
 def TacticInfo.toHtml (tac : TacticInfo Html) : Output.BaseHtmlM Html := do
+  -- Used by the side bar to link to particular declarations, should be globally unique.
   let internalName := tac.internalName.toString
+  -- Can be used by external links (e.g. Zulip linkifiers), not guaranteed to be unique.
+  let userNameAnchor := "userName-" ++ tac.userName
   let defLink := (← moduleNameToLink tac.definingModule) ++ "#" ++ internalName
   let tags := ", ".intercalate (tac.tags.map (·.toString)).qsort.toList
-  return <div id={internalName}>
+  return <div id={internalName}> <div id={userNameAnchor}>
     <h2>{tac.userName}</h2>
     {tac.docString}
     <dl>
@@ -36,7 +39,7 @@ def TacticInfo.toHtml (tac : TacticInfo Html) : Output.BaseHtmlM Html := do
       <dt>Defined in module:</dt>
       <dd><a href={defLink}>{tac.definingModule.toString}</a></dd>
     </dl>
-  </div>
+  </div> </div>
 
 def TacticInfo.navLink (tac : TacticInfo α) : Html :=
   <p><a href={"#".append tac.internalName.toString}>{tac.userName}</a></p>

@@ -221,14 +221,17 @@ private def ReadStmts.loadAttrs (s : ReadStmts) (moduleName : String) (position 
   return attrs
 
 open Lean SQLite.Blob in
-private def ReadStmts.loadDocstring (s : ReadStmts) (moduleName : String) (position : Int64) : IO (Option (String ⊕ VersoDocString)) := withDbContext "read:docstrings" do
-  s.readMdDocstringStmt.bind 1 moduleName
-  s.readMdDocstringStmt.bind 2 position
-  if (← s.readMdDocstringStmt.step) then
-    let text ← s.readMdDocstringStmt.columnText 0
-    done s.readMdDocstringStmt
-    return some (.inl text)
-  done s.readMdDocstringStmt
+private def ReadStmts.loadDocstring (s : ReadStmts) (moduleName : String) (position : Int64) : IO (Option (String ⊕ (VersoDocString × String))) := withDbContext "read:docstrings" do
+  let md? ← do
+    s.readMdDocstringStmt.bind 1 moduleName
+    s.readMdDocstringStmt.bind 2 position
+    if (← s.readMdDocstringStmt.step) then
+      let text ← s.readMdDocstringStmt.columnText 0
+      done s.readMdDocstringStmt
+      pure (some text)
+    else
+      done s.readMdDocstringStmt
+      pure none
   s.readVersoDocstringStmt.bind 1 moduleName
   s.readVersoDocstringStmt.bind 2 position
   if (← s.readVersoDocstringStmt.step) then
@@ -236,10 +239,14 @@ private def ReadStmts.loadDocstring (s : ReadStmts) (moduleName : String) (posit
     done s.readVersoDocstringStmt
     have := versoDocStringFromBinary s.values
     match fromBinary blob with
-    | .ok doc => return some (.inr doc)
+    | .ok doc =>
+      -- The writer always stores the pre-rendered Markdown alongside the Verso structure.
+      let some md := md?
+        | throw <| IO.userError "Verso docstring without pre-rendered Markdown in database; please rebuild"
+      return some (.inr (doc, md))
     | .error e => throw <| IO.userError s!"Failed to deserialize VersoDocString: {e}"
   done s.readVersoDocstringStmt
-  return none
+  return md?.map .inl
 
 open Lean SQLite.Blob in
 private def ReadStmts.loadDeclarationRange (s : ReadStmts) (moduleName : String) (position : Int64) : IO (Option DeclarationRange) := withDbContext "read:declaration_ranges" do
@@ -357,16 +364,22 @@ private def ReadStmts.loadStructureFields (s : ReadStmts) (moduleName : String) 
       let projPos ← stmt.columnInt64 5
       let render := (← stmt.columnInt64 6) != 0
       let doc ← do
-        if (← stmt.columnType 7) != .null then
-          pure <| some <| Sum.inl (← stmt.columnText 7)
-        else if (← stmt.columnType 8) != .null then
+        let md? ← if (← stmt.columnType 7) != .null then
+            pure <| some (← stmt.columnText 7)
+          else
+            pure none
+        if (← stmt.columnType 8) != .null then
           let blob ← stmt.columnBlob 8
           have := versoDocStringFromBinary s.values
           match fromBinary blob with
-          | .ok doc => pure <| some <| Sum.inr doc
+          | .ok doc =>
+            -- The writer always stores the pre-rendered Markdown alongside the Verso structure.
+            let some md := md?
+              | throw <| IO.userError "Verso docstring without pre-rendered Markdown in database; please rebuild"
+            pure <| some <| Sum.inr (doc, md)
           | .error e => throw <| IO.userError s!"Failed to deserialize VersoDocString: {e}"
         else
-          pure none
+          pure <| md?.map Sum.inl
       let declRange ← if (← stmt.columnType 9) != .null then
         pure <| some {
           pos := ⟨(← stmt.columnInt64 9).toNatClampNeg, (← stmt.columnInt64 10).toNatClampNeg⟩

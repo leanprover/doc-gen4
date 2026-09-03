@@ -15,9 +15,13 @@ structure DocGenOptions where
 
 abbrev AnalyzeM : Type → Type := ReaderT DocGenOptions MetaM
 
-def versoDocToMarkdown (v : VersoDocString) : String :=
+/--
+Renders a Verso docstring to Markdown. Rendering requires an `Environment` since custom
+elements are rendered by an extensible mechanism that can run arbitrary `CoreM` code.
+-/
+def versoDocToMarkdown (env : Environment) (v : VersoDocString) : IO String :=
   let { text, subsections } := v
-  Doc.MarkdownM.run' do
+  Doc.runMarkdown env <| Doc.MarkdownM.run' do
     let textBlocks ← text.mapM Doc.ToMarkdown.toMarkdown
     let subsectionBlocks ← subsections.mapM Doc.ToMarkdown.toMarkdown
     return Doc.joinBlocks (textBlocks ++ subsectionBlocks)
@@ -36,9 +40,11 @@ structure NameInfo where
   -/
   type : RenderedCode
   /--
-  The doc string of the name if it exists.
+  The doc string of the name if it exists. Verso docstrings are paired with their pre-rendered
+  Markdown form, as rendering requires an `Environment`, which is not available in the pure
+  HTML output phase.
   -/
-  doc : Option (String ⊕ VersoDocString)
+  doc : Option (String ⊕ (VersoDocString × String))
   deriving Inhabited
 
 /--

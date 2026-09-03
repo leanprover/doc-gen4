@@ -83,6 +83,7 @@ instance : ToString ReducibilityStatus where
     | .semireducible => "semireducible"
     | .irreducible => "irreducible"
     | .implicitReducible => "implicit_reducible"
+    | .instanceReducible => "instance_reducible"
 
 /--
 The list of all enum based attributes doc-gen knows about and can recover.
@@ -170,6 +171,7 @@ def getReducibility (decl : Name) : MetaM (Option String) := do
   | .reducible => return some "reducible"
   | .irreducible => return some "irreducible"
   | .implicitReducible => return some "implicit_reducible"
+  | .instanceReducible => return some "instance_reducible"
   -- This is the default so we don't print it.
   | .semireducible => return none
 
