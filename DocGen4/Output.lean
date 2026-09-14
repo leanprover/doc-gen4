@@ -78,7 +78,7 @@ def htmlOutputSetup (config : SiteBaseContext) (tacticInfo : Array (Process.Tact
     ("tactics.html", tacticsHtml),
   ]
   for (fileName, content) in docGenStatic do
-    FS.writeFile (basePath config.buildDir / fileName) content
+    writeFileAtomic (basePath config.buildDir / fileName) content
 
   let findHtml := ReaderT.run find { config with depthToRoot := 1 } |>.toString
   let findStatic := #[
@@ -86,7 +86,7 @@ def htmlOutputSetup (config : SiteBaseContext) (tacticInfo : Array (Process.Tact
     ("find.js", findJs)
   ]
   for (fileName, content) in findStatic do
-    FS.writeFile (findBasePath config.buildDir / fileName) content
+    writeFileAtomic (findBasePath config.buildDir / fileName) content
 
 /-- Custom source linker type: given an optional source URL and module name, returns a function from declaration range to URL -/
 abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → String
@@ -147,15 +147,15 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
         let filePath := baseConfig.buildDir / relFilePath
         if let .some d := filePath.parent then
           FS.createDirAll d
-        FS.writeFile filePath moduleHtml.toString
+        writeFileAtomic filePath moduleHtml.toString
 
         -- Write backrefs JSON
-        FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json")
+        writeFileAtomic (declarationsBasePath baseConfig.buildDir / s!"backrefs-{module.name}.json")
           (toString (toJson cfg.backrefs))
 
         -- Generate declaration data JSON for search
         let (jsonModule, _) := moduleToJsonModule module |>.run {} config baseConfig
-        FS.writeFile (declarationsBasePath baseConfig.buildDir / s!"declaration-data-{module.name}.bmp")
+        writeFileAtomic (declarationsBasePath baseConfig.buildDir / s!"declaration-data-{module.name}.bmp")
           (ToJson.toJson jsonModule).compress
 
         results := results.push (relFilePath, jsonModule)
@@ -229,7 +229,7 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) 
   -- The root JSON for find
   let declarationDir := basePath  baseConfig.buildDir / "declarations"
   FS.createDirAll declarationDir
-  FS.writeFile (declarationDir / "declaration-data.bmp") finalJson.compress
+  writeFileAtomic (declarationDir / "declaration-data.bmp") finalJson.compress
 
 def headerDataOutput (buildDir : System.FilePath) : IO Unit := do
   let mut headerIndex : JsonHeaderIndex := {}
@@ -250,7 +250,7 @@ def headerDataOutput (buildDir : System.FilePath) : IO Unit := do
   let finalHeaderJson := toJson headerIndex
   let declarationDir := basePath buildDir / "declarations"
   FS.createDirAll declarationDir
-  FS.writeFile (declarationDir / "header-data.bmp") finalHeaderJson.compress
+  writeFileAtomic (declarationDir / "header-data.bmp") finalHeaderJson.compress
 
 /-- Converts an HTML file path to a module name: `doc/A/B/C.html` -> `A.B.C`. -/
 def htmlPathToModuleName (docDir : System.FilePath) (htmlPath : System.FilePath) : Option Name :=
@@ -336,6 +336,6 @@ def updateNavbarFromDisk (buildDir : System.FilePath) : IO Unit := do
   }
   -- Regenerate navbar
   let navbarHtml := ReaderT.run navbar baseConfig |>.toString
-  FS.writeFile (docDir / "navbar.html") navbarHtml
+  writeFileAtomic (docDir / "navbar.html") navbarHtml
 
 end DocGen4
