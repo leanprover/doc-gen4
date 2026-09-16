@@ -3,10 +3,10 @@ import DocGen4.Output.Inductive
 
 namespace DocGen4.Output
 
-open scoped DocGen4.Jsx
+open Lean
 
 def foundationalTypes : BaseHtmlM Html := templateLiftExtends (baseHtml "Foundational Types") do
-  pure <|
+  pure <| html%{
     <main>
       <a id="top"></a>
       <h1>Foundational Types</h1>
@@ -45,7 +45,8 @@ def foundationalTypes : BaseHtmlM Html := templateLiftExtends (baseHtml "Foundat
       </ul>
       <p>Note that despite not itself being a function, <code>(→)</code> is available as infix notation for
       <code>{"fun α β, α → β"}</code>.</p>
-      -- TODO: instances for pi types
+      <!-- TODO: instances for pi types -->
     </main>
+  }
 
 end DocGen4.Output
