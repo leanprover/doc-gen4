@@ -12,7 +12,8 @@ type of binder it has.
 def argToHtml (arg : Process.Arg) : HtmlM Html := do
   let node ← renderedCodeToHtml arg.binder
   let inner := html%{<span class="fn">{node}</span>}
-  let html := .element "span" #[("class", "decl_args")] #[inner]
+  -- The trailing space separates consecutive argument groups.
+  let html : Html := .element "span" #[("class", "decl_args")] #[inner] ++ .text " "
   if arg.implicit then
     return html%{<span class="impl_arg">{html}</span>}
   else
