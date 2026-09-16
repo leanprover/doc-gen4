@@ -16,7 +16,6 @@ import DocGen4.Process
 namespace DocGen4
 namespace Output
 
-open scoped DocGen4.Jsx
 open Lean Process
 
 /--
@@ -26,14 +25,14 @@ added to the top level.
 def structureInfoHeader (s : Process.StructureInfo) : HtmlM (Array Html) := do
   let mut nodes := #[]
   if s.parents.size > 0 then
-    nodes := nodes.push <span class="decl_extends">extends</span>
+    nodes := nodes.push html%{<span class="decl_extends">extends</span>}
     let mut parents := #[Html.text " "]
     for parent in s.parents, i in [0:s.parents.size] do
       if i > 0 then
         parents := parents.push (Html.text ", ")
       let parentHtml ← renderedCodeToHtml parent.type
       parents := parents.push
-        <span id={parent.projFn.toString}>[parentHtml]</span>
+        html%{<span id={parent.projFn.toString}>{parentHtml}</span>}
     nodes := nodes ++ parents
   return nodes
 
@@ -45,10 +44,12 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   let mut nodes := #[]
   nodes := nodes.push <| .element "span" #[("class", "decl_kind")] #[Html.text doc.getKindDescription]
   -- TODO: Can we inline if-then-else and avoid repeating <span> here?
+  let link ← declNameToHtmlBreakWithinLink doc.getName
   if doc.getSorried then
-    nodes := nodes.push <span class="decl_name" title="declaration uses 'sorry'"> {← declNameToHtmlBreakWithinLink doc.getName} </span>
+    nodes := nodes.push
+      html%{<span class="decl_name" title="declaration uses 'sorry'"> {link} </span>}
   else
-    nodes := nodes.push <span class="decl_name"> {← declNameToHtmlBreakWithinLink doc.getName} </span>
+    nodes := nodes.push html%{<span class="decl_name"> {link} </span>}
   for arg in doc.getArgs do
     nodes := nodes.push (← argToHtml arg)
 
@@ -58,8 +59,8 @@ def docInfoHeader (doc : DocInfo) : HtmlM Html := do
   | _ => nodes := nodes
 
   nodes := nodes.push <| .element "span" #[("class", "decl_args")] #[Html.text " :"]
-  nodes := nodes.push <div class="decl_type">[← renderedCodeToHtml doc.getType]</div>
-  return <div class="decl_header"> [nodes] </div>
+  nodes := nodes.push html%{<div class="decl_type">{← renderedCodeToHtml doc.getType}</div>}
+  return html%{<div class="decl_header">{nodes}</div>}
 
 /--
 The main entry point for rendering a single declaration inside a given module.
@@ -86,7 +87,7 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   | DocInfo.structureInfo i => pure #[← instancesForToHtml i.name]
   | _ => pure #[]
   let attrs := doc.getAttrs
-  let attrsHtml :=
+  let attrsHtml : Array Html :=
     if attrs.size > 0 then
       let attrStr := "@[" ++ String.intercalate ", " doc.getAttrs.toList ++ "]"
       #[.element "div" #[("class", "attributes")] #[Html.text attrStr]]
@@ -96,30 +97,32 @@ def docInfoToHtml (module : Name) (doc : DocInfo) : HtmlM Html := do
   let decorator ← getDeclarationDecorator
   let decoratorHtml := decorator module doc.getName doc.getKind
   let cssClass := "decl" ++ if doc.getSorried then " sorried" else ""
-  pure
+  pure html%{
     <div class={cssClass} id={doc.getName.toString}>
       <div class={doc.getKind}>
         <div class="gh_link">
           <a href={← getSourceUrl module doc.getDeclarationRange}>source</a>
         </div>
-        [decoratorHtml]
-        [attrsHtml]
+        {decoratorHtml}
+        {attrsHtml}
         {← docInfoHeader doc}
-        [docStringHtml]
-        [docInfoHtml]
-        [extraInfoHtml]
+        {docStringHtml}
+        {docInfoHtml}
+        {extraInfoHtml}
       </div>
     </div>
+  }
 
 /--
 Rendering a module doc string, that is the ones with an ! after the opener
 as HTML.
 -/
 def modDocToHtml (mdoc : ModuleDoc) : HtmlM Html := do
-  pure
+  pure html%{
     <div class="mod_doc">
-      [← docStringToHtml (.inl mdoc.doc) ""]
+      {← docStringToHtml (.inl mdoc.doc) ""}
     </div>
+  }
 
 /--
 Render a module member, that is either a module doc string or a declaration
@@ -131,11 +134,13 @@ def moduleMemberToHtml (module : Name) (member : ModuleMember) : HtmlM Html := d
   | ModuleMember.modDoc d => modDocToHtml d
 
 def declarationToNavLink (module : Name) : Html :=
-  <div class="nav_link">
-    <a class="break_within" href={s!"#{module.toString}"}>
-      [breakWithin module.toString]
-    </a>
-  </div>
+  html%{
+    <div class="nav_link">
+      <a class="break_within" href={s!"#{module.toString}"}>
+        {breakWithin module.toString}
+      </a>
+    </div>
+  }
 
 /--
 Returns the list of all imports this module does.
@@ -150,13 +155,13 @@ and return the HTML.
 -/
 def importsHtml (moduleName : Name) : HtmlM (Array Html) := do
   let imports := (← getImports moduleName).qsort Name.lt
-  imports.mapM (fun i => do return <li>{← moduleToHtmlLink i}</li>)
+  imports.mapM (fun i => do return html%{<li>{← moduleToHtmlLink i}</li>})
 
 /--
 Render the internal nav bar (the thing on the right on all module pages).
 -/
 def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
-  pure
+  pure html%{
     <nav class="internal_nav">
       <p><a href="#top">return to top</a></p>
       <p class="gh_nav_link"><a href={← getSourceUrl moduleName none}>source</a></p>
@@ -164,16 +169,17 @@ def internalNav (members : Array Name) (moduleName : Name) : HtmlM Html := do
         <details>
           <summary>Imports</summary>
           <ul>
-            [← importsHtml moduleName]
+            {← importsHtml moduleName}
           </ul>
         </details>
         <details>
           <summary>Imported by</summary>
-          <ul id={s!"imported-by-{moduleName}"} class="imported-by-list"> </ul>
+          <ul id={s!"imported-by-{moduleName}"} class="imported-by-list"></ul>
         </details>
       </div>
-      [members.map declarationToNavLink]
+      {members.map declarationToNavLink}
     </nav>
+  }
 
 /--
 The main entry point to rendering the HTML for an entire module.
