@@ -61,36 +61,36 @@ def disableBibFile (buildDir : System.FilePath) : IO Unit := do
 
 namespace Output
 
-open scoped DocGen4.Jsx
-
 def refItem (ref : BibItem) (backrefs : Array BackrefItem) : BaseHtmlM Html := do
   let backrefs := backrefs.filter (fun x => x.citekey == ref.citekey)
   let toHtml (i : Nat) (backref : BackrefItem) : BaseHtmlM (Array Html) := do
     let href := s!"{← moduleNameToLink backref.modName}#_backref_{backref.index}"
     let title := s!"File: {backref.modName}" ++
       if backref.funName.isEmpty then "" else s!"\nLocation: {backref.funName}"
-    pure #[.raw " ", <a href={href} title={title}>{.text s!"[{i + 1}]"}</a>]
+    pure #[.raw " ", html%{<a href={href} title={title}>{.text s!"[{i + 1}]"}</a>}]
   let backrefHtml : Html ← (do
     if backrefs.isEmpty then
       pure (.raw "")
     else
-      pure <small>[(← backrefs.mapIdxM toHtml).foldl (· ++ ·) #[]]</small>)
-  pure <|
+      pure html%{<small>{((← backrefs.mapIdxM toHtml).foldl (· ++ ·) #[] : Array Html)}</small>})
+  pure <| html%{
     <li id={s!"ref_{ref.citekey}"}>
       <a href={s!"#ref_{ref.citekey}"}>{.text ref.tag}</a>
-      {.raw " "}{.raw ref.html}{backrefHtml}
+      {.text " "}{ref.html}{backrefHtml}
     </li>
+  }
 
 def references (backrefs : Array BackrefItem) :
     BaseHtmlM Html := templateLiftExtends (baseHtml "References") do
-  pure <|
+  pure <| html%{
     <main>
       <a id="top"></a>
       <h1>References</h1>
       <ul>
-      [← (← read).refs.mapM (refItem · backrefs)]
+      {← (← read).refs.mapM (refItem · backrefs)}
       </ul>
     </main>
+  }
 
 end Output
 
