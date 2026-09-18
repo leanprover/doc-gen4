@@ -88,6 +88,16 @@ The different options are:
  * `DOCGEN_SRC="file"` creates references to local file references.
  * `DOCGEN_SRC="vscode"` creates [VSCode URLs](https://code.visualstudio.com/docs/editor/command-line#_opening-vs-code-with-urls) to local files.
 
+## Pruning the database
+
+`doc-gen4 single` adds or replaces the rows of one module in `.lake/build/api-docs.db` and leaves every other module in place. A module that leaves the import closure of your documentation targets, for example after a rename in a dependency, keeps its rows, its marker in `.lake/build/doc-data/` and its page. Its declarations stay in the search index, its page stays in the navigation bar, and its rows take space. To remove them, run
+
+```
+lake exe doc-gen4 prune --build .lake/build api-docs.db MyLib
+```
+
+with the root modules of every target whose documentation shares the database. The command keeps the transitive import closure of these roots and every module under `Init`, `Std`, `Lake` and `Lean`. It changes nothing when a root is not a module in the database, so a misspelled root deletes nothing, and `--dryRun` prints the modules that it would delete. With the rows go the files of the removed modules: the marker files, so that Lake analyzes a module again if it returns to the closure, and the pages and per-module data of the HTML phase. The command also deletes the `.docs_built` markers, so that the next build writes the pages, the navigation bar and the search index again. Run it between builds.
+
 ## Disabling equations
 Generation of equations for definitions is enabled by default, but can be disabled by setting the `DISABLE_EQUATIONS` environment variable to `1`.
 

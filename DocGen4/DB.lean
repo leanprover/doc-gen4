@@ -486,9 +486,18 @@ structure LinkingContext where
   sourceUrls : Std.HashMap Name String
   name2ModIdx : Std.HashMap Name ModuleIdx
 
-/-- Load the linking context from the database. -/
-def ReadDB.loadLinkingContext (db : ReadDB) : IO LinkingContext := do
-  let moduleNames ← db.getModuleNames
+/--
+Loads what HTML generation needs to resolve links: the module names, their source URLs, and the
+index from declaration names to modules.
+
+`modules?` restricts the module names, and therefore the index, to the given modules. Without it,
+the context covers every module in the database.
+-/
+def ReadDB.loadLinkingContext (db : ReadDB) (modules? : Option (Array Name) := none) :
+    IO LinkingContext := do
+  let moduleNames ← match modules? with
+    | some modules => pure modules
+    | none => db.getModuleNames
   let sourceUrls ← db.getModuleSourceUrls
   let name2ModIdx ← db.buildName2ModIdx moduleNames
   return { moduleNames, sourceUrls, name2ModIdx }
@@ -669,3 +678,59 @@ where
     | .classInfo _ => "class"
     | .classInductiveInfo _ => "class inductive"
     | .ctorInfo _ => "constructor"
+
+/--
+The modules of the database outside the transitive import closure of `roots`, except the modules
+whose first name component is in `alwaysKeep`.
+
+Fails when `roots` is empty or names a module that is not in the database.
+-/
+private def staleModules (sqlite : SQLite) (roots alwaysKeep : Array Lean.Name) :
+    IO (Array Lean.Name) := do
+  if roots.isEmpty then
+    throw <| IO.userError "prune: no module roots given; nothing deleted"
+  let stmt ← sqlite.prepare "SELECT name FROM modules"
+  let mut names : Array Lean.Name := #[]
+  while (← stmt.step) do
+    names := names.push (← stmt.columnText 0).toName
+  let nameSet : Std.HashSet Lean.Name := (Std.HashSet.emptyWithCapacity names.size).insertMany names
+  for root in roots do
+    if !nameSet.contains root then
+      throw <| IO.userError s!"prune: {root} is not a module in the database; nothing deleted"
+  let keep ← transitiveImports sqlite (roots ++ alwaysKeep)
+  let keepSet : Std.HashSet Lean.Name := (Std.HashSet.emptyWithCapacity keep.size).insertMany keep
+  return names.filter fun m =>
+    !keepSet.contains m && !alwaysKeep.contains (m.components.headD .anonymous)
+
+/--
+The modules that `pruneModules` deletes for `roots` and `alwaysKeep`, read from the database
+without a change to it.
+-/
+def listPruneCandidates (dbFile : System.FilePath) (roots alwaysKeep : Array Lean.Name) :
+    IO (Array Lean.Name) := do
+  let sqlite ← SQLite.openWith dbFile .readonly (busyTimeoutMs := 1800000)  -- 30 minutes
+  staleModules sqlite roots alwaysKeep
+
+/--
+Deletes the modules that `listPruneCandidates` returns for `roots` and `alwaysKeep`: the modules
+outside the transitive import closure of `roots`, except the modules under `alwaysKeep`.
+
+The closure and the deletion happen in one immediate transaction, so a concurrent analysis cannot
+make a live module look stale. `beforeDelete` receives the modules that go, inside the transaction
+and before the deletion, so a failure in it leaves the database unchanged.
+
+Fails without changes when `roots` is empty or names a module that is not in the database.
+Returns the deleted modules.
+-/
+def pruneModules (values : DocstringValues) (dbFile : System.FilePath)
+    (roots alwaysKeep : Array Lean.Name) (beforeDelete : Array Lean.Name → IO Unit) :
+    IO (Array Lean.Name) :=
+  DBM.run values dbFile <| withDB fun db => do
+    db.sqlite.transaction (mode := .immediate) do
+      let stale ← staleModules db.sqlite roots alwaysKeep
+      if stale.isEmpty then
+        return stale
+      beforeDelete stale
+      for m in stale do
+        db.deleteModule m.toString
+      return stale
