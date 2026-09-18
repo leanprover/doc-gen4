@@ -38,7 +38,15 @@ lean_lib LibC
 lean_lib LibD
 EOF
 
+mkdir -p "$TEST_DIR/LibA"
+cat > "$TEST_DIR/LibA/Helper.lean" << 'EOF'
+/-- A helper in LibA -/
+def libAHelper := "helper from A"
+EOF
+
 cat > "$TEST_DIR/LibA.lean" << 'EOF'
+import LibA.Helper
+
 /-- A greeting from LibA -/
 def libAGreeting := "hello from A"
 EOF
@@ -150,5 +158,88 @@ if grep -q 'LibD/Old.html' "$DOC_DIR/LibC.html"; then
 else
   echo "OK: no link points to the removed module"
 fi
+
+# --- Phase 4: prune the modules outside the closure of LibA and LibB, then build LibC again ---
+
+PRUNE="lake exe doc-gen4 prune --build .lake/build"
+DOC_DATA="$TEST_DIR/.lake/build/doc-data"
+SEARCH_INDEX="$DOC_DIR/declarations/declaration-data.bmp"
+# LibD.Old.doc is the marker of the module that Phase 3 removed. Nothing has deleted it yet.
+ALL_MARKERS="LibA.doc LibA.Helper.doc LibB.doc LibC.doc LibD.doc LibD.Old.doc LibD.New.doc core-Init.doc"
+
+# expect_markers present|absent MARKER...
+expect_markers() {
+  local state="$1"; shift
+  for marker in "$@"; do
+    if [ "$state" = present ] && [ ! -e "$DOC_DATA/$marker" ]; then
+      echo "FAIL: $marker is missing"; exit 1
+    fi
+    if [ "$state" = absent ] && [ -e "$DOC_DATA/$marker" ]; then
+      echo "FAIL: $marker is still present"; exit 1
+    fi
+  done
+}
+
+# The search index takes the declarations of a module that no run rendered from its
+# `declaration-data-<module>.bmp` file, so the removed declaration is still searchable.
+grep -aq 'libDGone' "$SEARCH_INDEX" || { echo "FAIL: the search index does not hold libDGone before the prune"; exit 1; }
+
+echo "=== prune refuses an unknown root and changes nothing ==="
+if (cd "$TEST_DIR" && $PRUNE api-docs.db LibA Nope); then
+  echo "FAIL: prune accepted an unknown root"; exit 1
+fi
+expect_markers present $ALL_MARKERS
+echo "OK: prune refused the unknown root"
+
+echo "=== prune refuses an empty root list and changes nothing ==="
+if (cd "$TEST_DIR" && $PRUNE api-docs.db); then
+  echo "FAIL: prune accepted an empty root list"; exit 1
+fi
+expect_markers present $ALL_MARKERS
+echo "OK: prune refused the empty root list"
+
+echo "=== a dry run names LibC and LibD.Old and changes nothing ==="
+DRY_LOG="$TEST_DIR/prune-dry.log"
+(cd "$TEST_DIR" && $PRUNE --dryRun api-docs.db LibA LibB | tee "$DRY_LOG")
+grep -q '^  LibC$' "$DRY_LOG" || { echo "FAIL: the dry run does not name LibC"; exit 1; }
+grep -q '^  LibD.Old$' "$DRY_LOG" || { echo "FAIL: the dry run does not name LibD.Old"; exit 1; }
+expect_markers present $ALL_MARKERS
+echo "OK: the dry run named LibC and LibD.Old and kept every marker"
+
+echo "=== prune removes LibC and LibD and keeps the closure of LibA and LibB ==="
+(cd "$TEST_DIR" && $PRUNE api-docs.db LibA LibB)
+expect_markers absent LibC.doc LibC.doc.trace LibC.doc.hash declaration-data-LibC.bmp backrefs-LibC.json \
+  LibD.doc LibD.Old.doc LibD.New.doc declaration-data-LibD.Old.bmp
+expect_markers present LibA.doc LibA.Helper.doc LibB.doc core-Init.doc declaration-data-LibA.bmp declaration-data-LibA.Helper.bmp
+if [ -e "$DOC_DIR/LibC.html" ]; then echo "FAIL: LibC.html survived the prune"; exit 1; fi
+if [ -e "$DOC_DIR/LibD/New.html" ]; then echo "FAIL: LibD/New.html survived the prune"; exit 1; fi
+if compgen -G "$DOC_DATA/*.docs_built*" > /dev/null; then
+  echo "FAIL: a .docs_built marker survived the prune"; ls "$DOC_DATA"; exit 1
+fi
+check_html LibA LibA/Helper LibB
+echo "OK: the prune removed the files of LibC and LibD and kept the others, including the import LibA.Helper"
+
+echo "=== a second prune finds nothing to remove ==="
+(cd "$TEST_DIR" && $PRUNE api-docs.db LibA LibB | grep -q '^No modules') \
+  || { echo "FAIL: the second prune did not report an empty result"; exit 1; }
+echo "OK: the prune is idempotent"
+
+echo "=== the kept modules still have their rows, and LibC is analyzed again ==="
+# The prune deleted the .docs_built markers, so the build writes the pages again from the database.
+rm "$DOC_DIR/LibA.html" "$DOC_DIR/LibA/Helper.html"
+BUILD_LOG="$TEST_DIR/build-after-prune.log"
+(cd "$TEST_DIR" && lake build LibA:docs LibC:docs 2>&1 | tee "$BUILD_LOG")
+grep -q 'LibC:docInfo' "$BUILD_LOG" || { echo "FAIL: Lake did not analyze LibC again after the prune"; exit 1; }
+if grep -qE 'LibA:docInfo|LibA.Helper:docInfo' "$BUILD_LOG"; then
+  echo "FAIL: Lake analyzed LibA again, so the prune touched its rows or markers"; exit 1
+fi
+check_html LibA LibA/Helper LibB LibC LibD LibD/New
+grep -q 'libAGreeting' "$DOC_DIR/LibA.html" || { echo "FAIL: LibA.html lost libAGreeting"; exit 1; }
+grep -q 'libAHelper' "$DOC_DIR/LibA/Helper.html" || { echo "FAIL: LibA/Helper.html lost libAHelper"; exit 1; }
+grep -q 'libCGreeting' "$DOC_DIR/LibC.html" || { echo "FAIL: LibC.html lost libCGreeting"; exit 1; }
+if grep -aq 'libDGone' "$SEARCH_INDEX"; then
+  echo "FAIL: the search index still holds libDGone after the prune"; exit 1
+fi
+echo "OK: the kept modules kept their rows, LibC came back, and the search index dropped libDGone"
 
 echo "SUCCESS: All three libraries have HTML documentation"
