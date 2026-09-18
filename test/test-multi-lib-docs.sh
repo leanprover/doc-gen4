@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 #
-# Regression test: verify that building docs for multiple libraries in one
-# `lake build` produces HTML for all of them, and that an incremental build
-# of a third library doesn't remove the first two.
+# Regression test for the `docs` facet. It verifies that:
+#   * one `lake build` of several libraries produces HTML for all of them;
+#   * an incremental build of a third library keeps the pages of the first two;
+#   * a change in a module reaches the HTML, whether the module is a library
+#     root or an import of one;
+#   * a rebuild with no change leaves the build up to date.
 #
 # Usage: run from the doc-gen4 repo root (or pass it as $1).
 #   ./test/test-multi-lib-docs.sh
@@ -36,9 +39,17 @@ lean_lib LibB
 lean_lib LibC
 EOF
 
+mkdir -p "$TEST_DIR/LibA"
 cat > "$TEST_DIR/LibA.lean" << 'EOF'
+import LibA.Basic
+
 /-- A greeting from LibA -/
 def libAGreeting := "hello from A"
+EOF
+
+cat > "$TEST_DIR/LibA/Basic.lean" << 'EOF'
+/-- A greeting from LibA.Basic -/
+def libABasicGreeting := "hello from A.Basic"
 EOF
 
 cat > "$TEST_DIR/LibB.lean" << 'EOF'
@@ -99,5 +110,32 @@ else
   echo "FAIL: the page of LibA does not show libAGreetingAgain"
   exit 1
 fi
+
+# --- Phase 4: the build stays up to date when nothing changes ---
+
+echo "=== Checking that LibA:docs needs no rebuild ==="
+if (cd "$TEST_DIR" && lake build LibA:docs --no-build); then
+  echo "OK: nothing is out of date after the build"
+else
+  echo "FAIL: LibA:docs is out of date right after it was built"
+  exit 1
+fi
+
+# --- Phase 5: a change in an imported module reaches its page ---
+
+echo "=== Adding a declaration to LibA/Basic.lean and building LibA:docs again ==="
+cat >> "$TEST_DIR/LibA/Basic.lean" << 'EOF'
+
+/-- A second greeting from LibA.Basic -/
+def libABasicGreetingAgain := "hello again from A.Basic"
+EOF
+(cd "$TEST_DIR" && lake build LibA:docs)
+if grep -q 'libABasicGreetingAgain' "$DOC_DIR/LibA/Basic.html"; then
+  echo "OK: the page of LibA.Basic shows the new declaration"
+else
+  echo "FAIL: the page of LibA.Basic does not show libABasicGreetingAgain"
+  exit 1
+fi
+check_html LibA LibB LibC
 
 echo "SUCCESS: All three libraries have HTML documentation"

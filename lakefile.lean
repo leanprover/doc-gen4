@@ -186,8 +186,9 @@ module_facet srcUri (mod) : String := makeModuleSrcUriFacet mod `srcUri
 
 /--
 Writes the marker file of a build step. The content is the hash of the dependency trace of the
-step. Lake computes the trace of a built file from its content, so the trace of the marker changes
-exactly when the inputs of the step change, and the steps that depend on the marker run again.
+step. Lake gives a built file the trace of its content (see `buildFileUnlessUpToDate'`), so the
+trace of the marker changes exactly when the inputs of the step change, and the steps that depend
+on the marker run again.
 -/
 def writeMarker (markerFile : FilePath) : JobM Unit := do
   createParentDirs markerFile
