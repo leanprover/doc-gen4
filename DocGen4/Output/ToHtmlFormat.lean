@@ -8,10 +8,7 @@ import Lean.Data.Json
 import Lean.Parser
 import Lean.Data.Html
 
-/-! This module defines:
-- a representation of HTML trees
-- together with a JSX-like DSL for writing them
-- and widget support for visualizing any type as HTML. -/
+deprecated_module "use Lean.Data.Html instead" (since := "2026-09-16")
 
 namespace DocGen4
 
