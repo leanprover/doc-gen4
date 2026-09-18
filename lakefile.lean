@@ -184,6 +184,16 @@ module_facet srcUri.file (mod) : String := makeModuleSrcUriFacet mod `srcUri.fil
 /-- The URI of the source code of the module, respecting `DOCGEN_SRC`. -/
 module_facet srcUri (mod) : String := makeModuleSrcUriFacet mod `srcUri
 
+/--
+Writes the marker file of a build step. The content is the hash of the dependency trace of the
+step. Lake gives a built file the trace of its content (see `buildFileUnlessUpToDate'`), so the
+trace of the marker changes exactly when the inputs of the step change, and the steps that depend
+on the marker run again.
+-/
+def writeMarker (markerFile : FilePath) : JobM Unit := do
+  createParentDirs markerFile
+  IO.FS.writeFile markerFile (toString (← getTrace).hash)
+
 target bibPrepass : FilePath := do
   let exeJob ← «doc-gen4».fetch
   let buildDir := (← getRootPackage).buildDir
@@ -218,9 +228,9 @@ def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
   let buildDir := (← getRootPackage).buildDir
   -- Building the core targets adds their information to the database file. While it would be
   -- possible to hash just the relevant content of the database (e.g. using SQLite's SHA3 module)
-  -- and write the result to a file, this adds a significant overhead. Instead, we create an empty
-  -- "marker file" to indicate that the database content has been inserted, and rely on its trace
-  -- changing to trigger rebuilds.
+  -- and write the result to a file, this adds a significant overhead. Instead, `writeMarker` writes
+  -- a marker file whose content is the hash of the dependency trace, so that the steps that depend
+  -- on the marker run again when the inputs change.
   let markerFile := buildDir / "doc-data" / s!"core-{component}.doc"
   bibPrepassJob.bindM fun _ => do
     exeJob.mapM fun exeFile => do
@@ -230,8 +240,7 @@ def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
           args := #["genCore", "--build", buildDir.toString, component.toString, "api-docs.db"]
           env := ← getAugmentedEnv
         }
-        createParentDirs markerFile
-        IO.FS.writeFile markerFile ""
+        writeMarker markerFile
       return markerFile
 
 /--
@@ -262,9 +271,9 @@ module_facet docInfo (mod) : FilePath := do
   -- Building the documentation info for the module adds or updates the relevant content in the
   -- database. If the dependencies change, then this needs to be re-done. While it would be possible
   -- to hash just the relevant content of the database (e.g. using SQLite's SHA3 module) and write
-  -- the result to a file, this adds a significant overhead. Instead, we create an empty "marker
-  -- file" to indicate that the database content has been inserted, and rely on its Lake trace
-  -- changing to trigger rebuilds.
+  -- the result to a file, this adds a significant overhead. Instead, `writeMarker` writes a marker
+  -- file whose content is the hash of the dependency trace, so that the steps that depend on the
+  -- marker run again when the inputs change.
   let markerFile := buildDir / "doc-data" / s!"{mod.name}.doc"
   coreJob.bindM fun _ => do
     depDocJobs.bindM fun _ => do
@@ -276,12 +285,46 @@ module_facet docInfo (mod) : FilePath := do
               let srcUri ← uriJob.await
               proc {
                 cmd := exeFile.toString
-                args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
+                args := #["single", "--build", buildDir.toString, "--lib", mod.lib.name.toString,
+                  mod.name.toString, "api-docs.db", srcUri]
                 env := ← getAugmentedEnv
               }
-              createParentDirs markerFile
-              IO.FS.writeFile markerFile ""
+              writeMarker markerFile
             return markerFile
+
+/--
+Writes the current module names of `lib` to a file, and deletes the documentation of the modules
+that the library no longer has.
+
+Lake knows the modules of the library and the database records the library of every module, so the
+difference is what a rename or a deletion left behind. The file is an input of the HTML phase: its
+content changes when a module appears or disappears, so the navigation bar and the search index are
+written again in the same build.
+-/
+library_facet docModules (lib) : FilePath := do
+  let exeJob ← «doc-gen4».fetch
+  let modsJob ← lib.modules.fetch
+  let buildDir := (← getRootPackage).buildDir
+  let listFile := buildDir / "doc-data" / s!"{lib.name}--library.modules"
+  exeJob.bindM fun exeFile => do
+    modsJob.mapM fun mods => do
+      let names := (mods.map (·.name.toString)).qsort (· < ·)
+      let contents := "\n".intercalate names.toList
+      let current? ← if ← listFile.pathExists then some <$> IO.FS.readFile listFile else pure none
+      if current? != some contents then
+        -- The list takes its final place only after the prune succeeds, so that a failure here
+        -- leaves the work for the next build.
+        let pendingFile := listFile.addExtension "pending"
+        createParentDirs pendingFile
+        IO.FS.writeFile pendingFile contents
+        proc {
+          cmd := exeFile.toString
+          args := #["pruneLib", "--build", buildDir.toString, "api-docs.db", lib.name.toString,
+            pendingFile.toString]
+          env := ← getAugmentedEnv
+        }
+        IO.FS.rename pendingFile listFile
+      return listFile
 
 /--
 Populates the database with information for all modules in a library.
@@ -323,8 +366,7 @@ library_facet docsHeader (lib) : FilePath := do
           cmd := exeFile.toString
           args := #["headerData", "--build", buildDir.toString]
         }
-        createParentDirs markerFile
-        IO.FS.writeFile markerFile ""
+        writeMarker markerFile
       return dataFile
 
 
@@ -338,6 +380,11 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
   let bibPrepassJob ← bibPrepass.fetch
   let coreJob ← coreDocs.fetch
   let docInfoJobs := Job.collectArray <| ← rootMods.mapM (fetch <| ·.facet `docInfo)
+  -- Every library of the workspace prunes what it no longer has, whichever target is being built:
+  -- the database and the output directory are shared, so a rename in one library concerns them all.
+  let ws ← getWorkspace
+  let listJobs := Job.collectArray <|
+    ← ws.packages.flatMap (·.leanLibs) |>.mapM (fetch <| ·.facet `docModules)
   let buildDir := (← getRootPackage).buildDir
   let basePath := buildDir / "doc"
   let dbPath := buildDir / "api-docs.db"
@@ -374,6 +421,10 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
     docInfoJobs.bindM fun _ => do
       bibPrepassJob.bindM fun _ => do
         exeJob.mapM fun exeFile => do
+          -- The module lists are an input of this step, so that the pages, the navigation bar and
+          -- the search index are written again when a module appears or disappears.
+          let listFiles ← listJobs.await
+          addTrace <| mixTraceArray (← listFiles.mapM computeTrace)
           buildFileUnlessUpToDate' markerFile do
             logInfo description
             proc {
@@ -381,8 +432,7 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
               args := #["fromDb", "--build", buildDir.toString, "--manifest", manifestFile.toString, dbPath.toString] ++ rootNames.map (·.toString)
               env := ← getAugmentedEnv
             }
-            createParentDirs markerFile
-            IO.FS.writeFile markerFile ""
+            writeMarker markerFile
           let traces ← staticFiles.mapM computeTrace
           addTrace <| mixTraceArray traces
           -- We read the manifest to determine which HTML files were generated because we only
