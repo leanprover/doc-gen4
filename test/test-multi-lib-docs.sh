@@ -84,4 +84,20 @@ echo "=== Building LibC:docs incrementally ==="
 (cd "$TEST_DIR" && lake build LibC:docs)
 check_html LibA LibB LibC
 
+# --- Phase 3: a change in a module reaches its page ---
+
+echo "=== Adding a declaration to LibA and building LibA:docs again ==="
+cat >> "$TEST_DIR/LibA.lean" << 'EOF'
+
+/-- A second greeting from LibA -/
+def libAGreetingAgain := "hello again from A"
+EOF
+(cd "$TEST_DIR" && lake build LibA:docs)
+if grep -q 'libAGreetingAgain' "$DOC_DIR/LibA.html"; then
+  echo "OK: the page of LibA shows the new declaration"
+else
+  echo "FAIL: the page of LibA does not show libAGreetingAgain"
+  exit 1
+fi
+
 echo "SUCCESS: All three libraries have HTML documentation"
