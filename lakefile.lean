@@ -285,11 +285,46 @@ module_facet docInfo (mod) : FilePath := do
               let srcUri ← uriJob.await
               proc {
                 cmd := exeFile.toString
-                args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
+                args := #["single", "--build", buildDir.toString, "--lib", mod.lib.name.toString,
+                  mod.name.toString, "api-docs.db", srcUri]
                 env := ← getAugmentedEnv
               }
               writeMarker markerFile
             return markerFile
+
+/--
+Writes the current module names of `lib` to a file, and deletes the documentation of the modules
+that the library no longer has.
+
+Lake knows the modules of the library and the database records the library of every module, so the
+difference is what a rename or a deletion left behind. The file is an input of the HTML phase: its
+content changes when a module appears or disappears, so the navigation bar and the search index are
+written again in the same build.
+-/
+library_facet docModules (lib) : FilePath := do
+  let exeJob ← «doc-gen4».fetch
+  let modsJob ← lib.modules.fetch
+  let buildDir := (← getRootPackage).buildDir
+  let listFile := buildDir / "doc-data" / s!"{lib.name}--library.modules"
+  exeJob.bindM fun exeFile => do
+    modsJob.mapM fun mods => do
+      let names := (mods.map (·.name.toString)).qsort (· < ·)
+      let contents := "\n".intercalate names.toList
+      let current? ← if ← listFile.pathExists then some <$> IO.FS.readFile listFile else pure none
+      if current? != some contents then
+        -- The list takes its final place only after the prune succeeds, so that a failure here
+        -- leaves the work for the next build.
+        let pendingFile := listFile.addExtension "pending"
+        createParentDirs pendingFile
+        IO.FS.writeFile pendingFile contents
+        proc {
+          cmd := exeFile.toString
+          args := #["pruneLib", "--build", buildDir.toString, "api-docs.db", lib.name.toString,
+            pendingFile.toString]
+          env := ← getAugmentedEnv
+        }
+        IO.FS.rename pendingFile listFile
+      return listFile
 
 /--
 Populates the database with information for all modules in a library.
@@ -345,6 +380,11 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
   let bibPrepassJob ← bibPrepass.fetch
   let coreJob ← coreDocs.fetch
   let docInfoJobs := Job.collectArray <| ← rootMods.mapM (fetch <| ·.facet `docInfo)
+  -- Every library of the workspace prunes what it no longer has, whichever target is being built:
+  -- the database and the output directory are shared, so a rename in one library concerns them all.
+  let ws ← getWorkspace
+  let listJobs := Job.collectArray <|
+    ← ws.packages.flatMap (·.leanLibs) |>.mapM (fetch <| ·.facet `docModules)
   let buildDir := (← getRootPackage).buildDir
   let basePath := buildDir / "doc"
   let dbPath := buildDir / "api-docs.db"
@@ -381,6 +421,10 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
     docInfoJobs.bindM fun _ => do
       bibPrepassJob.bindM fun _ => do
         exeJob.mapM fun exeFile => do
+          -- The module lists are an input of this step, so that the pages, the navigation bar and
+          -- the search index are written again when a module appears or disappears.
+          let listFiles ← listJobs.await
+          addTrace <| mixTraceArray (← listFiles.mapM computeTrace)
           buildFileUnlessUpToDate' markerFile do
             logInfo description
             proc {
