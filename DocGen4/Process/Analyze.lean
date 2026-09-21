@@ -147,11 +147,27 @@ def collectTactics (module : Name) (env : Environment) :
     }
   return contents
 
+/--
+Converts a snippet of a Verso module docstring to a Markdown module docstring. If the snippet can't
+be rendered, prints a warning and returns `none`.
+-/
+def versoSnippetToModuleMember (env : Environment) (module : Name) (snippet : VersoModuleDocs.Snippet) :
+    IO (Option ModuleMember) := do
+  try
+    let doc ← Doc.runMarkdown env <| Doc.MarkdownM.run' <| Doc.ToMarkdown.toMarkdown snippet
+    return some <| .modDoc { doc, declarationRange := snippet.declarationRange }
+  catch e =>
+    let pos := snippet.declarationRange.pos
+    IO.println s!"WARNING: Failed to render module docstring in {module} at {pos.line}:{pos.column}: {e}"
+    return none
+
 def getAllModuleDocs (relevantModules : Array Name) : MetaM (Std.HashMap Name Module) := do
   let env ← getEnv
   let mut res := Std.HashMap.emptyWithCapacity relevantModules.size
   for module in relevantModules do
-    let modDocs := getModuleDoc? env module |>.getD #[] |>.map .modDoc
+    let markdownModDocs := getModuleDoc? env module |>.getD #[] |>.map .modDoc
+    let versoModDocs ← getVersoModuleDoc? env module |>.getD #[] |>.filterMapM (versoSnippetToModuleMember env module ·)
+    let modDocs := markdownModDocs ++ versoModDocs
     let some modIdx := env.getModuleIdx? module | unreachable!
     let moduleData := env.header.moduleData[modIdx]!
     let imports := moduleData.imports.map Import.module
