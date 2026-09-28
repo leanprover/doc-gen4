@@ -237,6 +237,11 @@ def addLocalModuleRootsTrace : JobM Unit := do
   let roots ← localModuleRoots
   addPureTrace (",".intercalate (roots.map (·.toString)).toList) "DOCGEN_LOCAL_MODULE_ROOTS"
 
+/-- Mixes the dependency documentation URLs, which the rendered links contain, into the trace. -/
+def addDepsDocsUrlsTrace : JobM Unit := do
+  for var in ["DOCGEN_DEPS_DOCS_URL", "DOCGEN_DEPS_DOCS_URLS"] do
+    addPureTrace ((← IO.getEnv var).getD "") var
+
 def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
@@ -373,6 +378,13 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
   -- but not an external one's, and a root may be external (an aggregator root outside the local
   -- roots, for example), so build the roots here.
   let rootArtJobs := Job.mixArray <| ← rootMods.mapM (·.leanArts.fetch)
+  -- The source directories of the local libraries, where `externals` checks whether a local module
+  -- in the database still exists. Asking whether these roots import it instead would be wrong: a
+  -- module can be documented by another root, and sharing the database is legitimate.
+  let localRoots ← localModuleRoots
+  let localSrcDirs := (← getWorkspace).packages.flatMap (·.leanLibs)
+    |>.filter (·.rootModules.any (!isExternalModule localRoots ·.name))
+    |>.map (·.srcDir.toString)
   let buildDir := (← getRootPackage).buildDir
   let basePath := buildDir / "doc"
   let dbPath := buildDir / "api-docs.db"
@@ -410,12 +422,15 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
       bibPrepassJob.bindM fun _ => do
         exeJob.mapM fun exeFile => do
           addLocalModuleRootsTrace
+          addDepsDocsUrlsTrace
           buildFileUnlessUpToDate' markerFile do
             logInfo description
-            if !(← localModuleRoots).isEmpty then
+            if !localRoots.isEmpty then
               proc {
                 cmd := exeFile.toString
-                args := #["externals", "--build", buildDir.toString, "api-docs.db"] ++ rootNames.map (·.toString)
+                args := #["externals", "--build", buildDir.toString,
+                  "--srcDirs", ",".intercalate localSrcDirs.toList, "api-docs.db"] ++
+                  rootNames.map (·.toString)
                 env := ← getAugmentedEnv
               }
             proc {

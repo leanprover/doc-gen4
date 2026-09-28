@@ -97,18 +97,26 @@ def collectExternals (isExternal : Name → Bool) : MetaM ExternalInfo := do
     tactics := tactics.modify modIdx (·.push info)
   return { decls, tactics }
 
+/-- Deletes a file if it exists. -/
+private def removeFileIfExists (path : System.FilePath) : IO Unit := do
+  if ← path.pathExists then
+    IO.FS.removeFile path
+
 /--
 Records the external modules in the environment of `roots`, and their declarations, in the database.
 Each external module is replaced as a whole, so rerunning this after a dependency changes leaves no
-stale entries for the modules that remain.
+stale entries for the modules that remain. Their Lake markers are deleted, since what they record
+was replaced: if the module later became local again, Lake must analyze it afresh.
 
-It also deletes the local modules that are no longer in the environment, such as a module that was
-removed from the project, together with their Lake markers. A database kept between incremental
-builds would otherwise go on offering their names for linking and their tactics to the tactics page.
-This assumes that `roots` covers every local module documented into this database.
+When `srcDirs?` gives the source directories of the local libraries, local modules in the database
+whose source file is in none of them any more, such as a module removed from the project, are deleted
+too, together with their markers and their search and backreference data. A database kept between
+incremental builds would otherwise go on offering their names for linking, their tactics to the
+tactics page, and their declarations to the search index.
 -/
 def recordExternals (values : DocstringValues) (roots localRoots : Array Name)
-    (buildDir : System.FilePath) (dbFile : String) : IO Unit := do
+    (srcDirs? : Option (Array System.FilePath)) (buildDir : System.FilePath) (dbFile : String) :
+    IO Unit := do
   initSearchPath (← findSysroot)
   let env ← envOfImports roots
   let isExternal (mod : Name) := !localRoots.contains mod.getRoot
@@ -119,28 +127,34 @@ def recordExternals (values : DocstringValues) (roots localRoots : Array Name)
     fileMap := default,
   }
   let info ← Prod.fst <$> (collectExternals isExternal).toIO config { env := env } {} {}
+  let dataDir := buildDir / "doc-data"
   let db ← ensureWriteDb values (buildDir / dbFile)
-  let current : Std.HashSet Name := Std.HashSet.emptyWithCapacity env.header.moduleNames.size |>.insertMany env.header.moduleNames
   db.sqlite.transaction (mode := .immediate) do
-    let stmt ← db.sqlite.prepare "SELECT name FROM modules"
-    let mut removed := #[]
-    while ← stmt.step do
-      let mod := (← stmt.columnText 0).toName
-      if !isExternal mod && !current.contains mod then
-        removed := removed.push mod
-    stmt.reset
-    for mod in removed do
-      db.deleteModule mod.toString
-      -- The marker must go too: if the module came back unchanged, Lake would otherwise consider
-      -- it documented and never analyze it again.
-      let marker := buildDir / "doc-data" / s!"{mod}.doc"
-      if ← marker.pathExists then
-        IO.FS.removeFile marker
+    if let some srcDirs := srcDirs? then
+      let stmt ← db.sqlite.prepare "SELECT name FROM modules"
+      let mut removed := #[]
+      while ← stmt.step do
+        let mod := (← stmt.columnText 0).toName
+        if !isExternal mod then
+          if !(← srcDirs.anyM fun dir => (modToFilePath dir mod "lean").pathExists) then
+            removed := removed.push mod
+      stmt.reset
+      for mod in removed do
+        db.deleteModule mod.toString
+        -- If the module came back unchanged, Lake would otherwise consider it documented.
+        removeFileIfExists (dataDir / s!"{mod}.doc")
+        -- Written by `fromDb` for each rendered module, and read back for every module on disk.
+        removeFileIfExists (dataDir / s!"declaration-data-{mod}.bmp")
+        removeFileIfExists (dataDir / s!"backrefs-{mod}.json")
+    for component in [`Init, `Std, `Lake, `Lean] do
+      if isExternal component then
+        removeFileIfExists (dataDir / s!"core-{component}.doc")
     for h : i in 0...env.header.moduleNames.size do
       let mod := env.header.moduleNames[i]
       if !isExternal mod then continue
       let modStr := mod.toString
       db.deleteModule modStr
+      removeFileIfExists (dataDir / s!"{modStr}.doc")
       db.saveModule modStr none
       for imported in env.header.moduleData[i]!.imports do
         db.saveImport modStr imported.module

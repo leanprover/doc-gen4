@@ -121,9 +121,10 @@ incomplete.
 External modules are not analyzed either, which is most of the build time for a project on top of a
 large dependency. Lake skips their per-module analysis (and the Lean core documentation, unless a core
 root is listed as local), and a single `externals` step loads the environment once and records only
-what linking needs: each external module, its imports, and the names of its declarations. Because the
-setting decides what the database contains, clear the build directory (`lake clean` in the docs
-project, or delete `.lake/build/doc-data` and `.lake/build/api-docs.db`) after changing it.
+what linking and the tactics page need: each external module, its imports, the names of its
+declarations, and its tactics. The same step deletes local modules whose source file no longer
+exists, so a build directory kept between incremental builds does not go on listing them. Changing
+any of these variables invalidates what was built under the old values.
 
 When `DOCGEN_LOCAL_MODULE_ROOTS` is unset the behaviour is unchanged, i.e. the full import closure
 is documented.

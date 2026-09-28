@@ -41,7 +41,8 @@ def runExternalsCmd (p : Parsed) : IO UInt32 := do
   let localRoots ← getLocalModuleRoots
   if localRoots.isEmpty then
     throw <| IO.userError "externals requires DOCGEN_LOCAL_MODULE_ROOTS to be set"
-  recordExternals builtinDocstringValues roots localRoots buildDir dbFile
+  let srcDirs? := (p.flag? "srcDirs").map fun dirs => (dirs.as! (Array String)).map System.FilePath.mk
+  recordExternals builtinDocstringValues roots localRoots srcDirs? buildDir dbFile
   return 0
 
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
@@ -209,6 +210,7 @@ def externalsCmd := `[Cli|
 
   FLAGS:
     b, build : String; "Build directory."
+    s, srcDirs : Array String; "The source directories of the local libraries (comma-separated). Local modules in the database whose source file is in none of them are deleted."
 
   ARGS:
     db : String; "Path to the SQLite database (relative to build dir)"

@@ -4,7 +4,8 @@
 # - concurrent and incremental builds retain every generated library;
 # - local-only builds omit dependency pages and link each dependency to its own docs site;
 # - incomplete external documentation mappings fail instead of producing broken links;
-# - a Lake build with local roots analyzes only the local modules, yet still links the rest.
+# - a Lake build with local roots analyzes only the local modules, yet still links the rest;
+# - incremental builds with local roots forget removed modules and survive toggling the roots.
 #
 # Usage: run from the doc-gen4 repo root (or pass it as $1).
 #   ./test/test-multi-lib-docs.sh
@@ -253,6 +254,7 @@ if [ ! -f "$check_html_file" ]; then
   exit 1
 fi
 echo "OK: Project/Old.html exists"
+check_contains "$check_html_file" 'projectOldGreeting'
 check_no_html "$AGG_BUILD/doc" Agg DepA
 
 echo "=== Removing a local module and rebuilding incrementally ==="
@@ -266,6 +268,17 @@ if [ -e "$AGG_BUILD/doc-data/Project.Old.doc" ]; then
   exit 1
 fi
 echo "OK: the removed module's marker was deleted"
+for data in declaration-data-Project.Old.bmp backrefs-Project.Old.json; do
+  if [ -e "$AGG_BUILD/doc-data/$data" ]; then
+    echo "FAIL: the removed module's $data was kept"
+    exit 1
+  fi
+done
+if grep -qF projectOldGreeting "$AGG_BUILD/doc/declarations/declaration-data.bmp"; then
+  echo "FAIL: the search index still lists the removed module's declarations"
+  exit 1
+fi
+echo "OK: the removed module's search data is gone"
 if command -v sqlite3 >/dev/null; then
   if [ -n "$(sqlite3 "$AGG_BUILD/api-docs.db" "SELECT name FROM modules WHERE name = 'Project.Old'")" ]; then
     echo "FAIL: the removed module is still in the database"
@@ -275,5 +288,23 @@ if command -v sqlite3 >/dev/null; then
 else
   echo "SKIP: sqlite3 is not installed, so the database was not inspected"
 fi
+
+# --- Phase 7: making a module external and then local again re-analyzes it ---
+
+echo "=== Making a module external and then local again ==="
+TOGGLE_DIR="$TEST_DIR/toggle"
+mkdir -p "$TOGGLE_DIR"
+cp "$TEST_DIR/lean-toolchain" "$TEST_DIR"/*.lean "$TOGGLE_DIR/"
+toggle_build() {
+  (cd "$TOGGLE_DIR" && env DOCGEN_DEPS_DOCS_URL=https://deps.example/fallback/ \
+    DOCGEN_LOCAL_MODULE_ROOTS="$1" lake build Project:docs)
+}
+# DepA is local, then external, then local again. (Toggling `Init` instead would be the same test,
+# but documenting Lean core takes far longer.)
+toggle_build Project,DepA
+toggle_build Project
+toggle_build Project,DepA
+# Documented in full again, rather than left with the name-only record of an external module.
+check_contains "$TOGGLE_DIR/.lake/build/doc/DepA.html" 'A greeting from the first dependency'
 
 echo "SUCCESS: Multi-library and interproject documentation tests passed"
