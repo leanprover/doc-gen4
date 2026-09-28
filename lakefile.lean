@@ -212,6 +212,23 @@ target bibPrepass : FilePath := do
       }
     return outputFile
 
+/--
+The local module roots configured by `DOCGEN_LOCAL_MODULE_ROOTS` (comma-separated). Empty when
+interproject linking is disabled, in which case every module is local.
+-/
+def localModuleRoots : IO (Array Lean.Name) := do
+  match ← IO.getEnv "DOCGEN_LOCAL_MODULE_ROOTS" with
+  | some s =>
+    pure <| s.splitOn "," |>.map (·.trimAscii.copy) |>.filter (! ·.isEmpty) |>.map String.toName |>.toArray
+  | none => pure #[]
+
+/--
+Whether interproject linking treats `mod` as external. External modules are not analyzed: the
+`externals` command records just enough about them to link to their declarations.
+-/
+def isExternalModule (roots : Array Lean.Name) (mod : Lean.Name) : Bool :=
+  !roots.isEmpty && !roots.contains mod.getRoot
+
 def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
@@ -240,7 +257,8 @@ indicate that the database has been updated for the corresponding modules, allow
 changes and dependencies.
 -/
 target coreDocs : Array FilePath := do
-  let coreComponents := #[`Init, `Std, `Lake, `Lean]
+  let roots ← localModuleRoots
+  let coreComponents := #[`Init, `Std, `Lake, `Lean].filter (!isExternalModule roots ·)
   return ← (Job.collectArray <| ← coreComponents.mapM coreTarget).mapM fun deps =>
     return deps
 
@@ -251,14 +269,18 @@ Returns a marker file that indicates the database has been populated for this mo
 The marker file participates in Lake's dependency tracking, allowing for incremental updates.
 -/
 module_facet docInfo (mod) : FilePath := do
-  let exeJob ← «doc-gen4».fetch
-  let bibPrepassJob ← bibPrepass.fetch
-  let coreJob ← coreDocs.fetch
-  let modJob ← mod.leanArts.fetch
   -- Build all documentation for imported modules
   let imports ← (← mod.imports.fetch).await
   let depDocJobs := Job.mixArray <| ← imports.mapM fun mod => fetch <| mod.facet `docInfo
   let buildDir := (← getRootPackage).buildDir
+  if isExternalModule (← localModuleRoots) mod.name then
+    -- An external module is not analyzed, but it may still import local modules (for example, an
+    -- aggregator root that imports the whole project), so its imports are visited all the same.
+    return ← depDocJobs.mapM fun _ => return buildDir / "doc-data" / s!"{mod.name}.doc"
+  let exeJob ← «doc-gen4».fetch
+  let bibPrepassJob ← bibPrepass.fetch
+  let coreJob ← coreDocs.fetch
+  let modJob ← mod.leanArts.fetch
   -- Building the documentation info for the module adds or updates the relevant content in the
   -- database. If the dependencies change, then this needs to be re-done. While it would be possible
   -- to hash just the relevant content of the database (e.g. using SQLite's SHA3 module) and write
@@ -376,6 +398,12 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
         exeJob.mapM fun exeFile => do
           buildFileUnlessUpToDate' markerFile do
             logInfo description
+            if !(← localModuleRoots).isEmpty then
+              proc {
+                cmd := exeFile.toString
+                args := #["externals", "--build", buildDir.toString, "api-docs.db"] ++ rootNames.map (·.toString)
+                env := ← getAugmentedEnv
+              }
             proc {
               cmd := exeFile.toString
               args := #["fromDb", "--build", buildDir.toString, "--manifest", manifestFile.toString, dbPath.toString] ++ rootNames.map (·.toString)

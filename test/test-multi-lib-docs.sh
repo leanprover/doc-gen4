@@ -3,7 +3,8 @@
 # Regression tests for multi-library and interproject documentation generation:
 # - concurrent and incremental builds retain every generated library;
 # - local-only builds omit dependency pages and link each dependency to its own docs site;
-# - incomplete external documentation mappings fail instead of producing broken links.
+# - incomplete external documentation mappings fail instead of producing broken links;
+# - a Lake build with local roots analyzes only the local modules, yet still links the rest.
 #
 # Usage: run from the doc-gen4 repo root (or pass it as $1).
 #   ./test/test-multi-lib-docs.sh
@@ -180,5 +181,46 @@ if env \
   exit 1
 fi
 check_contains "$INCOMPLETE_LOG" 'No dependency documentation URL configured for external module roots:'
+
+# --- Phase 5: a Lake build with local roots analyzes only the local modules ---
+
+echo "=== Building local-only docs through Lake ==="
+LOCAL_DIR="$TEST_DIR/local-only"
+mkdir -p "$LOCAL_DIR"
+cp "$TEST_DIR/lean-toolchain" "$TEST_DIR/lakefile.lean" "$TEST_DIR"/*.lean "$LOCAL_DIR/"
+(cd "$LOCAL_DIR" && env \
+  DOCGEN_LOCAL_MODULE_ROOTS=Project \
+  DOCGEN_DEPS_DOCS_URL=https://deps.example/fallback/ \
+  DOCGEN_DEPS_DOCS_URLS='DepA=https://deps.example/a/,DepB=https://deps.example/b' \
+  lake build Project:docs)
+
+LOCAL_BUILD="$LOCAL_DIR/.lake/build"
+local_html="$LOCAL_BUILD/doc/Project.html"
+if [ ! -f "$local_html" ]; then
+  echo "FAIL: Project.html was not generated"
+  exit 1
+fi
+echo "OK: Project.html exists"
+check_no_html "$LOCAL_BUILD/doc" DepA DepB Init
+for marker in Project.doc; do
+  if [ ! -f "$LOCAL_BUILD/doc-data/$marker" ]; then
+    echo "FAIL: the local module was not analyzed ($marker is missing)"
+    exit 1
+  fi
+done
+echo "OK: the local module was analyzed"
+for marker in DepA.doc DepB.doc core-Init.doc; do
+  if [ -e "$LOCAL_BUILD/doc-data/$marker" ]; then
+    echo "FAIL: an external module was analyzed ($marker exists)"
+    exit 1
+  fi
+done
+echo "OK: the external modules and Lean core were not analyzed"
+check_contains "$local_html" 'https://deps.example/a/find/?pattern=depAGreeting#doc'
+check_contains "$local_html" 'https://deps.example/b/find/?pattern=depBGreeting#doc'
+check_contains "$local_html" 'https://deps.example/fallback/find/?pattern=String#doc'
+check_contains "$local_html" 'https://deps.example/fallback/find/?pattern=And#doc'
+# Tactics from external modules are still listed.
+check_contains "$LOCAL_BUILD/doc/tactics.html" 'simp'
 
 echo "SUCCESS: Multi-library and interproject documentation tests passed"

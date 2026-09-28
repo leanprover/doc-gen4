@@ -32,6 +32,18 @@ def runGenCoreCmd (p : Parsed) : IO UInt32 := do
   updateModuleDb builtinDocstringValues doc buildDir dbFile none
   return 0
 
+def runExternalsCmd (p : Parsed) : IO UInt32 := do
+  let buildDir := match p.flag? "build" with
+    | some dir => dir.as! String
+    | none => ".lake/build"
+  let dbFile := p.positionalArg! "db" |>.as! String
+  let roots := (p.variableArgsAs! String).map String.toName
+  let localRoots ← getLocalModuleRoots
+  if localRoots.isEmpty then
+    throw <| IO.userError "externals requires DOCGEN_LOCAL_MODULE_ROOTS to be set"
+  recordExternals builtinDocstringValues roots localRoots buildDir dbFile
+  return 0
+
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
   IO.println "You most likely want to use me via Lake now, check my README on Github on how to:"
   IO.println "https://github.com/leanprover/doc-gen4"
@@ -191,6 +203,18 @@ def genCoreCmd := `[Cli|
     db : String; "Path to the SQLite database (relative to build dir)"
 ]
 
+def externalsCmd := `[Cli|
+  externals VIA runExternalsCmd;
+  "Record the modules outside DOCGEN_LOCAL_MODULE_ROOTS, and the names they declare, in the database, so that references to them can be linked."
+
+  FLAGS:
+    b, build : String; "Build directory."
+
+  ARGS:
+    db : String; "Path to the SQLite database (relative to build dir)"
+    ...roots : String; "The root modules whose environment is loaded."
+]
+
 def bibPrepassCmd := `[Cli|
   bibPrepass VIA runBibPrepassCmd;
   "Run the bibliography prepass: copy the bibliography file to output directory. By default it assumes the input is '.bib'."
@@ -235,6 +259,7 @@ def docGenCmd : Cmd := `[Cli|
   SUBCOMMANDS:
     singleCmd;
     genCoreCmd;
+    externalsCmd;
     bibPrepassCmd;
     headerDataCmd;
     fromDbCmd

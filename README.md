@@ -117,6 +117,14 @@ are linking against; module-level links point directly at the corresponding page
 take precedence over the fallback. Every external module root must have either a per-root entry or a
 fallback URL; doc-gen4 reports an error instead of producing broken links when the configuration is
 incomplete.
+
+External modules are not analyzed either, which is most of the build time for a project on top of a
+large dependency. Lake skips their per-module analysis (and the Lean core documentation, unless a core
+root is listed as local), and a single `externals` step loads the environment once and records only
+what linking needs: each external module, its imports, and the names of its declarations. Because the
+setting decides what the database contains, clear the build directory (`lake clean` in the docs
+project, or delete `.lake/build/doc-data` and `.lake/build/api-docs.db`) after changing it.
+
 When `DOCGEN_LOCAL_MODULE_ROOTS` is unset the behaviour is unchanged, i.e. the full import closure
 is documented.
 
