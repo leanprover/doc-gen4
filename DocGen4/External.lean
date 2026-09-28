@@ -101,6 +101,11 @@ def collectExternals (isExternal : Name → Bool) : MetaM ExternalInfo := do
 Records the external modules in the environment of `roots`, and their declarations, in the database.
 Each external module is replaced as a whole, so rerunning this after a dependency changes leaves no
 stale entries for the modules that remain.
+
+It also deletes the local modules that are no longer in the environment, such as a module that was
+removed from the project, together with their Lake markers. A database kept between incremental
+builds would otherwise go on offering their names for linking and their tactics to the tactics page.
+This assumes that `roots` covers every local module documented into this database.
 -/
 def recordExternals (values : DocstringValues) (roots localRoots : Array Name)
     (buildDir : System.FilePath) (dbFile : String) : IO Unit := do
@@ -115,7 +120,22 @@ def recordExternals (values : DocstringValues) (roots localRoots : Array Name)
   }
   let info ← Prod.fst <$> (collectExternals isExternal).toIO config { env := env } {} {}
   let db ← ensureWriteDb values (buildDir / dbFile)
+  let current : Std.HashSet Name := Std.HashSet.emptyWithCapacity env.header.moduleNames.size |>.insertMany env.header.moduleNames
   db.sqlite.transaction (mode := .immediate) do
+    let stmt ← db.sqlite.prepare "SELECT name FROM modules"
+    let mut removed := #[]
+    while ← stmt.step do
+      let mod := (← stmt.columnText 0).toName
+      if !isExternal mod && !current.contains mod then
+        removed := removed.push mod
+    stmt.reset
+    for mod in removed do
+      db.deleteModule mod.toString
+      -- The marker must go too: if the module came back unchanged, Lake would otherwise consider
+      -- it documented and never analyze it again.
+      let marker := buildDir / "doc-data" / s!"{mod}.doc"
+      if ← marker.pathExists then
+        IO.FS.removeFile marker
     for h : i in 0...env.header.moduleNames.size do
       let mod := env.header.moduleNames[i]
       if !isExternal mod then continue

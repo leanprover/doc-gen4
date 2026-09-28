@@ -187,7 +187,7 @@ check_contains "$INCOMPLETE_LOG" 'No dependency documentation URL configured for
 echo "=== Building local-only docs through Lake ==="
 LOCAL_DIR="$TEST_DIR/local-only"
 mkdir -p "$LOCAL_DIR"
-cp "$TEST_DIR/lean-toolchain" "$TEST_DIR/lakefile.lean" "$TEST_DIR"/*.lean "$LOCAL_DIR/"
+cp "$TEST_DIR/lean-toolchain" "$TEST_DIR"/*.lean "$LOCAL_DIR/"
 (cd "$LOCAL_DIR" && env \
   DOCGEN_LOCAL_MODULE_ROOTS=Project \
   DOCGEN_DEPS_DOCS_URL=https://deps.example/fallback/ \
@@ -222,5 +222,58 @@ check_contains "$local_html" 'https://deps.example/fallback/find/?pattern=String
 check_contains "$local_html" 'https://deps.example/fallback/find/?pattern=And#doc'
 # Tactics from external modules are still listed.
 check_contains "$LOCAL_BUILD/doc/tactics.html" 'simp'
+
+# --- Phase 6: an external aggregator root, and a local module removed between builds ---
+
+echo "=== Building local-only docs from an external aggregator root ==="
+AGG_DIR="$TEST_DIR/aggregator"
+mkdir -p "$AGG_DIR/Project"
+cp "$TEST_DIR/lean-toolchain" "$TEST_DIR"/*.lean "$AGG_DIR/"
+cat "$TEST_DIR/lakefile.lean" > "$AGG_DIR/lakefile.lean"
+echo 'lean_lib Agg' >> "$AGG_DIR/lakefile.lean"
+cat > "$AGG_DIR/Project/Old.lean" << 'EOF'
+/-- A declaration in a module that a later build removes. -/
+def projectOldGreeting := "soon gone"
+EOF
+printf 'import Project\nimport Project.Old\n' > "$AGG_DIR/Agg.lean"
+
+agg_build() {
+  (cd "$AGG_DIR" && env \
+    DOCGEN_LOCAL_MODULE_ROOTS=Project \
+    DOCGEN_DEPS_DOCS_URL=https://deps.example/fallback/ \
+    lake build Agg:docs)
+}
+
+# A clean build: `Agg` itself is external, so nothing else asks for its olean.
+agg_build
+AGG_BUILD="$AGG_DIR/.lake/build"
+check_html_file="$AGG_BUILD/doc/Project/Old.html"
+if [ ! -f "$check_html_file" ]; then
+  echo "FAIL: Project/Old.html was not generated"
+  exit 1
+fi
+echo "OK: Project/Old.html exists"
+check_no_html "$AGG_BUILD/doc" Agg DepA
+
+echo "=== Removing a local module and rebuilding incrementally ==="
+rm "$AGG_DIR/Project/Old.lean"
+printf 'import Project\n' > "$AGG_DIR/Agg.lean"
+rm -rf "$AGG_BUILD/doc/Project" "$AGG_BUILD"/doc-data/*.docs_built
+agg_build
+check_no_html "$AGG_BUILD/doc" Project/Old
+if [ -e "$AGG_BUILD/doc-data/Project.Old.doc" ]; then
+  echo "FAIL: the removed module's marker was kept"
+  exit 1
+fi
+echo "OK: the removed module's marker was deleted"
+if command -v sqlite3 >/dev/null; then
+  if [ -n "$(sqlite3 "$AGG_BUILD/api-docs.db" "SELECT name FROM modules WHERE name = 'Project.Old'")" ]; then
+    echo "FAIL: the removed module is still in the database"
+    exit 1
+  fi
+  echo "OK: the removed module is no longer in the database"
+else
+  echo "SKIP: sqlite3 is not installed, so the database was not inspected"
+fi
 
 echo "SUCCESS: Multi-library and interproject documentation tests passed"

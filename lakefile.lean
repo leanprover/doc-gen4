@@ -229,6 +229,14 @@ Whether interproject linking treats `mod` as external. External modules are not 
 def isExternalModule (roots : Array Lean.Name) (mod : Lean.Name) : Bool :=
   !roots.isEmpty && !roots.contains mod.getRoot
 
+/--
+Mixes the local module roots into the current job's trace. They decide what the database holds for
+each module, so changing them must invalidate what was recorded under the old setting.
+-/
+def addLocalModuleRootsTrace : JobM Unit := do
+  let roots ← localModuleRoots
+  addPureTrace (",".intercalate (roots.map (·.toString)).toList) "DOCGEN_LOCAL_MODULE_ROOTS"
+
 def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
@@ -293,6 +301,7 @@ module_facet docInfo (mod) : FilePath := do
       bibPrepassJob.bindM fun _ => do
         exeJob.bindM fun exeFile => do
           modJob.mapM fun _ => do
+            addLocalModuleRootsTrace
             buildFileUnlessUpToDate' markerFile do
               let uriJob ← fetch <| mod.facet `srcUri
               let srcUri ← uriJob.await
@@ -360,6 +369,10 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
   let bibPrepassJob ← bibPrepass.fetch
   let coreJob ← coreDocs.fetch
   let docInfoJobs := Job.collectArray <| ← rootMods.mapM (fetch <| ·.facet `docInfo)
+  -- `externals` loads the roots' environment. The `docInfo` facet builds a local module's olean,
+  -- but not an external one's, and a root may be external (an aggregator root outside the local
+  -- roots, for example), so build the roots here.
+  let rootArtJobs := Job.mixArray <| ← rootMods.mapM (·.leanArts.fetch)
   let buildDir := (← getRootPackage).buildDir
   let basePath := buildDir / "doc"
   let dbPath := buildDir / "api-docs.db"
@@ -393,9 +406,10 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
   let rootNames := rootMods.map (·.name) ++ coreRoots
   let manifestFile := buildDir / "doc-manifest.json"
   coreJob.bindM fun _ => do
-    docInfoJobs.bindM fun _ => do
+    (docInfoJobs.mix rootArtJobs).bindM fun _ => do
       bibPrepassJob.bindM fun _ => do
         exeJob.mapM fun exeFile => do
+          addLocalModuleRootsTrace
           buildFileUnlessUpToDate' markerFile do
             logInfo description
             if !(← localModuleRoots).isEmpty then
