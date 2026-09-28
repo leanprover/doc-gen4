@@ -103,14 +103,27 @@ private def removeFileIfExists (path : System.FilePath) : IO Unit := do
     IO.FS.removeFile path
 
 /--
+Deletes what Lake and `fromDb` produced for a module documented locally: its Lake marker, its search
+and backreference data (which `fromDb` reads back for every module on disk), and its page (which the
+navigation bar lists if it is on disk).
+-/
+private def removeLocalOutputs (buildDir : System.FilePath) (mod : Name) : IO Unit := do
+  let dataDir := buildDir / "doc-data"
+  removeFileIfExists (dataDir / s!"{mod}.doc")
+  removeFileIfExists (dataDir / s!"declaration-data-{mod}.bmp")
+  removeFileIfExists (dataDir / s!"backrefs-{mod}.json")
+  removeFileIfExists (modToFilePath (buildDir / "doc") mod "html")
+
+/--
 Records the external modules in the environment of `roots`, and their declarations, in the database.
 Each external module is replaced as a whole, so rerunning this after a dependency changes leaves no
-stale entries for the modules that remain. Their Lake markers are deleted, since what they record
-was replaced: if the module later became local again, Lake must analyze it afresh.
+stale entries for the modules that remain. Whatever was produced for them as local modules is
+deleted, since it was replaced: if a module became local again, Lake must analyze it afresh.
 
 When `srcDirs?` gives the source directories of the local libraries, local modules in the database
 whose source file is in none of them any more, such as a module removed from the project, are deleted
-too, together with their markers and their search and backreference data. A database kept between
+too, together with their markers, their search and backreference data, and their pages. (Lean core
+modules have no source there, and are never deleted this way.) A database kept between
 incremental builds would otherwise go on offering their names for linking, their tactics to the
 tactics page, and their declarations to the search index.
 -/
@@ -128,6 +141,7 @@ def recordExternals (values : DocstringValues) (roots localRoots : Array Name)
   }
   let info ← Prod.fst <$> (collectExternals isExternal).toIO config { env := env } {} {}
   let dataDir := buildDir / "doc-data"
+  let coreRoots := [`Init, `Std, `Lake, `Lean]
   let db ← ensureWriteDb values (buildDir / dbFile)
   db.sqlite.transaction (mode := .immediate) do
     if let some srcDirs := srcDirs? then
@@ -135,18 +149,16 @@ def recordExternals (values : DocstringValues) (roots localRoots : Array Name)
       let mut removed := #[]
       while ← stmt.step do
         let mod := (← stmt.columnText 0).toName
-        if !isExternal mod then
+        if !isExternal mod && !coreRoots.contains mod.getRoot then
           if !(← srcDirs.anyM fun dir => (modToFilePath dir mod "lean").pathExists) then
             removed := removed.push mod
       stmt.reset
       for mod in removed do
         db.deleteModule mod.toString
-        -- If the module came back unchanged, Lake would otherwise consider it documented.
-        removeFileIfExists (dataDir / s!"{mod}.doc")
-        -- Written by `fromDb` for each rendered module, and read back for every module on disk.
-        removeFileIfExists (dataDir / s!"declaration-data-{mod}.bmp")
-        removeFileIfExists (dataDir / s!"backrefs-{mod}.json")
-    for component in [`Init, `Std, `Lake, `Lean] do
+        -- The marker too: if the module came back unchanged, Lake would otherwise consider it
+        -- documented.
+        removeLocalOutputs buildDir mod
+    for component in coreRoots do
       if isExternal component then
         removeFileIfExists (dataDir / s!"core-{component}.doc")
     for h : i in 0...env.header.moduleNames.size do
@@ -154,7 +166,7 @@ def recordExternals (values : DocstringValues) (roots localRoots : Array Name)
       if !isExternal mod then continue
       let modStr := mod.toString
       db.deleteModule modStr
-      removeFileIfExists (dataDir / s!"{modStr}.doc")
+      removeLocalOutputs buildDir mod
       db.saveModule modStr none
       for imported in env.header.moduleData[i]!.imports do
         db.saveImport modStr imported.module

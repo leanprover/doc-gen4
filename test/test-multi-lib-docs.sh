@@ -260,7 +260,6 @@ check_no_html "$AGG_BUILD/doc" Agg DepA
 echo "=== Removing a local module and rebuilding incrementally ==="
 rm "$AGG_DIR/Project/Old.lean"
 printf 'import Project\n' > "$AGG_DIR/Agg.lean"
-rm -rf "$AGG_BUILD/doc/Project" "$AGG_BUILD"/doc-data/*.docs_built
 agg_build
 check_no_html "$AGG_BUILD/doc" Project/Old
 if [ -e "$AGG_BUILD/doc-data/Project.Old.doc" ]; then
@@ -299,10 +298,17 @@ toggle_build() {
   (cd "$TOGGLE_DIR" && env DOCGEN_DEPS_DOCS_URL=https://deps.example/fallback/ \
     DOCGEN_LOCAL_MODULE_ROOTS="$1" lake build Project:docs)
 }
-# DepA is local, then external, then local again. (Toggling `Init` instead would be the same test,
-# but documenting Lean core takes far longer.)
+# DepA is local, then external, then local again.
 toggle_build Project,DepA
+check_contains "$TOGGLE_DIR/.lake/build/doc/DepA.html" 'A greeting from the first dependency'
 toggle_build Project
+# As in a clean build with these roots, nothing of DepA's local documentation is left.
+check_no_html "$TOGGLE_DIR/.lake/build/doc" DepA
+if [ -e "$TOGGLE_DIR/.lake/build/doc-data/declaration-data-DepA.bmp" ]; then
+  echo "FAIL: DepA's search data outlived its becoming external"
+  exit 1
+fi
+echo "OK: DepA's search data went with its page"
 toggle_build Project,DepA
 # Documented in full again, rather than left with the name-only record of an external module.
 check_contains "$TOGGLE_DIR/.lake/build/doc/DepA.html" 'A greeting from the first dependency'
