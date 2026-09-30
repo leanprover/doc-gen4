@@ -5,6 +5,9 @@ package «doc-gen4»
 
 lean_lib DocGen4
 
+lean_lib SubDocGen where
+  leanOptions := #[⟨`experimental.module, true⟩]
+
 @[default_target]
 lean_exe «doc-gen4» {
   root := `Main
