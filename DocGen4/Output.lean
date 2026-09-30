@@ -94,8 +94,8 @@ abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → 
 /--
 Generates HTML for all modules in parallel. Each task loads its module from DB, renders HTML, and
 writes output files. The linking context provides cross-module linking without loading all module
-data upfront. When `targetModules` is provided, only those modules are rendered (but linking uses
-all modules).
+data upfront. When `targetModules` is provided, only those modules are rendered. Links resolve to
+the modules in `linkCtx`.
 -/
 def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.FilePath)
     (linkCtx : LinkingContext)

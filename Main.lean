@@ -110,6 +110,23 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
       pure linkCtx.moduleNames
     else
       db.getTransitiveImports moduleRoots
+  let linkedModules := Std.HashSet.ofArray linkCtx.moduleNames
+
+  -- If a target is outside the linking context, then the location was recorded incorrectly.
+  if let some packageDirs := packageDirs? then
+    let sources := Std.HashMap.ofList (← db.getModules).toList
+    for mod in targetModules do
+      unless linkedModules.contains mod do
+        let reason := match sources[mod]? with
+          | none => "it is not found in the database"
+          | some source =>
+            match source.package? with
+            | none => "it has no package"
+            | some package =>
+              match packageDirs[package]? with
+              | none => s!"its package '{package}' is not in the package map"
+              | some dir => s!"its source file '{dir / source.path}' was not found"
+        IO.eprintln s!"warning: HTML for module '{mod}' is generated, but nothing links to it: {reason}"
 
   let baseConfig ← getSimpleBaseContext buildDir (Hierarchy.fromArray targetModules)
   -- Add `references` pseudo-module to hierarchy only when bibliography data exists
@@ -122,7 +139,6 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
 
   -- Load the tactics of the linking context's modules from DB in sorted order and convert markdown
   -- docstrings to HTML
-  let linkedModules := Std.HashSet.ofArray linkCtx.moduleNames
   let allTacticsRaw := (← db.loadAllTactics).filter (linkedModules.contains ·.definingModule)
   let refsMap : Std.HashMap String BibItem :=
     Std.HashMap.emptyWithCapacity baseConfig.refs.size |>.insertMany
