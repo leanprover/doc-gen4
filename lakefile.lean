@@ -185,7 +185,8 @@ module_facet srcUri.file (mod) : String := makeModuleSrcUriFacet mod `srcUri.fil
 module_facet srcUri (mod) : String := makeModuleSrcUriFacet mod `srcUri
 
 /--
-Writes the marker file of a build step. The file contains a hash of the current trace.
+Writes the marker file of a build step. The file contains the running hash computed as part of the
+current trace.
 
 When Lake builds a file with `buildFileUnlessUpToDate'`, it replaces the current trace with one that
 contains only the file. This means that downstream dependents of the file are not rebuilt if the
