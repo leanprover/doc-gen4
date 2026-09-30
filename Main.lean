@@ -4,22 +4,44 @@ import Cli
 
 open DocGen4 DocGen4.DB DocGen4.Output Lean Cli
 
+/-- Reads the package directories from the file that the `--packages` flag names, if it is given. -/
+def packageDirsFlag? (p : Parsed) : IO (Option PackageDirs) :=
+  (p.flag? "packages").mapM fun file => do
+    let json ← IO.ofExcept <| Json.parse (← IO.FS.readFile (file.as! String))
+    IO.ofExcept (fromJson? json : Except String PackageDirs)
+
 def runHeaderDataCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
-  headerDataOutput buildDir
+  let dbPath := p.positionalArg! "db" |>.as! String
+  let db ← openForReading dbPath builtinDocstringValues
+  let linkedModules := Std.HashSet.ofArray (← db.getModuleNames (← packageDirsFlag? p))
+  headerDataOutput buildDir linkedModules
   return 0
+
+/-- Returns the location of a core module's source file. Fails for modules outside core. -/
+def coreModuleSource (module : Name) : IO ModuleSource :=
+  match Output.SourceLinker.coreSourcePath? module with
+  | some path => pure { package? := none, path }
+  | none => throw <| IO.userError s!"'{module}' is not a core module"
 
 def runSingleCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
   let dbFile := p.positionalArg! "db" |>.as! String
-  let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
+  let module := p.positionalArg! "module" |>.as! String |> String.toName
   let sourceUri := p.positionalArg! "sourceUri" |>.as! String
-  let doc ← load <| .analyzeConcreteModules relevantModules
-  updateModuleDb builtinDocstringValues doc buildDir dbFile (some sourceUri)
+  let package? := (p.flag? "package").map (·.as! String)
+  let sourcePath? := (p.flag? "source-path").map (·.as! String)
+  let source : ModuleSource ← match package?, sourcePath?, p.hasFlag "core" with
+    | some package, some path, false => pure { package? := some package, path }
+    | none, none, true => coreModuleSource module
+    | _, _, _ =>
+      throw <| IO.userError "either `--package` with `--source-path`, or `--core` alone, is required"
+  let doc ← load <| .analyzeConcreteModules #[module]
+  updateModuleDb builtinDocstringValues doc buildDir dbFile (some sourceUri) fun _ => pure source
   return 0
 
 def runGenCoreCmd (p : Parsed) : IO UInt32 := do
@@ -29,7 +51,7 @@ def runGenCoreCmd (p : Parsed) : IO UInt32 := do
   let dbFile := p.positionalArg! "db" |>.as! String
   let module := p.positionalArg! "module" |>.as! String |> String.toName
   let doc ← load <| .analyzePrefixModules module
-  updateModuleDb builtinDocstringValues doc buildDir dbFile none
+  updateModuleDb builtinDocstringValues doc buildDir dbFile none coreModuleSource
   return 0
 
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
@@ -39,16 +61,8 @@ def runDocGenCmd (_p : Parsed) : IO UInt32 := do
 
 /-- A source linker that uses URLs from the database, falling back to core module URLs -/
 def dbSourceLinker (sourceUrls : Std.HashMap Name String) (_gitUrl? : Option String) (module : Name) : Option DeclarationRange → String :=
-  let root := module.getRoot
-  let leanHash := Lean.githash
-  if root == `Lean ∨ root == `Init ∨ root == `Std then
-    let parts := module.components.map (Name.toString (escape := false))
-    let path := "/".intercalate parts
-    Output.SourceLinker.mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/{path}.lean"
-  else if root == `Lake then
-    let parts := module.components.map (Name.toString (escape := false))
-    let path := "/".intercalate parts
-    Output.SourceLinker.mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/lake/{path}.lean"
+  if let some path := Output.SourceLinker.coreSourcePath? module then
+    Output.SourceLinker.mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{Lean.githash}/src/{path}"
   else
     -- Look up source URL from database
     match sourceUrls[module]? with
@@ -79,14 +93,16 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
     | none => ".lake/build"
   let dbPath := p.positionalArg! "db" |>.as! String
   let manifestOutput? := (p.flag? "manifest").map (·.as! String)
+  let packageDirs? ← packageDirsFlag? p
   let moduleRoots := (p.variableArgsAs! String).map String.toName
 
   -- Flush WAL so the database file is self-contained for concurrent readers
   walCheckpoint dbPath
 
-  -- Load linking context (module names, source URLs, declaration locations)
+  -- Load linking context (names of modules whose source files exist, source URLs, declaration
+  -- locations)
   let db ← openForReading dbPath builtinDocstringValues
-  let linkCtx ← db.loadLinkingContext
+  let linkCtx ← db.loadLinkingContext packageDirs?
 
   -- Determine which modules to generate HTML for
   let targetModules ←
@@ -94,6 +110,23 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
       pure linkCtx.moduleNames
     else
       db.getTransitiveImports moduleRoots
+  let linkedModules := Std.HashSet.ofArray linkCtx.moduleNames
+
+  -- If a target is outside the linking context, then the location was recorded incorrectly.
+  if let some packageDirs := packageDirs? then
+    let sources := Std.HashMap.ofList (← db.getModules).toList
+    for mod in targetModules do
+      unless linkedModules.contains mod do
+        let reason := match sources[mod]? with
+          | none => "it is not found in the database"
+          | some source =>
+            match source.package? with
+            | none => "it has no package"
+            | some package =>
+              match packageDirs[package]? with
+              | none => s!"its package '{package}' is not in the package map"
+              | some dir => s!"its source file '{dir / source.path}' was not found"
+        IO.eprintln s!"warning: HTML for module '{mod}' is generated, but nothing links to it: {reason}"
 
   let baseConfig ← getSimpleBaseContext buildDir (Hierarchy.fromArray targetModules)
   -- Add `references` pseudo-module to hierarchy only when bibliography data exists
@@ -104,8 +137,9 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   -- Parallel HTML generation
   let (outputs, jsonModules) ← htmlOutputResultsParallel baseConfig dbPath linkCtx targetModules (sourceLinker? := some (dbSourceLinker linkCtx.sourceUrls))
 
-  -- Load all tactics from DB in sorted order and convert markdown docstrings to HTML
-  let allTacticsRaw ← db.loadAllTactics
+  -- Load the tactics of the linking context's modules from DB in sorted order and convert markdown
+  -- docstrings to HTML
+  let allTacticsRaw := (← db.loadAllTactics).filter (linkedModules.contains ·.definingModule)
   let refsMap : Std.HashMap String BibItem :=
     Std.HashMap.emptyWithCapacity baseConfig.refs.size |>.insertMany
       (baseConfig.refs.iter.map fun x => (x.citekey, x))
@@ -117,10 +151,10 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let (allTactics, _) := allTacticsRaw.mapM Process.TacticInfo.docStringToHtml |>.run {} minimalSiteCtx baseConfig
 
   -- Generate the search index (declaration-data.bmp)
-  htmlOutputIndex baseConfig jsonModules allTactics
+  htmlOutputIndex baseConfig jsonModules allTactics linkedModules
 
-  -- Update navbar to include all modules on disk
-  updateNavbarFromDisk buildDir
+  -- Update navbar to include the linking context's modules that have a page on disk
+  updateNavbarFromDisk buildDir linkedModules
   if let .some manifestOutput := manifestOutput? then
     IO.FS.writeFile manifestOutput (Lean.toJson outputs).compress
   return 0
@@ -150,6 +184,9 @@ def singleCmd := `[Cli|
 
   FLAGS:
     b, build : String; "Build directory."
+    p, package : String; "The `baseName` in Lake of the package that contains the module. Requires `--source-path`."
+    s, "source-path" : String; "Path of the module's source file relative to the package directory, with `/` separators."
+    c, core; "The module is a core module (Init, Std, Lake, Lean). Replaces `--package` and `--source-path`."
 
   ARGS:
     module : String; "The module to document."
@@ -188,6 +225,10 @@ def headerDataCmd := `[Cli|
 
   FLAGS:
     b, build : String; "Build directory."
+    p, packages : String; "JSON file that maps the `baseName` in Lake of each package to its directory. When given, a package's module is included only when the package is listed and the module's source file exists."
+
+  ARGS:
+    db : String; "Path to the SQLite database"
 ]
 
 -- Prior versions of doc-gen4 generated HTML for one module at a time, directly from the olean, and
@@ -200,6 +241,7 @@ def fromDbCmd := `[Cli|
   FLAGS:
     b, build : String; "Build directory (default: .lake/build)"
     m, manifest : String; "Manifest output file, listing all generated HTML files."
+    p, packages : String; "JSON file that maps the `baseName` in Lake of each package to its directory. When given, a package's module is included only when the package is listed and the module's source file exists."
 
   ARGS:
     db : String; "Path to the SQLite database"

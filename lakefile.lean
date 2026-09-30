@@ -199,6 +199,17 @@ def writeMarker (markerFile : FilePath) : JobM Unit := do
   createParentDirs markerFile
   IO.FS.writeFile markerFile (toString (← getTrace).hash)
 
+/--
+Writes the JSON file that maps the `baseName` of each package in the workspace to the package's
+directory. `doc-gen4` uses it to check which modules' source files exist. The file is written
+immediately prior to invocations of `doc-gen4`, and it's not part of the trace.
+-/
+def writePackageDirs (file : FilePath) : JobM Unit := do
+  let packageDirs := (← getWorkspace).packages.map fun pkg =>
+    (pkg.baseName.toString (escape := false), Lean.toJson pkg.dir.toString)
+  createParentDirs file
+  IO.FS.writeFile file (Lean.Json.mkObj packageDirs.toList).compress
+
 target bibPrepass : FilePath := do
   let exeJob ← «doc-gen4».fetch
   let buildDir := (← getRootPackage).buildDir
@@ -288,9 +299,12 @@ module_facet docInfo (mod) : FilePath := do
             buildFileUnlessUpToDate' markerFile do
               let uriJob ← fetch <| mod.facet `srcUri
               let srcUri ← uriJob.await
+              let srcPath := "/".intercalate (filteredPath mod.relLeanFile)
               proc {
                 cmd := exeFile.toString
-                args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
+                args := #["single", "--build", buildDir.toString,
+                  "--package", mod.pkg.baseName.toString (escape := false),
+                  "--source-path", srcPath, mod.name.toString, "api-docs.db", srcUri]
                 env := ← getAugmentedEnv
               }
               writeMarker markerFile
@@ -326,15 +340,19 @@ library_facet docsHeader (lib) : FilePath := do
   -- Shared with DocGen4.Output
   let buildDir := (← getRootPackage).buildDir
   let basePath := buildDir / "doc"
+  let dbPath := buildDir / "api-docs.db"
   let dataFile := basePath / "declarations" / "header-data.bmp"
   let markerFile := buildDir / "doc-data" / s!"{lib.name}--library.docsHeader_built"
+  let packagesFile := buildDir / "doc-data" / s!"{lib.name}--library.docsHeader.packages.json"
   exeJob.bindM fun exeFile => do
     pkgDocsJob.mapM fun _ => do
       buildFileUnlessUpToDate' markerFile do
         logInfo "Documentation header indexing"
+        writePackageDirs packagesFile
         proc {
           cmd := exeFile.toString
-          args := #["headerData", "--build", buildDir.toString]
+          args := #["headerData", "--build", buildDir.toString, "--packages", packagesFile.toString,
+            dbPath.toString]
         }
         writeMarker markerFile
       return dataFile
@@ -382,15 +400,18 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
   let coreRoots := #[`Init, `Std, `Lake, `Lean]
   let rootNames := rootMods.map (·.name) ++ coreRoots
   let manifestFile := buildDir / "doc-manifest.json"
+  let packagesFile := buildDir / "doc-data" / s!"{markerName}.packages.json"
   coreJob.bindM fun _ => do
     docInfoJobs.bindM fun _ => do
       bibPrepassJob.bindM fun _ => do
         exeJob.mapM fun exeFile => do
           buildFileUnlessUpToDate' markerFile do
             logInfo description
+            writePackageDirs packagesFile
             proc {
               cmd := exeFile.toString
-              args := #["fromDb", "--build", buildDir.toString, "--manifest", manifestFile.toString, dbPath.toString] ++ rootNames.map (·.toString)
+              args := #["fromDb", "--build", buildDir.toString, "--manifest", manifestFile.toString,
+                "--packages", packagesFile.toString, dbPath.toString] ++ rootNames.map (·.toString)
               env := ← getAugmentedEnv
             }
             writeMarker markerFile
