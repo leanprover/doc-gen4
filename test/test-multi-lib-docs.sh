@@ -9,7 +9,9 @@
 #   * a rebuild with no change leaves the build up to date;
 #   * a change in one library leaves the docs of the other libraries up to date;
 #   * building the docInfo facet again for unchanged modules leaves the HTML
-#     up to date.
+#     up to date;
+#   * after a module's source file is deleted, links and the tactic list point
+#     only to modules whose source files exist.
 #
 # Usage: run from the doc-gen4 repo root (or pass it as $1).
 #   ./test/test-multi-lib-docs.sh
@@ -41,6 +43,7 @@ require «doc-gen4» from "$DOCGEN4_DIR"
 lean_lib LibA
 lean_lib LibB
 lean_lib LibC
+lean_lib LibD
 EOF
 
 mkdir -p "$TEST_DIR/LibA"
@@ -62,8 +65,29 @@ def libBGreeting := "hello from B"
 EOF
 
 cat > "$TEST_DIR/LibC.lean" << 'EOF'
-/-- A greeting from LibC -/
+import LibD
+
+/-- A greeting from LibC. See also `libDThm` and `libDGone`. -/
 def libCGreeting := "hello from C"
+EOF
+
+mkdir -p "$TEST_DIR/LibD"
+cat > "$TEST_DIR/LibD.lean" << 'EOF'
+import LibD.Old
+EOF
+
+cat > "$TEST_DIR/LibD/Old.lean" << 'EOF'
+/-- A theorem of LibD. Phase 8 moves it to `LibD.New`. -/
+def libDThm := "theorem of D"
+
+/-- A declaration of LibD. Phase 8 removes it. -/
+def libDGone := "gone from D"
+
+/-- The LibD test tactic `libd_tac`: closes the goal by `rfl`. -/
+syntax (name := libdTac) "libd_tac" : tactic
+
+macro_rules
+  | `(tactic| libd_tac) => `(tactic| rfl)
 EOF
 
 export LEAN_ABORT_ON_PANIC=1
@@ -109,7 +133,19 @@ check_html LibA LibB
 
 echo "=== Building LibC:docs incrementally ==="
 (cd "$TEST_DIR" && lake build LibC:docs)
-check_html LibA LibB LibC
+check_html LibA LibB LibC LibD LibD/Old
+if grep -q 'LibD/Old.html#libDThm' "$DOC_DIR/LibC.html"; then
+  echo "OK: the page of LibC links libDThm to the page of LibD.Old"
+else
+  echo "FAIL: the page of LibC does not link libDThm to LibD/Old.html"
+  exit 1
+fi
+if grep -q 'libd_tac' "$DOC_DIR/tactics.html" && grep -q 'LibD/Old.html' "$DOC_DIR/tactics.html"; then
+  echo "OK: the tactic list shows libd_tac from LibD.Old"
+else
+  echo "FAIL: the tactic list does not show libd_tac from LibD.Old"
+  exit 1
+fi
 
 # --- Phase 3: modify LibA, ensure that the change shows up in the HTML ---
 
@@ -191,4 +227,37 @@ for marker in LibA.doc LibA.Basic.doc; do
 done
 check_up_to_date LibA
 
-echo "SUCCESS: All three libraries have HTML documentation"
+# --- Phase 8: move a declaration to a new module and delete the old module's source file ---
+
+echo "=== Moving libDThm to LibD.New, deleting LibD/Old.lean, and building LibC:docs again ==="
+cat > "$TEST_DIR/LibD/New.lean" << 'EOF'
+/-- A theorem of LibD, moved here from `LibD.Old`. -/
+def libDThm := "theorem of D"
+EOF
+rm "$TEST_DIR/LibD/Old.lean"
+printf 'import LibD.New\n' > "$TEST_DIR/LibD.lean"
+(cd "$TEST_DIR" && lake build LibC:docs)
+check_html LibC LibD/New
+# The page of LibD.Old stays on disk, so its absence from the links comes from its source file.
+check_html LibD/Old
+if grep -q 'LibD/New.html#libDThm' "$DOC_DIR/LibC.html"; then
+  echo "OK: the page of LibC links libDThm to the page of LibD.New"
+else
+  echo "FAIL: the page of LibC does not link libDThm to LibD/New.html"
+  exit 1
+fi
+if grep -q 'LibD/Old.html' "$DOC_DIR/LibC.html"; then
+  echo "FAIL: the page of LibC links to LibD/Old.html, whose source file is deleted"
+  exit 1
+else
+  echo "OK: the page of LibC has no link to LibD/Old.html"
+fi
+if grep -q 'libd_tac' "$DOC_DIR/tactics.html" || grep -q 'LibD/Old.html' "$DOC_DIR/tactics.html"; then
+  echo "FAIL: the tactic list still shows libd_tac from LibD.Old"
+  exit 1
+else
+  echo "OK: the tactic list omits libd_tac from LibD.Old"
+fi
+check_up_to_date LibA LibB LibC
+
+echo "SUCCESS: All four libraries have HTML documentation"

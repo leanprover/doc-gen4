@@ -288,9 +288,11 @@ module_facet docInfo (mod) : FilePath := do
             buildFileUnlessUpToDate' markerFile do
               let uriJob ← fetch <| mod.facet `srcUri
               let srcUri ← uriJob.await
+              let srcPath := "/".intercalate (filteredPath mod.relLeanFile)
               proc {
                 cmd := exeFile.toString
-                args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
+                args := #["single", "--build", buildDir.toString, "--package", mod.pkg.baseName.toString,
+                  "--source-path", srcPath, mod.name.toString, "api-docs.db", srcUri]
                 env := ← getAugmentedEnv
               }
               writeMarker markerFile
@@ -382,15 +384,24 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
   let coreRoots := #[`Init, `Std, `Lake, `Lean]
   let rootNames := rootMods.map (·.name) ++ coreRoots
   let manifestFile := buildDir / "doc-manifest.json"
+  -- `fromDb` uses the directory of each package in the workspace to check which modules' source
+  -- files exist. The file that maps package names to directories is written only when `fromDb` runs,
+  -- so it stays out of this step's trace.
+  let packagesFile := buildDir / "doc-data" / s!"{markerName}.packages.json"
+  let packageDirs := (← getWorkspace).packages.map fun pkg =>
+    (pkg.baseName.toString, Lean.toJson pkg.dir.toString)
   coreJob.bindM fun _ => do
     docInfoJobs.bindM fun _ => do
       bibPrepassJob.bindM fun _ => do
         exeJob.mapM fun exeFile => do
           buildFileUnlessUpToDate' markerFile do
             logInfo description
+            createParentDirs packagesFile
+            IO.FS.writeFile packagesFile (Lean.Json.mkObj packageDirs.toList).compress
             proc {
               cmd := exeFile.toString
-              args := #["fromDb", "--build", buildDir.toString, "--manifest", manifestFile.toString, dbPath.toString] ++ rootNames.map (·.toString)
+              args := #["fromDb", "--build", buildDir.toString, "--manifest", manifestFile.toString,
+                "--packages", packagesFile.toString, dbPath.toString] ++ rootNames.map (·.toString)
               env := ← getAugmentedEnv
             }
             writeMarker markerFile

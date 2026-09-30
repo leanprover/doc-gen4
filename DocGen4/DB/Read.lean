@@ -37,8 +37,24 @@ def withDbContext [MonadLiftT BaseIO m] [MonadControlT IO m] [Monad m] (context 
       let ms' ← IO.monoMsNow
       throw <| .userError s!"Exception in `{context}` after {ms' - ms}ms: {e.toString}"
 
+/-- The location of a module's source file. -/
+structure ModuleSource where
+  /--
+  The `baseName` in Lake of the package that contains the module, or `none` for core modules.
+  -/
+  package? : Option String
+  /--
+  The path of the module's source file relative to the package directory, or to the `src` directory
+  of the Lean repository for core modules, with `/` separators.
+  -/
+  path : String
+
+/-- Maps the `baseName` in Lake of each package to the package's directory. -/
+abbrev PackageDirs := Std.TreeMap String System.FilePath
+
 structure ReadDB where
-  getModuleNames : IO (Array Lean.Name)
+  /-- Gets every module in the database, sorted by name, with the location of its source file. -/
+  getModules : IO (Array (Lean.Name × ModuleSource))
   getModuleSourceUrls : IO (Std.HashMap Lean.Name String)
   getModuleImports : Lean.Name → IO (Array Lean.Name)
   buildName2ModIdx : Array Lean.Name → IO (Std.HashMap Lean.Name Lean.ModuleIdx)
@@ -98,7 +114,7 @@ private structure ReadStmts where
   readInductiveStmt : SQLite.Stmt
   readStructureStmt : SQLite.Stmt
   readClassInductiveStmt : SQLite.Stmt
-  getModuleNamesStmt : SQLite.Stmt
+  getModulesStmt : SQLite.Stmt
   getModuleSourceUrlsStmt : SQLite.Stmt
   getModuleImportsStmt : SQLite.Stmt
   buildNameInfoStmt : SQLite.Stmt
@@ -156,7 +172,7 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
   let readInductiveStmt ← sqlite.prepare "SELECT is_unsafe FROM inductives WHERE module_name = ? AND position = ?"
   let readStructureStmt ← sqlite.prepare "SELECT is_class FROM structures WHERE module_name = ? AND position = ?"
   let readClassInductiveStmt ← sqlite.prepare "SELECT is_unsafe FROM class_inductives WHERE module_name = ? AND position = ?"
-  let getModuleNamesStmt ← sqlite.prepare "SELECT name FROM modules ORDER BY name"
+  let getModulesStmt ← sqlite.prepare "SELECT name, package, source_path FROM modules ORDER BY name"
   let getModuleSourceUrlsStmt ← sqlite.prepare "SELECT name, source_url FROM modules WHERE source_url IS NOT NULL"
   let getModuleImportsStmt ← sqlite.prepare "SELECT imported FROM module_imports WHERE importer = ?"
   let buildNameInfoStmt ← sqlite.prepare "SELECT name, module_name FROM name_info"
@@ -190,7 +206,7 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
     loadStructCtorStmt, loadCtorPosStmt, loadCtorInfoStmt,
     readAxiomStmt, readOpaqueStmt, readDefinitionStmt, readInstanceStmt,
     readInductiveStmt, readStructureStmt, readClassInductiveStmt,
-    getModuleNamesStmt, getModuleSourceUrlsStmt, getModuleImportsStmt,
+    getModulesStmt, getModuleSourceUrlsStmt, getModuleImportsStmt,
     buildNameInfoStmt, buildInternalNamesStmt,
     loadModuleMembersStmt, loadTacticsStmt, loadTacticTagsStmt,
     loadAllTacticsStmt, loadAllTacticTagsStmt, getContainedNamesStmt
@@ -548,13 +564,17 @@ where
     return none
 
 open Lean SQLite.Blob in
-private def ReadStmts.getModuleNames (s : ReadStmts) : IO (Array Name) := withDbContext "read:modules:names" do
-  let mut names := #[]
-  while (← s.getModuleNamesStmt.step) do
-    let name := (← s.getModuleNamesStmt.columnText 0).toName
-    names := names.push name
-  done s.getModuleNamesStmt
-  return names
+private def ReadStmts.getModules (s : ReadStmts) : IO (Array (Name × ModuleSource)) := withDbContext "read:modules" do
+  let mut modules := #[]
+  while (← s.getModulesStmt.step) do
+    let name := (← s.getModulesStmt.columnText 0).toName
+    let package? ←
+      if ← s.getModulesStmt.columnNull 1 then pure none
+      else some <$> s.getModulesStmt.columnText 1
+    let path ← s.getModulesStmt.columnText 2
+    modules := modules.push (name, { package?, path })
+  done s.getModulesStmt
+  return modules
 
 open Lean SQLite.Blob in
 private def ReadStmts.getModuleSourceUrls (s : ReadStmts) : IO (Std.HashMap Name String) := withDbContext "read:modules:source_urls" do
@@ -675,7 +695,7 @@ def mkReadDB (sqlite : SQLite) (values : DocstringValues) : IO ReadDB := do
   let s ← ReadStmts.prepare sqlite values
   let mutex ← Std.Mutex.new s
   pure {
-    getModuleNames := mutex.atomically do (← get).getModuleNames
+    getModules := mutex.atomically do (← get).getModules
     getModuleSourceUrls := mutex.atomically do (← get).getModuleSourceUrls
     getModuleImports name := mutex.atomically do (← get).getModuleImports name
     buildName2ModIdx names := mutex.atomically do (← get).buildName2ModIdx names
