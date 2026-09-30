@@ -10,8 +10,9 @@
 #   * a change in one library leaves the docs of the other libraries up to date;
 #   * building the docInfo facet again for unchanged modules leaves the HTML
 #     up to date;
-#   * after a module's source file is deleted, links and the tactic list point
-#     only to modules whose source files exist.
+#   * after a module's source file is deleted, links, the tactic list, the
+#     navigation bar and the search index point only to modules whose source
+#     files exist.
 #
 # Usage: run from the doc-gen4 repo root (or pass it as $1).
 #   ./test/test-multi-lib-docs.sh
@@ -94,6 +95,7 @@ export LEAN_ABORT_ON_PANIC=1
 export DOCGEN_SRC=file
 DOC_DIR="$TEST_DIR/.lake/build/doc"
 DOC_DATA_DIR="$TEST_DIR/.lake/build/doc-data"
+SEARCH_INDEX="$DOC_DIR/declarations/declaration-data.bmp"
 
 check_html() {
   local fail=0
@@ -144,6 +146,18 @@ if grep -q 'libd_tac' "$DOC_DIR/tactics.html" && grep -q 'LibD/Old.html' "$DOC_D
   echo "OK: the tactic list shows libd_tac from LibD.Old"
 else
   echo "FAIL: the tactic list does not show libd_tac from LibD.Old"
+  exit 1
+fi
+if grep -q 'LibD/Old.html' "$DOC_DIR/navbar.html"; then
+  echo "OK: the navigation bar lists LibD.Old"
+else
+  echo "FAIL: the navigation bar does not list LibD.Old"
+  exit 1
+fi
+if grep -aq 'libDGone' "$SEARCH_INDEX"; then
+  echo "OK: the search index holds libDGone"
+else
+  echo "FAIL: the search index does not hold libDGone"
   exit 1
 fi
 
@@ -238,8 +252,15 @@ rm "$TEST_DIR/LibD/Old.lean"
 printf 'import LibD.New\n' > "$TEST_DIR/LibD.lean"
 (cd "$TEST_DIR" && lake build LibC:docs)
 check_html LibC LibD/New
-# The page of LibD.Old stays on disk, so its absence from the links comes from its source file.
+# The page and the search data of LibD.Old stay on disk, so its absence from the generated output
+# comes from its source file.
 check_html LibD/Old
+if [ -f "$DOC_DATA_DIR/declaration-data-LibD.Old.bmp" ]; then
+  echo "OK: the search data of LibD.Old exists"
+else
+  echo "FAIL: the search data of LibD.Old was removed"
+  exit 1
+fi
 if grep -q 'LibD/New.html#libDThm' "$DOC_DIR/LibC.html"; then
   echo "OK: the page of LibC links libDThm to the page of LibD.New"
 else
@@ -257,6 +278,30 @@ if grep -q 'libd_tac' "$DOC_DIR/tactics.html" || grep -q 'LibD/Old.html' "$DOC_D
   exit 1
 else
   echo "OK: the tactic list omits libd_tac from LibD.Old"
+fi
+if grep -q 'LibD/Old.html' "$DOC_DIR/navbar.html"; then
+  echo "FAIL: the navigation bar still lists LibD.Old"
+  exit 1
+else
+  echo "OK: the navigation bar omits LibD.Old"
+fi
+if grep -q 'LibD/New.html' "$DOC_DIR/navbar.html"; then
+  echo "OK: the navigation bar lists LibD.New"
+else
+  echo "FAIL: the navigation bar does not list LibD.New"
+  exit 1
+fi
+if grep -aq 'libDGone' "$SEARCH_INDEX"; then
+  echo "FAIL: the search index still holds libDGone"
+  exit 1
+else
+  echo "OK: the search index omits libDGone"
+fi
+if grep -aq 'libDThm' "$SEARCH_INDEX" && grep -aq 'libAGreeting' "$SEARCH_INDEX"; then
+  echo "OK: the search index holds libDThm and libAGreeting"
+else
+  echo "FAIL: the search index does not hold libDThm and libAGreeting"
+  exit 1
 fi
 check_up_to_date LibA LibB LibC
 

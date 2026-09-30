@@ -128,10 +128,10 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let (allTactics, _) := allTacticsRaw.mapM Process.TacticInfo.docStringToHtml |>.run {} minimalSiteCtx baseConfig
 
   -- Generate the search index (declaration-data.bmp)
-  htmlOutputIndex baseConfig jsonModules allTactics
+  htmlOutputIndex baseConfig jsonModules allTactics linkedModules
 
-  -- Update navbar to include all modules on disk
-  updateNavbarFromDisk buildDir
+  -- Update navbar to include the linking context's modules that have a page on disk
+  updateNavbarFromDisk buildDir linkedModules
   if let .some manifestOutput := manifestOutput? then
     IO.FS.writeFile manifestOutput (Lean.toJson outputs).compress
   return 0
