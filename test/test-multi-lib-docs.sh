@@ -5,7 +5,7 @@
 #   * an incremental build of a third library keeps the pages of the first two;
 #   * a change in a module reaches the HTML, whether the module is a library
 #     root or an import of one;
-#   * a removed declaration and a changed doc string reach the HTML;
+#   * a removed declaration and a changed docstring reach the HTML;
 #   * a rebuild with no change leaves the build up to date;
 #   * a change in one library leaves the docs of the other libraries up to date;
 #   * building the docInfo facet again for unchanged modules leaves the HTML
@@ -166,16 +166,16 @@ else
   echo "OK: the page of LibA omits the removed declaration"
 fi
 if grep -q 'A revised greeting from LibA' "$DOC_DIR/LibA.html"; then
-  echo "OK: the page of LibA shows the new doc string"
+  echo "OK: the page of LibA shows the new docstring"
 else
-  echo "FAIL: the page of LibA does not show the new doc string"
+  echo "FAIL: the page of LibA does not show the new docstring"
   exit 1
 fi
 if grep -q 'A greeting from LibA' "$DOC_DIR/LibA.html"; then
-  echo "FAIL: the page of LibA still shows the old doc string"
+  echo "FAIL: the page of LibA still shows the old docstring"
   exit 1
 else
-  echo "OK: the page of LibA omits the old doc string"
+  echo "OK: the page of LibA omits the old docstring"
 fi
 
 # --- Phase 7: build the docInfo facet again for unchanged modules, ensure that the HTML stays up to date ---
