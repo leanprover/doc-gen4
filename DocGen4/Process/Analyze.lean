@@ -167,6 +167,9 @@ def getAllModuleDocs (relevantModules : Array Name) : MetaM (Std.HashMap Name Mo
   for module in relevantModules do
     let markdownModDocs := getModuleDoc? env module |>.getD #[] |>.map .modDoc
     let versoModDocs ← getVersoModuleDoc? env module |>.getD #[] |>.filterMapM (versoSnippetToModuleMember env module ·)
+    -- This concatenation is OK for two reasons:
+    -- * Verso and Markdown module docs can't occur in the same module
+    -- * `process` later sorts module docs by their source position
     let modDocs := markdownModDocs ++ versoModDocs
     let some modIdx := env.getModuleIdx? module | unreachable!
     let moduleData := env.header.moduleData[modIdx]!
