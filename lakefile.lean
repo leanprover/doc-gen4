@@ -206,7 +206,7 @@ immediately prior to invocations of `doc-gen4`, and it's not part of the trace.
 -/
 def writePackageDirs (file : FilePath) : JobM Unit := do
   let packageDirs := (← getWorkspace).packages.map fun pkg =>
-    (pkg.baseName.toString, Lean.toJson pkg.dir.toString)
+    (pkg.baseName.toString (escape := false), Lean.toJson pkg.dir.toString)
   createParentDirs file
   IO.FS.writeFile file (Lean.Json.mkObj packageDirs.toList).compress
 
@@ -302,7 +302,8 @@ module_facet docInfo (mod) : FilePath := do
               let srcPath := "/".intercalate (filteredPath mod.relLeanFile)
               proc {
                 cmd := exeFile.toString
-                args := #["single", "--build", buildDir.toString, "--package", mod.pkg.baseName.toString,
+                args := #["single", "--build", buildDir.toString,
+                  "--package", mod.pkg.baseName.toString (escape := false),
                   "--source-path", srcPath, mod.name.toString, "api-docs.db", srcUri]
                 env := ← getAugmentedEnv
               }
