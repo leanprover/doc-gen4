@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 #
-# Regression test: verify that building docs for multiple libraries in one
-# `lake build` produces HTML for all of them, and that an incremental build
-# of a third library doesn't remove the first two.
+# Regression test for the `docs` facet. It verifies that:
+#   * one `lake build` of several libraries produces HTML for all of them;
+#   * an incremental build of a third library keeps the pages of the first two;
+#   * a change in a module reaches the HTML, whether the module is a library
+#     root or an import of one;
+#   * a rebuild with no change leaves the build up to date.
 #
 # Usage: run from the doc-gen4 repo root (or pass it as $1).
 #   ./test/test-multi-lib-docs.sh
@@ -36,9 +39,17 @@ lean_lib LibB
 lean_lib LibC
 EOF
 
+mkdir -p "$TEST_DIR/LibA"
 cat > "$TEST_DIR/LibA.lean" << 'EOF'
+import LibA.Basic
+
 /-- A greeting from LibA -/
 def libAGreeting := "hello from A"
+EOF
+
+cat > "$TEST_DIR/LibA/Basic.lean" << 'EOF'
+/-- A greeting from LibA.Basic -/
+def libABasicGreeting := "hello from A.Basic"
 EOF
 
 cat > "$TEST_DIR/LibB.lean" << 'EOF'
@@ -83,5 +94,104 @@ check_html LibA LibB
 echo "=== Building LibC:docs incrementally ==="
 (cd "$TEST_DIR" && lake build LibC:docs)
 check_html LibA LibB LibC
+
+# --- Phase 3: a change in a module reaches its page ---
+
+echo "=== Adding a declaration to LibA and building LibA:docs again ==="
+cat >> "$TEST_DIR/LibA.lean" << 'EOF'
+
+/-- A second greeting from LibA -/
+def libAGreetingAgain := "hello again from A"
+EOF
+(cd "$TEST_DIR" && lake build LibA:docs)
+if grep -q 'libAGreetingAgain' "$DOC_DIR/LibA.html"; then
+  echo "OK: the page of LibA shows the new declaration"
+else
+  echo "FAIL: the page of LibA does not show libAGreetingAgain"
+  exit 1
+fi
+
+# --- Phase 4: the build stays up to date when nothing changes ---
+
+echo "=== Checking that LibA:docs needs no rebuild ==="
+if (cd "$TEST_DIR" && lake build LibA:docs --no-build); then
+  echo "OK: nothing is out of date after the build"
+else
+  echo "FAIL: LibA:docs is out of date right after it was built"
+  exit 1
+fi
+
+# --- Phase 5: a change in an imported module reaches its page ---
+
+echo "=== Adding a declaration to LibA/Basic.lean and building LibA:docs again ==="
+cat >> "$TEST_DIR/LibA/Basic.lean" << 'EOF'
+
+/-- A second greeting from LibA.Basic -/
+def libABasicGreetingAgain := "hello again from A.Basic"
+EOF
+(cd "$TEST_DIR" && lake build LibA:docs)
+if grep -q 'libABasicGreetingAgain' "$DOC_DIR/LibA/Basic.html"; then
+  echo "OK: the page of LibA.Basic shows the new declaration"
+else
+  echo "FAIL: the page of LibA.Basic does not show libABasicGreetingAgain"
+  exit 1
+fi
+check_html LibA LibB LibC
+
+# --- Phase 6: a module leaves the library, and its documentation goes with it ---
+
+echo "=== Replacing LibA.Basic with LibA.Core and building LibA:docs again ==="
+DOC_DATA="$TEST_DIR/.lake/build/doc-data"
+SEARCH_INDEX="$DOC_DIR/declarations/declaration-data.bmp"
+
+grep -aq 'libABasicGreeting' "$SEARCH_INDEX" \
+  || { echo "FAIL: the search index does not hold libABasicGreeting before the rename"; exit 1; }
+
+rm "$TEST_DIR/LibA/Basic.lean"
+cat > "$TEST_DIR/LibA/Core.lean" << 'EOF'
+/-- A greeting from LibA.Core -/
+def libACoreGreeting := "hello from A.Core"
+EOF
+cat > "$TEST_DIR/LibA.lean" << 'EOF'
+import LibA.Core
+
+/-- A greeting from LibA -/
+def libAGreeting := "hello from A"
+EOF
+(cd "$TEST_DIR" && lake build LibA:docs)
+
+# Nothing deletes the state of LibA.Basic by hand: Lake no longer lists the module, the database
+# records that LibA owned it, and the library prune takes it from there.
+for leftover in "$DOC_DATA/LibA.Basic.doc" "$DOC_DATA/LibA.Basic.doc.trace" \
+    "$DOC_DATA/LibA.Basic.doc.hash" "$DOC_DATA/declaration-data-LibA.Basic.bmp" \
+    "$DOC_DIR/LibA/Basic.html"; do
+  if [ -e "$leftover" ]; then echo "FAIL: $leftover survived the rename"; exit 1; fi
+done
+if grep -aq 'libABasicGreeting' "$SEARCH_INDEX"; then
+  echo "FAIL: the search index still holds libABasicGreeting after the rename"
+  exit 1
+fi
+if grep -q 'LibA/Basic.html' "$DOC_DIR/navbar.html"; then
+  echo "FAIL: the navigation bar still lists the page of LibA.Basic"
+  exit 1
+fi
+check_html LibA LibA/Core LibB LibC
+grep -q 'libACoreGreeting' "$DOC_DIR/LibA/Core.html" \
+  || { echo "FAIL: LibA/Core.html does not show libACoreGreeting"; exit 1; }
+grep -aq 'libACoreGreeting' "$SEARCH_INDEX" \
+  || { echo "FAIL: the search index does not hold the new module"; exit 1; }
+grep -aq 'libCGreeting' "$SEARCH_INDEX" \
+  || { echo "FAIL: the prune of LibA reached the declarations of LibC"; exit 1; }
+echo "OK: the documentation of LibA.Basic went with the module, and the other libraries kept theirs"
+
+# --- Phase 7: the prune leaves the build up to date ---
+
+echo "=== Checking that LibA:docs needs no rebuild after the rename ==="
+if (cd "$TEST_DIR" && lake build LibA:docs --no-build); then
+  echo "OK: nothing is out of date after the prune"
+else
+  echo "FAIL: LibA:docs is out of date right after the prune"
+  exit 1
+fi
 
 echo "SUCCESS: All three libraries have HTML documentation"

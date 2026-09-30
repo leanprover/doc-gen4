@@ -18,8 +18,9 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   let dbFile := p.positionalArg! "db" |>.as! String
   let relevantModules := #[p.positionalArg! "module" |>.as! String |> String.toName]
   let sourceUri := p.positionalArg! "sourceUri" |>.as! String
+  let library? := (p.flag? "lib").map (·.as! String)
   let doc ← load <| .analyzeConcreteModules relevantModules
-  updateModuleDb builtinDocstringValues doc buildDir dbFile (some sourceUri)
+  updateModuleDb builtinDocstringValues doc buildDir dbFile (some sourceUri) library?
   return 0
 
 def runGenCoreCmd (p : Parsed) : IO UInt32 := do
@@ -29,8 +30,56 @@ def runGenCoreCmd (p : Parsed) : IO UInt32 := do
   let dbFile := p.positionalArg! "db" |>.as! String
   let module := p.positionalArg! "module" |>.as! String |> String.toName
   let doc ← load <| .analyzePrefixModules module
-  updateModuleDb builtinDocstringValues doc buildDir dbFile none
+  updateModuleDb builtinDocstringValues doc buildDir dbFile none none
   return 0
+
+/--
+Deletes the files that the documentation of `modules` left in the build directory: the marker that
+tells Lake the analysis is done, the page, and the per-module data that the HTML phase reads.
+
+Lake decides from the marker file, not from the database, whether to analyze a module again, so a
+module that returns to a library is analyzed again. `fromDb` takes the navigation bar and the link
+index from the pages on disk, and the search index from every `declaration-data-*.bmp` in
+`doc-data/`, so a module leaves the site when the HTML phase runs again.
+-/
+def deleteModuleFiles (buildDir : System.FilePath) (modules : Array Name) : IO Unit := do
+  for m in modules do
+    let files := #[
+      buildDir / "doc-data" / s!"{m}.doc",
+      buildDir / "doc-data" / s!"{m}.doc.trace",
+      buildDir / "doc-data" / s!"{m}.doc.hash",
+      declarationsBasePath buildDir / s!"declaration-data-{m}.bmp",
+      declarationsBasePath buildDir / s!"backrefs-{m}.json",
+      basePath buildDir / moduleNameToFile m
+    ]
+    for file in files do
+      if ← file.pathExists then
+        IO.FS.removeFile file
+
+def runPruneLibCmd (p : Parsed) : IO UInt32 := do
+  let buildDir : System.FilePath := match p.flag? "build" with
+    | some dir => dir.as! String
+    | none => ".lake/build"
+  let dbPath := buildDir / (p.positionalArg! "db" |>.as! String)
+  let library := p.positionalArg! "lib" |>.as! String
+  let moduleListFile := p.positionalArg! "modules" |>.as! String
+
+  -- The first build of a library runs this before the analysis creates the database.
+  if !(← dbPath.pathExists) then
+    return 0
+
+  let contents ← IO.FS.readFile moduleListFile
+  let keep := contents.splitOn "\n" |>.filterMap fun line =>
+    if line.isEmpty then none else some line.toName
+  match ← (pruneLibrary builtinDocstringValues dbPath library keep.toArray
+      (deleteModuleFiles buildDir)).toBaseIO with
+  | .error e =>
+    IO.eprintln s!"pruneLib: {e}"
+    return 1
+  | .ok stale =>
+    if !stale.isEmpty then
+      IO.println s!"Removed {stale.size} module(s) that {library} no longer has"
+    return 0
 
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
   IO.println "You most likely want to use me via Lake now, check my README on Github on how to:"
@@ -150,6 +199,7 @@ def singleCmd := `[Cli|
 
   FLAGS:
     b, build : String; "Build directory."
+    lib : String; "Name of the Lake library that contains the module"
 
   ARGS:
     module : String; "The module to document."
@@ -167,6 +217,19 @@ def genCoreCmd := `[Cli|
   ARGS:
     module : String; "The core module prefix to document (e.g., Init, Lean)."
     db : String; "Path to the SQLite database (relative to build dir)"
+]
+
+def pruneLibCmd := `[Cli|
+  pruneLib VIA runPruneLibCmd;
+  "Delete the documentation of the modules that a library no longer has. The Lake facets run this."
+
+  FLAGS:
+    b, build : String; "Build directory (default: .lake/build)"
+
+  ARGS:
+    db : String; "Name of the SQLite database in the build directory"
+    lib : String; "Name of the Lake library"
+    modules : String; "File that holds the module names of the library, one per line"
 ]
 
 def bibPrepassCmd := `[Cli|
@@ -213,6 +276,7 @@ def docGenCmd : Cmd := `[Cli|
   SUBCOMMANDS:
     singleCmd;
     genCoreCmd;
+    pruneLibCmd;
     bibPrepassCmd;
     headerDataCmd;
     fromDbCmd
