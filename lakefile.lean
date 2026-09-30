@@ -184,6 +184,21 @@ module_facet srcUri.file (mod) : String := makeModuleSrcUriFacet mod `srcUri.fil
 /-- The URI of the source code of the module, respecting `DOCGEN_SRC`. -/
 module_facet srcUri (mod) : String := makeModuleSrcUriFacet mod `srcUri
 
+/--
+Writes the marker file of a build step. The file contains the running hash computed as part of the
+current trace.
+
+When Lake builds a file with `buildFileUnlessUpToDate'`, it replaces the current trace with one that
+contains only the file. This means that downstream dependents of the file are not rebuilt if the
+file's dependencies change without the file itself changing (e.g., the private part of a module
+changes but the public interface is untouched). Marker files are proxies for a build having taken
+place, so they need to include data that changes whenever that build needs repeating, which is
+efficiently represented by the hash of the trace.
+-/
+def writeMarker (markerFile : FilePath) : JobM Unit := do
+  createParentDirs markerFile
+  IO.FS.writeFile markerFile (toString (← getTrace).hash)
+
 target bibPrepass : FilePath := do
   let exeJob ← «doc-gen4».fetch
   let buildDir := (← getRootPackage).buildDir
@@ -218,9 +233,9 @@ def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
   let buildDir := (← getRootPackage).buildDir
   -- Building the core targets adds their information to the database file. While it would be
   -- possible to hash just the relevant content of the database (e.g. using SQLite's SHA3 module)
-  -- and write the result to a file, this adds a significant overhead. Instead, we create an empty
-  -- "marker file" to indicate that the database content has been inserted, and rely on its trace
-  -- changing to trigger rebuilds.
+  -- and write the result to a file, this adds a significant overhead. Instead, `writeMarker` writes
+  -- a marker file whose content is the hash of the dependency trace, so that the steps that depend
+  -- on the marker run again when the inputs change.
   let markerFile := buildDir / "doc-data" / s!"core-{component}.doc"
   bibPrepassJob.bindM fun _ => do
     exeJob.mapM fun exeFile => do
@@ -230,8 +245,7 @@ def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
           args := #["genCore", "--build", buildDir.toString, component.toString, "api-docs.db"]
           env := ← getAugmentedEnv
         }
-        createParentDirs markerFile
-        IO.FS.writeFile markerFile ""
+        writeMarker markerFile
       return markerFile
 
 /--
@@ -262,9 +276,9 @@ module_facet docInfo (mod) : FilePath := do
   -- Building the documentation info for the module adds or updates the relevant content in the
   -- database. If the dependencies change, then this needs to be re-done. While it would be possible
   -- to hash just the relevant content of the database (e.g. using SQLite's SHA3 module) and write
-  -- the result to a file, this adds a significant overhead. Instead, we create an empty "marker
-  -- file" to indicate that the database content has been inserted, and rely on its Lake trace
-  -- changing to trigger rebuilds.
+  -- the result to a file, this adds a significant overhead. Instead, `writeMarker` writes a marker
+  -- file whose content is the hash of the dependency trace, so that the steps that depend on the
+  -- marker run again when the inputs change.
   let markerFile := buildDir / "doc-data" / s!"{mod.name}.doc"
   coreJob.bindM fun _ => do
     depDocJobs.bindM fun _ => do
@@ -279,8 +293,7 @@ module_facet docInfo (mod) : FilePath := do
                 args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
                 env := ← getAugmentedEnv
               }
-              createParentDirs markerFile
-              IO.FS.writeFile markerFile ""
+              writeMarker markerFile
             return markerFile
 
 /--
@@ -323,8 +336,7 @@ library_facet docsHeader (lib) : FilePath := do
           cmd := exeFile.toString
           args := #["headerData", "--build", buildDir.toString]
         }
-        createParentDirs markerFile
-        IO.FS.writeFile markerFile ""
+        writeMarker markerFile
       return dataFile
 
 
@@ -381,8 +393,7 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
               args := #["fromDb", "--build", buildDir.toString, "--manifest", manifestFile.toString, dbPath.toString] ++ rootNames.map (·.toString)
               env := ← getAugmentedEnv
             }
-            createParentDirs markerFile
-            IO.FS.writeFile markerFile ""
+            writeMarker markerFile
           let traces ← staticFiles.mapM computeTrace
           addTrace <| mixTraceArray traces
           -- We read the manifest to determine which HTML files were generated because we only
