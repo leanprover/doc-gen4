@@ -84,16 +84,23 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   -- Flush WAL so the database file is self-contained for concurrent readers
   walCheckpoint dbPath
 
-  -- Load linking context (module names, source URLs, declaration locations)
   let db ← openForReading dbPath builtinDocstringValues
-  let linkCtx ← db.loadLinkingContext
 
   -- Determine which modules to generate HTML for
   let targetModules ←
     if moduleRoots.isEmpty then
-      pure linkCtx.moduleNames
+      db.getModuleNames
     else
       db.getTransitiveImports moduleRoots
+
+  -- Resolve links only to pages that exist after this run: the pages of the target modules, and
+  -- the pages that earlier runs left in the output directory. Analysis is per module, so the rows
+  -- of a module that left the closure stay in the database. Indexing only modules with a page
+  -- keeps them out of the links.
+  let targetSet : Std.HashSet Name := (Std.HashSet.emptyWithCapacity targetModules.size).insertMany targetModules
+  let existingModules ← scanModuleHtmlFiles (basePath buildDir)
+  let linkModules := targetModules ++ existingModules.filter (!targetSet.contains ·)
+  let linkCtx ← db.loadLinkingContext (some linkModules)
 
   let baseConfig ← getSimpleBaseContext buildDir (Hierarchy.fromArray targetModules)
   -- Add `references` pseudo-module to hierarchy only when bibliography data exists
