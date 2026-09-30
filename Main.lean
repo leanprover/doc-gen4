@@ -4,11 +4,20 @@ import Cli
 
 open DocGen4 DocGen4.DB DocGen4.Output Lean Cli
 
+/-- Reads the package directories from the file that the `--packages` flag names, if it is given. -/
+def packageDirsFlag? (p : Parsed) : IO (Option PackageDirs) :=
+  (p.flag? "packages").mapM fun file => do
+    let json ← IO.ofExcept <| Json.parse (← IO.FS.readFile (file.as! String))
+    IO.ofExcept (fromJson? json : Except String PackageDirs)
+
 def runHeaderDataCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
     | some dir => dir.as! String
     | none => ".lake/build"
-  headerDataOutput buildDir
+  let dbPath := p.positionalArg! "db" |>.as! String
+  let db ← openForReading dbPath builtinDocstringValues
+  let linkedModules := Std.HashSet.ofArray (← db.getModuleNames (← packageDirsFlag? p))
+  headerDataOutput buildDir linkedModules
   return 0
 
 /-- Returns the location of a core module's source file. Fails for modules outside core. -/
@@ -84,9 +93,7 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
     | none => ".lake/build"
   let dbPath := p.positionalArg! "db" |>.as! String
   let manifestOutput? := (p.flag? "manifest").map (·.as! String)
-  let packageDirs? ← (p.flag? "packages").mapM fun file => do
-    let json ← IO.ofExcept <| Json.parse (← IO.FS.readFile (file.as! String))
-    IO.ofExcept (fromJson? json : Except String PackageDirs)
+  let packageDirs? ← packageDirsFlag? p
   let moduleRoots := (p.variableArgsAs! String).map String.toName
 
   -- Flush WAL so the database file is self-contained for concurrent readers
@@ -202,6 +209,10 @@ def headerDataCmd := `[Cli|
 
   FLAGS:
     b, build : String; "Build directory."
+    p, packages : String; "JSON file that maps the `baseName` in Lake of each package to its directory. When given, a package's module is included only when the package is listed and the module's source file exists."
+
+  ARGS:
+    db : String; "Path to the SQLite database"
 ]
 
 -- Prior versions of doc-gen4 generated HTML for one module at a time, directly from the olean, and

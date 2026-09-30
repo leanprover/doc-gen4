@@ -233,10 +233,12 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) 
   FS.createDirAll declarationDir
   writeFileAtomic (declarationDir / "declaration-data.bmp") finalJson.compress
 
-def headerDataOutput (buildDir : System.FilePath) : IO Unit := do
+def headerDataOutput (buildDir : System.FilePath) (linkedModules : Std.HashSet Name) : IO Unit := do
   let mut headerIndex : JsonHeaderIndex := {}
   for entry in ← System.FilePath.readDir (declarationsBasePath buildDir) do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
+      let modName := entry.fileName.drop "declaration-data-".length |>.dropEnd ".bmp".length |>.toString
+      if !linkedModules.contains modName.toName then continue
       let fileContent ← FS.readFile entry.path
       let jsonContent ←
         match Json.parse fileContent with

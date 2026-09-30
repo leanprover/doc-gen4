@@ -11,8 +11,9 @@
 #   * building the docInfo facet again for unchanged modules leaves the HTML
 #     up to date;
 #   * after a module's source file is deleted, links, the tactic list, the
-#     navigation bar and the search index point only to modules whose source
-#     files exist.
+#     navigation bar, the search index and the header data point only to
+#     modules whose source files exist;
+#   * the header data follows added, removed and moved declarations.
 #
 # Usage: run from the doc-gen4 repo root (or pass it as $1).
 #   ./test/test-multi-lib-docs.sh
@@ -41,10 +42,11 @@ package test
 
 require «doc-gen4» from "$DOCGEN4_DIR"
 
-lean_lib LibA
-lean_lib LibB
-lean_lib LibC
-lean_lib LibD
+-- The libraries are default targets because `docsHeader` builds the default targets
+@[default_target] lean_lib LibA
+@[default_target] lean_lib LibB
+@[default_target] lean_lib LibC
+@[default_target] lean_lib LibD
 EOF
 
 mkdir -p "$TEST_DIR/LibA"
@@ -96,6 +98,7 @@ export DOCGEN_SRC=file
 DOC_DIR="$TEST_DIR/.lake/build/doc"
 DOC_DATA_DIR="$TEST_DIR/.lake/build/doc-data"
 SEARCH_INDEX="$DOC_DIR/declarations/declaration-data.bmp"
+HEADER_DATA="$DOC_DIR/declarations/header-data.bmp"
 
 check_html() {
   local fail=0
@@ -121,6 +124,28 @@ check_up_to_date() {
     else
       echo "FAIL: $lib:docs is out of date"
       exit 1
+    fi
+  done
+}
+
+# Builds the header data, then checks that it includes each declaration in $1 and omits each
+# declaration in $2.
+check_header_data() {
+  (cd "$TEST_DIR" && lake build LibC:docsHeader)
+  for decl in $1; do
+    if grep -aq "\"$decl\"" "$HEADER_DATA"; then
+      echo "OK: the header data holds $decl"
+    else
+      echo "FAIL: the header data does not include $decl"
+      exit 1
+    fi
+  done
+  for decl in ${2:-}; do
+    if grep -aq "\"$decl\"" "$HEADER_DATA"; then
+      echo "FAIL: the header data include $decl"
+      exit 1
+    else
+      echo "OK: the header data omits $decl"
     fi
   done
 }
@@ -155,11 +180,12 @@ else
   exit 1
 fi
 if grep -aq 'libDGone' "$SEARCH_INDEX"; then
-  echo "OK: the search index holds libDGone"
+  echo "OK: the search index includes libDGone"
 else
-  echo "FAIL: the search index does not hold libDGone"
+  echo "FAIL: the search index does not include libDGone"
   exit 1
 fi
+check_header_data "libAGreeting libBGreeting libCGreeting libDThm libDGone"
 
 # --- Phase 3: modify LibA, ensure that the change shows up in the HTML ---
 
@@ -176,6 +202,7 @@ else
   echo "FAIL: the page of LibA does not show libAGreetingAgain"
   exit 1
 fi
+check_header_data "libAGreeting libAGreetingAgain"
 
 # --- Phase 4: ensure that all three libraries are up to date now that LibA:docs is rebuilt ---
 
@@ -227,6 +254,7 @@ if grep -q 'A greeting from LibA' "$DOC_DIR/LibA.html"; then
 else
   echo "OK: the page of LibA omits the old docstring"
 fi
+check_header_data "libAGreeting" "libAGreetingAgain"
 
 # --- Phase 7: build the docInfo facet again for unchanged modules, ensure that the HTML stays up to date ---
 
@@ -292,17 +320,18 @@ else
   exit 1
 fi
 if grep -aq 'libDGone' "$SEARCH_INDEX"; then
-  echo "FAIL: the search index still holds libDGone"
+  echo "FAIL: the search index still includes libDGone"
   exit 1
 else
   echo "OK: the search index omits libDGone"
 fi
 if grep -aq 'libDThm' "$SEARCH_INDEX" && grep -aq 'libAGreeting' "$SEARCH_INDEX"; then
-  echo "OK: the search index holds libDThm and libAGreeting"
+  echo "OK: the search index includes libDThm and libAGreeting"
 else
-  echo "FAIL: the search index does not hold libDThm and libAGreeting"
+  echo "FAIL: the search index does not include libDThm and libAGreeting"
   exit 1
 fi
+check_header_data "libDThm libAGreeting" "libDGone"
 check_up_to_date LibA LibB LibC
 
 echo "SUCCESS: All four libraries have HTML documentation"

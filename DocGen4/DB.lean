@@ -501,18 +501,26 @@ def ModuleSource.sourceExists (packageDirs : PackageDirs) (source : ModuleSource
     | some dir => (dir / source.path).pathExists
 
 /--
-Loads the linking context from the database. When `packageDirs?` is provided, the context covers
-the modules whose source files exist (see `ModuleSource.sourceExists`). Otherwise, it covers every
-module in the database.
+Returns the names of the modules in the database, sorted by name. When `packageDirs?` is provided,
+the result covers the modules whose source files exist (see `ModuleSource.sourceExists`).
+Otherwise, it covers every module in the database.
+-/
+def ReadDB.getModuleNames (db : ReadDB) (packageDirs? : Option PackageDirs := none) :
+    IO (Array Name) := do
+  let modules ← db.getModules
+  match packageDirs? with
+  | none => pure <| modules.map (·.1)
+  | some packageDirs =>
+    modules.filterMapM fun (name, source) => do
+      return if ← source.sourceExists packageDirs then some name else none
+
+/--
+Loads the linking context from the database. It covers the modules that
+`ReadDB.getModuleNames db packageDirs?` returns.
 -/
 def ReadDB.loadLinkingContext (db : ReadDB) (packageDirs? : Option PackageDirs := none) :
     IO LinkingContext := do
-  let modules ← db.getModules
-  let moduleNames ← match packageDirs? with
-    | none => pure <| modules.map (·.1)
-    | some packageDirs =>
-      modules.filterMapM fun (name, source) => do
-        return if ← source.sourceExists packageDirs then some name else none
+  let moduleNames ← db.getModuleNames packageDirs?
   let sourceUrls ← db.getModuleSourceUrls
   let name2ModIdx ← db.buildName2ModIdx moduleNames
   return { moduleNames, sourceUrls, name2ModIdx }
