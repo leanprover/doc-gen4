@@ -95,7 +95,7 @@ echo "=== Building LibC:docs incrementally ==="
 (cd "$TEST_DIR" && lake build LibC:docs)
 check_html LibA LibB LibC
 
-# --- Phase 3: a change in a module reaches its page ---
+# --- Phase 3: modify LibA, ensure that the change shows up in the HTML ---
 
 echo "=== Adding a declaration to LibA and building LibA:docs again ==="
 cat >> "$TEST_DIR/LibA.lean" << 'EOF'
@@ -111,7 +111,7 @@ else
   exit 1
 fi
 
-# --- Phase 4: the build stays up to date when nothing changes ---
+# --- Phase 4: ensure there's no rebuild when nothing changes ---
 
 echo "=== Checking that LibA:docs needs no rebuild ==="
 if (cd "$TEST_DIR" && lake build LibA:docs --no-build); then
@@ -121,7 +121,7 @@ else
   exit 1
 fi
 
-# --- Phase 5: a change in an imported module reaches its page ---
+# --- Phase 5: ensure that changes in non-root modules are reflected in HTML ---
 
 echo "=== Adding a declaration to LibA/Basic.lean and building LibA:docs again ==="
 cat >> "$TEST_DIR/LibA/Basic.lean" << 'EOF'
