@@ -44,3 +44,24 @@ instance [Pure m] : Iterator (ChunkArray α) m (Subarray α) where
       pure <| .deflate <| .yield it' (array[curr...curr'']) (by grind [ChunkArray.PlausibleStep])
 
 instance [Pure m] [Monad n] : IteratorLoop (ChunkArray α) (β := Subarray α) m n := IteratorLoop.defaultImplementation
+
+/--
+Writes `content` to `path` atomically, by writing to a temporary file in the same directory and
+then renaming it into place.
+
+Several `doc-gen4` processes may generate documentation for overlapping sets of modules into one
+shared build directory at the same time, while also scanning that directory for files written by
+their siblings. `IO.FS.writeFile` truncates before writing, so a concurrent reader can observe a
+partially written, usually empty, file. `rename` is atomic within a directory, so readers see
+either the old contents or the complete new ones.
+-/
+def writeFileAtomic (path : System.FilePath) (content : String) : IO Unit := do
+  -- The temporary name has to be unique per writer, since sibling processes race to write the
+  -- same target path.
+  let tmp := path.addExtension s!"tmp-{← IO.Process.getPID}-{← IO.monoNanosNow}"
+  try
+    IO.FS.writeFile tmp content
+    IO.FS.rename tmp path
+  catch e =>
+    try IO.FS.removeFile tmp catch _ => pure ()
+    throw e

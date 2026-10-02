@@ -44,10 +44,27 @@ where
       .code spelling.recommendedSpelling
     ]
     let additionalInfoLines := spelling.additionalInformation?.map (·.split '\n' |>.toStringList)
-    .mk <| (#[.para ·]) <| match additionalInfoLines with
-    | none | some [] => firstLine ++ #[.text ".", .linebreak "\n", .linebreak "\n"]
-    | some [l] => firstLine ++ #[.text s!" ({l.trimAsciiEnd}).", .linebreak "\n", .linebreak "\n"]
-    | some ls => firstLine ++ #[.text ".", .linebreak "\n", .linebreak "\n", .text (String.join ls), .linebreak "\n", .linebreak "\n"]
+    match additionalInfoLines with
+    | none | some [] =>
+      .mk #[.para (firstLine ++ #[.text ".", .linebreak "\n", .linebreak "\n"])]
+    | some [l] =>
+      .mk #[.para (firstLine ++ #[.text s!" ({l.trimAsciiEnd}).", .linebreak "\n", .linebreak "\n"])]
+    | some ls =>
+      .mk <| #[.para (firstLine ++ #[.text "."])] ++ additionalInfoBlocks ls
+  additionalInfoBlocks (lines : List String) : Array (Doc.Block ElabInline ElabBlock) := Id.run do
+    let mut blocks := #[]
+    let mut paragraph := #[]
+    for line in lines do
+      let line := line.trimAscii.copy
+      if line.isEmpty then
+        if !paragraph.isEmpty then
+          blocks := blocks.push (.para #[.text (String.intercalate " " paragraph.toList)])
+          paragraph := #[]
+      else
+        paragraph := paragraph.push line
+    if !paragraph.isEmpty then
+      blocks := blocks.push (.para #[.text (String.intercalate " " paragraph.toList)])
+    return blocks
 
 
 open Lean.Parser.Tactic.Doc in

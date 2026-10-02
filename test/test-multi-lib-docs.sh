@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 #
-# Regression tests for multi-library and interproject documentation generation:
-# - concurrent and incremental builds retain every generated library;
-# - local-only builds omit dependency pages and link each dependency to its own docs site;
-# - incomplete external documentation mappings fail instead of producing broken links;
-# - a Lake build with local roots analyzes only the local modules, yet still links the rest;
-# - incremental builds with local roots forget removed modules and survive toggling the roots.
+# Regression test for the `docs` facet. It verifies that:
+#   * one `lake build` of several libraries produces HTML for all of them;
+#   * an incremental build of a third library keeps the pages of the first two;
+#   * a change in a module reaches the HTML, whether the module is a library
+#     root or an import of one;
+#   * a removed declaration and a changed docstring reach the HTML;
+#   * a rebuild with no change leaves the build up to date;
+#   * a change in one library leaves the docs of the other libraries up to date;
+#   * building the docInfo facet again for unchanged modules leaves the HTML
+#     up to date;
+#   * documenting a project without its dependencies:
+#     - concurrent and incremental builds retain every generated library;
+#     - local-only builds omit dependency pages and link each dependency to its own docs site;
+#     - incomplete external documentation mappings fail instead of producing broken links;
+#     - a Lake build with local roots analyzes only the local modules, yet still links the rest;
+#     - incremental builds with local roots forget removed modules and survive toggling the roots.
 #
 # Usage: run from the doc-gen4 repo root (or pass it as $1).
 #   ./test/test-multi-lib-docs.sh
@@ -42,9 +52,17 @@ lean_lib DepB
 lean_lib Project
 EOF
 
+mkdir -p "$TEST_DIR/LibA"
 cat > "$TEST_DIR/LibA.lean" << 'EOF'
+import LibA.Basic
+
 /-- A greeting from LibA -/
 def libAGreeting := "hello from A"
+EOF
+
+cat > "$TEST_DIR/LibA/Basic.lean" << 'EOF'
+/-- A greeting from LibA.Basic -/
+def libABasicGreeting := "hello from A.Basic"
 EOF
 
 cat > "$TEST_DIR/LibB.lean" << 'EOF'
@@ -81,6 +99,7 @@ EOF
 export LEAN_ABORT_ON_PANIC=1
 export DOCGEN_SRC=file
 DOC_DIR="$TEST_DIR/.lake/build/doc"
+DOC_DATA_DIR="$TEST_DIR/.lake/build/doc-data"
 
 check_html() {
   local fail=0
@@ -97,6 +116,17 @@ check_html() {
     find "$DOC_DIR" -name '*.html' | sort
     exit 1
   fi
+}
+
+check_up_to_date() {
+  for lib in "$@"; do
+    if (cd "$TEST_DIR" && lake build "$lib:docs" --no-build); then
+      echo "OK: $lib:docs is up to date"
+    else
+      echo "FAIL: $lib:docs is out of date"
+      exit 1
+    fi
+  done
 }
 
 check_no_html() {
@@ -134,7 +164,87 @@ echo "=== Building LibC:docs incrementally ==="
 (cd "$TEST_DIR" && lake build LibC:docs)
 check_html LibA LibB LibC
 
-# --- Phase 3: generate only local project docs with per-dependency URLs ---
+# --- Phase 3: modify LibA, ensure that the change shows up in the HTML ---
+
+echo "=== Adding a declaration to LibA and building LibA:docs again ==="
+cat >> "$TEST_DIR/LibA.lean" << 'EOF'
+
+/-- A second greeting from LibA -/
+def libAGreetingAgain := "hello again from A"
+EOF
+(cd "$TEST_DIR" && lake build LibA:docs)
+if grep -q 'libAGreetingAgain' "$DOC_DIR/LibA.html"; then
+  echo "OK: the page of LibA shows the new declaration"
+else
+  echo "FAIL: the page of LibA does not show libAGreetingAgain"
+  exit 1
+fi
+
+# --- Phase 4: ensure that all three libraries are up to date now that LibA:docs is rebuilt ---
+
+echo "=== Checking that no library needs a rebuild ==="
+check_up_to_date LibA LibB LibC
+
+# --- Phase 5: ensure that changes in non-root modules are reflected in HTML ---
+
+echo "=== Adding a declaration to LibA/Basic.lean and building LibA:docs again ==="
+cat >> "$TEST_DIR/LibA/Basic.lean" << 'EOF'
+
+/-- A second greeting from LibA.Basic -/
+def libABasicGreetingAgain := "hello again from A.Basic"
+EOF
+(cd "$TEST_DIR" && lake build LibA:docs)
+if grep -q 'libABasicGreetingAgain' "$DOC_DIR/LibA/Basic.html"; then
+  echo "OK: the page of LibA.Basic shows the new declaration"
+else
+  echo "FAIL: the page of LibA.Basic does not show libABasicGreetingAgain"
+  exit 1
+fi
+check_html LibA LibB LibC
+
+# --- Phase 6: remove a declaration and change a docstring, ensure that the HTML is updated ---
+
+echo "=== Removing a declaration from LibA, changing a docstring, and building LibA:docs again ==="
+cat > "$TEST_DIR/LibA.lean" << 'EOF'
+import LibA.Basic
+
+/-- A revised greeting from LibA -/
+def libAGreeting := "hello from A"
+EOF
+(cd "$TEST_DIR" && lake build LibA:docs)
+if grep -q 'libAGreetingAgain' "$DOC_DIR/LibA.html"; then
+  echo "FAIL: the page of LibA still shows the removed libAGreetingAgain"
+  exit 1
+else
+  echo "OK: the page of LibA omits the removed declaration"
+fi
+if grep -q 'A revised greeting from LibA' "$DOC_DIR/LibA.html"; then
+  echo "OK: the page of LibA shows the new docstring"
+else
+  echo "FAIL: the page of LibA does not show the new docstring"
+  exit 1
+fi
+if grep -q 'A greeting from LibA' "$DOC_DIR/LibA.html"; then
+  echo "FAIL: the page of LibA still shows the old docstring"
+  exit 1
+else
+  echo "OK: the page of LibA omits the old docstring"
+fi
+
+# --- Phase 7: build the docInfo facet again for unchanged modules, ensure that the HTML stays up to date ---
+
+echo "=== Removing the docInfo markers of LibA and building LibA:docInfo again ==="
+rm "$DOC_DATA_DIR/LibA.doc" "$DOC_DATA_DIR/LibA.Basic.doc"
+(cd "$TEST_DIR" && lake build LibA:docInfo)
+for marker in LibA.doc LibA.Basic.doc; do
+  if [ ! -f "$DOC_DATA_DIR/$marker" ]; then
+    echo "FAIL: $marker was not written again"
+    exit 1
+  fi
+done
+check_up_to_date LibA
+
+# --- Phase 8: generate only local project docs with per-dependency URLs ---
 
 echo "=== Building Project doc info ==="
 (cd "$TEST_DIR" && lake build Project:docInfo)
@@ -166,7 +276,7 @@ check_contains "$check_html_file" 'https://deps.example/a/DepA.html'
 check_contains "$check_html_file" 'https://deps.example/b/DepB.html'
 check_contains "$check_html_file" 'https://deps.example/fallback/find/?pattern=String#doc'
 
-# --- Phase 4: reject incomplete URL mappings ---
+# --- Phase 9: reject incomplete URL mappings ---
 
 echo "=== Checking incomplete dependency URL configuration ==="
 INCOMPLETE_BUILD="$TEST_DIR/incomplete-build"
@@ -183,7 +293,7 @@ if env \
 fi
 check_contains "$INCOMPLETE_LOG" 'No dependency documentation URL configured for external module roots:'
 
-# --- Phase 5: a Lake build with local roots analyzes only the local modules ---
+# --- Phase 10: a Lake build with local roots analyzes only the local modules ---
 
 echo "=== Building local-only docs through Lake ==="
 LOCAL_DIR="$TEST_DIR/local-only"
@@ -224,7 +334,7 @@ check_contains "$local_html" 'https://deps.example/fallback/find/?pattern=And#do
 # Tactics from external modules are still listed.
 check_contains "$LOCAL_BUILD/doc/tactics.html" 'simp'
 
-# --- Phase 6: an external aggregator root, and a local module removed between builds ---
+# --- Phase 11: an external aggregator root, and a local module removed between builds ---
 
 echo "=== Building local-only docs from an external aggregator root ==="
 AGG_DIR="$TEST_DIR/aggregator"
@@ -288,7 +398,7 @@ else
   echo "SKIP: sqlite3 is not installed, so the database was not inspected"
 fi
 
-# --- Phase 7: making a module external and then local again re-analyzes it ---
+# --- Phase 12: making a module external and then local again re-analyzes it ---
 
 echo "=== Making a module external and then local again ==="
 TOGGLE_DIR="$TEST_DIR/toggle"
