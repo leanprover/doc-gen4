@@ -46,23 +46,23 @@ partial def getFieldOrigin (structName field : Name) : MetaM (Bool × Name) := d
     | throwError "no such field {field} in {structName}"
   return (true, fi.projFn)
 
-def getFieldTypes (v : InductiveVal) : MetaM (Array StructureParentInfo × Array FieldInfo) := do
+def getFieldTypes (scope : Array Name) (v : InductiveVal) : MetaM (Array StructureParentInfo × Array FieldInfo) := do
   withFields v fun parents fields => do
     let mut parentInfo : Array StructureParentInfo := #[]
     let mut fieldInfo : Array FieldInfo := #[]
     for (_, projFn, type) in parents do
-      parentInfo := parentInfo.push { projFn, type := ← prettyPrintTerm type }
+      parentInfo := parentInfo.push { projFn, type := ← prettyPrintTerm scope type }
     for (name, type) in fields do
       let (isDirect, projFn) ← getFieldOrigin v.name name
-      fieldInfo := fieldInfo.push { ← Info.ofTypedName projFn type with isDirect }
+      fieldInfo := fieldInfo.push { ← Info.ofTypedName scope projFn type with isDirect }
     return (parentInfo, fieldInfo)
 
-def StructureInfo.ofInductiveVal (v : InductiveVal) : MetaM StructureInfo := do
-  let info ← Info.ofConstantVal v.toConstantVal
+def StructureInfo.ofInductiveVal (scope : Array Name) (v : InductiveVal) : MetaM StructureInfo := do
+  let info ← Info.ofConstantVal scope v.toConstantVal
   let env ← getEnv
   let ctorVal := getStructureCtor env v.name
-  let ctor ← NameInfo.ofTypedName ctorVal.name ctorVal.type
-  let (parents, fieldInfo) ← getFieldTypes v
+  let ctor ← NameInfo.ofTypedName scope ctorVal.name ctorVal.type
+  let (parents, fieldInfo) ← getFieldTypes scope v
   return {
     toInfo := info,
     fieldInfo,
