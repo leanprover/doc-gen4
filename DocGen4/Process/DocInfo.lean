@@ -164,48 +164,48 @@ def isBlackListed (declName : Name) : MetaM Bool := do
   -- TODO: Evaluate whether filtering out declarations without range is sensible
   | none => return true
 
-def ofConstant : (Name × ConstantInfo) → AnalyzeM (Option DocInfo) :=
+def ofConstant (scope : Array Name) : (Name × ConstantInfo) → AnalyzeM (Option DocInfo) :=
   fun (name, info) => do
   if ← isBlackListed name then
     return none
   match info with
-  | ConstantInfo.axiomInfo i => return some <| axiomInfo (← AxiomInfo.ofAxiomVal i)
+  | ConstantInfo.axiomInfo i => return some <| axiomInfo (← AxiomInfo.ofAxiomVal scope i)
   | ConstantInfo.thmInfo i =>
-    let info ← TheoremInfo.ofTheoremVal i
+    let info ← TheoremInfo.ofTheoremVal scope i
     if ← isProjFn i.name then
       return some <| theoremInfo { info with render := false }
     else if ← isInstance i.name then
-      let info ← InstanceInfo.ofTheoremVal i
+      let info ← InstanceInfo.ofTheoremVal scope i
       return some <| instanceInfo info
     else
       return some <| theoremInfo info
-  | ConstantInfo.opaqueInfo i => return some <| opaqueInfo (← OpaqueInfo.ofOpaqueVal i)
+  | ConstantInfo.opaqueInfo i => return some <| opaqueInfo (← OpaqueInfo.ofOpaqueVal scope i)
   | ConstantInfo.defnInfo i =>
     if ← isProjFn i.name then
-      let info ← DefinitionInfo.ofDefinitionVal i
+      let info ← DefinitionInfo.ofDefinitionVal scope i
       return some <| definitionInfo { info with render := false }
     else if ← isInstance i.name then
-      let info ← InstanceInfo.ofDefinitionVal i
+      let info ← InstanceInfo.ofDefinitionVal scope i
       return some <| instanceInfo info
     else
-      let info ← DefinitionInfo.ofDefinitionVal i
+      let info ← DefinitionInfo.ofDefinitionVal scope i
       return some <| definitionInfo  info
   | ConstantInfo.inductInfo i =>
     let env ← getEnv
     if isStructure env i.name then
       if isClass env i.name then
-        return some <| classInfo (← ClassInfo.ofInductiveVal i)
+        return some <| classInfo (← ClassInfo.ofInductiveVal scope i)
       else
-        return some <| structureInfo (← StructureInfo.ofInductiveVal i)
+        return some <| structureInfo (← StructureInfo.ofInductiveVal scope i)
     else
       if isClass env i.name then
-        return some <| classInductiveInfo (← ClassInductiveInfo.ofInductiveVal i)
+        return some <| classInductiveInfo (← ClassInductiveInfo.ofInductiveVal scope i)
       else
-        return some <| inductiveInfo (← InductiveInfo.ofInductiveVal i)
+        return some <| inductiveInfo (← InductiveInfo.ofInductiveVal scope i)
   | ConstantInfo.ctorInfo i =>
-    let info ← Info.ofConstantVal i.toConstantVal
+    let info ← Info.ofConstantVal scope i.toConstantVal
     return some <| ctorInfo { info with render := false }
-  | ConstantInfo.quotInfo i => return some <| opaqueInfo (← OpaqueInfo.ofQuotVal i)
+  | ConstantInfo.quotInfo i => return some <| opaqueInfo (← OpaqueInfo.ofQuotVal scope i)
   | ConstantInfo.recInfo _ => return none
 
 def getKindDescription : DocInfo → String

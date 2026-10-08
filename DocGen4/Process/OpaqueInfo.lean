@@ -12,8 +12,8 @@ namespace DocGen4.Process
 
 open Lean Meta
 
-def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
-  let info ← Info.ofConstantVal v.toConstantVal
+def OpaqueInfo.ofOpaqueVal (scope : Array Name) (v : OpaqueVal) : MetaM OpaqueInfo := do
+  let info ← Info.ofConstantVal scope v.toConstantVal
   let env ← getEnv
   let isPartial := env.find? (Compiler.mkUnsafeRecName v.name) |>.isSome
   let definitionSafety :=
@@ -28,8 +28,8 @@ def OpaqueInfo.ofOpaqueVal (v : OpaqueVal) : MetaM OpaqueInfo := do
     definitionSafety
   }
 
-def OpaqueInfo.ofQuotVal (v : QuotVal) : MetaM OpaqueInfo := do
-  let info ← Info.ofConstantVal v.toConstantVal
+def OpaqueInfo.ofQuotVal (scope : Array Name) (v : QuotVal) : MetaM OpaqueInfo := do
+  let info ← Info.ofConstantVal scope v.toConstantVal
   return {
     toInfo := info
     definitionSafety := .safe
