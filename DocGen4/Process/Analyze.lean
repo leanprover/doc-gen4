@@ -92,6 +92,14 @@ structure AnalyzerResult where
   empty.
   -/
   containedNames : Std.HashMap Name (Std.HashSet Name) := {}
+  /--
+  Maps each internal name without an anchor of its own, such as a recursor, to the declaration
+  whose anchor links to it point to.
+
+  This field is only populated when the result is read from the database. Prior to that, it is
+  empty.
+  -/
+  name2Anchor : Std.HashMap Name Name := {}
   deriving Inhabited
 
 namespace ModuleMember

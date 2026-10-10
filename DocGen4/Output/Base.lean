@@ -227,11 +227,15 @@ end Static
 
 /--
 Returns the doc-gen4 link to a declaration name.
+
+Internal names without an anchor of their own, such as recursors, link to the anchor of the
+declaration they belong to.
 -/
 def declNameToLink (name : Name) : HtmlM String := do
   let res ← getResult
   let module := res.moduleNames[res.name2ModIdx[name]!.toNat]!
-  return (← moduleNameToLink module) ++ "#" ++ name.toString
+  let anchor := res.name2Anchor.getD name name
+  return (← moduleNameToLink module) ++ "#" ++ anchor.toString
 
 /--
 Returns the HTML doc-gen4 link to a declaration name.
