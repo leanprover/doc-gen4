@@ -227,6 +227,36 @@ target bibPrepass : FilePath := do
       }
     return outputFile
 
+/--
+The local module roots configured by `DOCGEN_LOCAL_MODULE_ROOTS` (comma-separated). Empty when
+interproject linking is disabled, in which case every module is local.
+-/
+def localModuleRoots : IO (Array Lean.Name) := do
+  match ← IO.getEnv "DOCGEN_LOCAL_MODULE_ROOTS" with
+  | some s =>
+    pure <| s.splitOn "," |>.map (·.trimAscii.copy) |>.filter (! ·.isEmpty) |>.map String.toName |>.toArray
+  | none => pure #[]
+
+/--
+Whether interproject linking treats `mod` as external. External modules are not analyzed: the
+`externals` command records just enough about them to link to their declarations.
+-/
+def isExternalModule (roots : Array Lean.Name) (mod : Lean.Name) : Bool :=
+  !roots.isEmpty && !roots.contains mod.getRoot
+
+/--
+Mixes the local module roots into the current job's trace. They decide what the database holds for
+each module, so changing them must invalidate what was recorded under the old setting.
+-/
+def addLocalModuleRootsTrace : JobM Unit := do
+  let roots ← localModuleRoots
+  addPureTrace (",".intercalate (roots.map (·.toString)).toList) "DOCGEN_LOCAL_MODULE_ROOTS"
+
+/-- Mixes the dependency documentation URLs, which the rendered links contain, into the trace. -/
+def addDepsDocsUrlsTrace : JobM Unit := do
+  for var in ["DOCGEN_DEPS_DOCS_URL", "DOCGEN_DEPS_DOCS_URLS"] do
+    addPureTrace ((← IO.getEnv var).getD "") var
+
 def coreTarget (component : Lean.Name) : FetchM (Job FilePath) := do
   let exeJob ← «doc-gen4».fetch
   let bibPrepassJob ← bibPrepass.fetch
@@ -254,7 +284,8 @@ indicate that the database has been updated for the corresponding modules, allow
 changes and dependencies.
 -/
 target coreDocs : Array FilePath := do
-  let coreComponents := #[`Init, `Std, `Lake, `Lean]
+  let roots ← localModuleRoots
+  let coreComponents := #[`Init, `Std, `Lake, `Lean].filter (!isExternalModule roots ·)
   return ← (Job.collectArray <| ← coreComponents.mapM coreTarget).mapM fun deps =>
     return deps
 
@@ -265,14 +296,18 @@ Returns a marker file that indicates the database has been populated for this mo
 The marker file participates in Lake's dependency tracking, allowing for incremental updates.
 -/
 module_facet docInfo (mod) : FilePath := do
-  let exeJob ← «doc-gen4».fetch
-  let bibPrepassJob ← bibPrepass.fetch
-  let coreJob ← coreDocs.fetch
-  let modJob ← mod.leanArts.fetch
   -- Build all documentation for imported modules
   let imports ← (← mod.imports.fetch).await
   let depDocJobs := Job.mixArray <| ← imports.mapM fun mod => fetch <| mod.facet `docInfo
   let buildDir := (← getRootPackage).buildDir
+  if isExternalModule (← localModuleRoots) mod.name then
+    -- An external module is not analyzed, but it may still import local modules (for example, an
+    -- aggregator root that imports the whole project), so its imports are visited all the same.
+    return ← depDocJobs.mapM fun _ => return buildDir / "doc-data" / s!"{mod.name}.doc"
+  let exeJob ← «doc-gen4».fetch
+  let bibPrepassJob ← bibPrepass.fetch
+  let coreJob ← coreDocs.fetch
+  let modJob ← mod.leanArts.fetch
   -- Building the documentation info for the module adds or updates the relevant content in the
   -- database. If the dependencies change, then this needs to be re-done. While it would be possible
   -- to hash just the relevant content of the database (e.g. using SQLite's SHA3 module) and write
@@ -285,6 +320,7 @@ module_facet docInfo (mod) : FilePath := do
       bibPrepassJob.bindM fun _ => do
         exeJob.bindM fun exeFile => do
           modJob.mapM fun _ => do
+            addLocalModuleRootsTrace
             buildFileUnlessUpToDate' markerFile do
               let uriJob ← fetch <| mod.facet `srcUri
               let srcUri ← uriJob.await
@@ -350,6 +386,17 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
   let bibPrepassJob ← bibPrepass.fetch
   let coreJob ← coreDocs.fetch
   let docInfoJobs := Job.collectArray <| ← rootMods.mapM (fetch <| ·.facet `docInfo)
+  -- `externals` loads the roots' environment. The `docInfo` facet builds a local module's olean,
+  -- but not an external one's, and a root may be external (an aggregator root outside the local
+  -- roots, for example), so build the roots here.
+  let rootArtJobs := Job.mixArray <| ← rootMods.mapM (·.leanArts.fetch)
+  -- The source directories of the local libraries, where `externals` checks whether a local module
+  -- in the database still exists. Asking whether these roots import it instead would be wrong: a
+  -- module can be documented by another root, and sharing the database is legitimate.
+  let localRoots ← localModuleRoots
+  let localSrcDirs := (← getWorkspace).packages.flatMap (·.leanLibs)
+    |>.filter (·.rootModules.any (!isExternalModule localRoots ·.name))
+    |>.map (·.srcDir.toString)
   let buildDir := (← getRootPackage).buildDir
   let basePath := buildDir / "doc"
   let dbPath := buildDir / "api-docs.db"
@@ -383,11 +430,21 @@ def generateHtmlDocs (markerName : String) (rootMods : Array Module) (descriptio
   let rootNames := rootMods.map (·.name) ++ coreRoots
   let manifestFile := buildDir / "doc-manifest.json"
   coreJob.bindM fun _ => do
-    docInfoJobs.bindM fun _ => do
+    (docInfoJobs.mix rootArtJobs).bindM fun _ => do
       bibPrepassJob.bindM fun _ => do
         exeJob.mapM fun exeFile => do
+          addLocalModuleRootsTrace
+          addDepsDocsUrlsTrace
           buildFileUnlessUpToDate' markerFile do
             logInfo description
+            if !localRoots.isEmpty then
+              proc {
+                cmd := exeFile.toString
+                args := #["externals", "--build", buildDir.toString,
+                  "--srcDirs", ",".intercalate localSrcDirs.toList, "api-docs.db"] ++
+                  rootNames.map (·.toString)
+                env := ← getAugmentedEnv
+              }
             proc {
               cmd := exeFile.toString
               args := #["fromDb", "--build", buildDir.toString, "--manifest", manifestFile.toString, dbPath.toString] ++ rootNames.map (·.toString)
