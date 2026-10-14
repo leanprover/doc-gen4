@@ -94,8 +94,8 @@ abbrev SourceLinkerFn := Option String → Name → Option DeclarationRange → 
 /--
 Generates HTML for all modules in parallel. Each task loads its module from DB, renders HTML, and
 writes output files. The linking context provides cross-module linking without loading all module
-data upfront. When `targetModules` is provided, only those modules are rendered (but linking uses
-all modules).
+data upfront. When `targetModules` is provided, only those modules are rendered. Links resolve to
+the modules in `linkCtx`.
 -/
 def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.FilePath)
     (linkCtx : LinkingContext)
@@ -192,21 +192,23 @@ def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) :
         refs := refs
       }
 
-def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) (tacticInfo : Array (Process.TacticInfo Html)) : IO Unit := do
+def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) (tacticInfo : Array (Process.TacticInfo Html))
+    (linkedModules : Std.HashSet Name) : IO Unit := do
   htmlOutputSetup baseConfig tacticInfo
 
   -- Build a set of module names we just generated (already in memory)
   let freshModuleNames : Std.HashSet String := modules.foldl (init := {}) fun s m => s.insert m.name
 
-  -- Load per-module data from disk for modules NOT in the current task set.
-  -- This enables incremental builds: prior runs wrote declaration-data-{module}.bmp files,
-  -- and we merge them so the unified search index covers all modules.
+  -- Load per-module data from disk for the modules in `linkedModules` that are NOT in the current
+  -- task set. This enables incremental builds: prior runs wrote declaration-data-{module}.bmp
+  -- files, and we merge them so the unified search index covers all linked modules.
   let mut diskModules : Array JsonModule := #[]
   for entry in ← System.FilePath.readDir (declarationsBasePath baseConfig.buildDir) do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
       -- Extract module name from filename: "declaration-data-Foo.Bar.bmp" -> "Foo.Bar"
       let modName := entry.fileName.drop "declaration-data-".length |>.dropEnd ".bmp".length |>.toString
       if freshModuleNames.contains modName then continue
+      if !linkedModules.contains modName.toName then continue
       let fileContent ← FS.readFile entry.path
       match Json.parse fileContent with
       | .error err =>
@@ -231,10 +233,12 @@ def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) 
   FS.createDirAll declarationDir
   writeFileAtomic (declarationDir / "declaration-data.bmp") finalJson.compress
 
-def headerDataOutput (buildDir : System.FilePath) : IO Unit := do
+def headerDataOutput (buildDir : System.FilePath) (linkedModules : Std.HashSet Name) : IO Unit := do
   let mut headerIndex : JsonHeaderIndex := {}
   for entry in ← System.FilePath.readDir (declarationsBasePath buildDir) do
     if entry.fileName.startsWith "declaration-data-" && entry.fileName.endsWith ".bmp" then
+      let modName := entry.fileName.drop "declaration-data-".length |>.dropEnd ".bmp".length |>.toString
+      if !linkedModules.contains modName.toName then continue
       let fileContent ← FS.readFile entry.path
       let jsonContent ←
         match Json.parse fileContent with
@@ -309,13 +313,14 @@ partial def scanModuleHtmlFiles (docDir : System.FilePath) : IO (Array Name) := 
   scanDir docDir
 
 /--
-Rebuilds `navbar.html` by scanning existing HTML files on disk. This enables incremental builds
-where subsequent builds include HTML modules from previous builds.
+Rebuilds `navbar.html` from the modules in `linkedModules` that have an HTML file on disk. This
+enables incremental builds where subsequent builds include HTML modules from previous builds.
 -/
-def updateNavbarFromDisk (buildDir : System.FilePath) : IO Unit := do
+def updateNavbarFromDisk (buildDir : System.FilePath) (linkedModules : Std.HashSet Name) :
+    IO Unit := do
   let docDir := basePath buildDir
-  -- Scan for all existing module HTML files
-  let existingModules ← scanModuleHtmlFiles docDir
+  -- Scan for the existing HTML files of linked modules
+  let existingModules := (← scanModuleHtmlFiles docDir).filter linkedModules.contains
   -- Load references for base context
   let contents ← FS.readFile (declarationsBasePath buildDir / "references.json") <|> (pure "[]")
   let refs : Array BibItem ← match Json.parse contents with

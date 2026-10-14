@@ -117,7 +117,12 @@ PRAGMA journal_mode = WAL;
 -- Modules table
 CREATE TABLE IF NOT EXISTS modules (
   name TEXT PRIMARY KEY,
-  source_url TEXT
+  source_url TEXT,
+  -- The `baseName` in Lake of the package that contains the module, or NULL for core modules:
+  package TEXT,
+  -- The path of the module's source file relative to the package's directory, or to the `src`
+  -- directory of the Lean repository for core modules, with `/` as the separator:
+  source_path TEXT NOT NULL
 );
 
 -- Direct imports

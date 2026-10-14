@@ -22,21 +22,27 @@ def mkVscodeSourceLinker (baseUrl : String) (range : Option DeclarationRange) : 
   | none => baseUrl
 
 /--
+Returns the path of a core module's source file relative to the `src` directory of the Lean
+repository, with `/` separators, or `none` for modules outside `Init`, `Std`, `Lean` and `Lake`.
+-/
+def coreSourcePath? (module : Name) : Option String :=
+  let root := module.getRoot
+  let path := "/".intercalate (module.components.map (Name.toString (escape := false)))
+  if root == `Lean ∨ root == `Init ∨ root == `Std then
+    some s!"{path}.lean"
+  else if root == `Lake then
+    some s!"lake/{path}.lean"
+  else
+    none
+
+/--
 Given a lake workspace with all the dependencies as well as the hash of the
 compiler release to work with this provides a function to turn names of
 declarations into (optionally positional) Github URLs.
 -/
 def sourceLinker (gitUrl? : Option String) (module : Name) : Option DeclarationRange → String :=
-  let root := module.getRoot
-  let leanHash := Lean.githash
-  if root == `Lean ∨ root == `Init ∨ root == `Std then
-    let parts := module.components.map (Name.toString (escape := False))
-    let path := "/".intercalate parts
-    mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/{path}.lean"
-  else if root == `Lake then
-    let parts := module.components.map (Name.toString (escape := False))
-    let path := "/".intercalate parts
-    mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{leanHash}/src/lake/{path}.lean"
+  if let some path := coreSourcePath? module then
+    mkGithubSourceLinker s!"https://github.com/leanprover/lean4/blob/{Lean.githash}/src/{path}"
   else
     match gitUrl? with
     | .some url =>
