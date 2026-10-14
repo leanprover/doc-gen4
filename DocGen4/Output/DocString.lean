@@ -206,7 +206,7 @@ partial def renderText (t : MD4Lean.Text) (funName : String) (inLink : Bool := f
   match t with
   | .normal s => return #[Html.text s]
   | .nullchar => return #[Html.raw "\uFFFD"]
-  | .br _ => return #[Html.raw "<br>\n"] -- This avoids <br></br>, which is incorrect HTML5
+  | .br _ => return #[html%{<br/>}]
   | .softbr _ => return #[Html.raw "\n"]
   | .entity s => return #[Html.raw s]
   | .em ts =>
@@ -248,15 +248,15 @@ partial def renderText (t : MD4Lean.Text) (funName : String) (inLink : Bool := f
         attrs := attrs.push ("title", titleStr)
       return #[.element "a" attrs childrenHtml]
   | .img src title alt =>
-    let srcStr := Html.escape (attrTextToString src)
-    let titleStr := Html.escape (attrTextToString title)
+    let srcStr := attrTextToString src
+    let titleStr := attrTextToString title
     let altTexts := alt.toList.map textToPlaintext
-    let altStr := Html.escape (String.join altTexts)
-    let mut s := s!"<img src=\"{srcStr}\" alt=\"{altStr}\""
-    if !titleStr.isEmpty then
-      s := s ++ s!" title=\"{titleStr}\""
-    s := s ++ ">"
-    return #[Html.raw s]
+    let altStr := String.join altTexts
+    let s := if !titleStr.isEmpty then
+      html%{<img src={srcStr} alt={altStr} title={titleStr}/>}
+    else
+      html%{<img src={srcStr} alt={altStr}/>}
+    return #[s]
   | .code ss =>
     let inner ← if inLink then
         pure #[Html.text (String.join ss.toList)]
@@ -266,11 +266,11 @@ partial def renderText (t : MD4Lean.Text) (funName : String) (inLink : Bool := f
   -- Math is rendered with dollar signs because MathJax will later render them
   | .latexMath ss =>
     let content := String.join ss.toList
-    return #[Html.raw s!"${Html.escape content}$"]
+    return #[Html.text s!"${content}$"]
   -- Math is rendered with dollar signs because MathJax will later render them
   | .latexMathDisplay ss =>
     let content := String.join ss.toList
-    return #[Html.raw s!"$${Html.escape content}$$"]
+    return #[Html.text s!"$${content}$$"]
   | .wikiLink target children =>
     let inner ← renderTexts children funName inLink
     let targetStr := attrTextToString target
@@ -306,7 +306,7 @@ partial def renderBlock (block : MD4Lean.Block) (funName : String) (tight : Bool
     let attrs : Array (String × String) :=
       if start != 1 then #[("start", toString start)] else #[]
     return #[.element "ol" attrs lis]
-  | .hr => return #[Html.raw "<hr>\n"]
+  | .hr => return #[.element "hr" #[] .empty]
   | .header level texts =>
     let id := mdGetHeadingId texts
     let inner ← renderTexts texts funName
@@ -355,9 +355,9 @@ partial def renderLi (li : MD4Lean.Li MD4Lean.Block) (funName : String) (tight :
   if li.isTask then
     let checked := li.taskChar == some 'x' || li.taskChar == some 'X'
     if checked then
-      inner := inner.push (Html.raw "<input type=\"checkbox\" checked=\"\" disabled=\"\">")
+      inner := inner.push html%{<input type="checkbox" checked disabled/>}
     else
-      inner := inner.push (Html.raw "<input type=\"checkbox\" disabled=\"\">")
+      inner := inner.push html%{<input type="checkbox" disabled/>}
   for b in li.contents do
     inner := inner ++ (← renderBlock b funName tight)
   return #[.element "li" #[] inner]
@@ -399,6 +399,6 @@ def docStringToHtml (docString : String ⊕ (VersoDocString × String)) (funName
     return result
   | .none =>
     addError <| "Error: failed to parse markdown:\n" ++ docString
-    return #[.raw "<span style='color:red;'>Error: failed to parse markdown: </span>", .text docString]
+    return #[html%{<span style="color:red;">Error: failed to parse markdown: </span>}, .text docString]
 end Output
 end DocGen4
