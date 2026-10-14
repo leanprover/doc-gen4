@@ -61,7 +61,7 @@ def tactics (tacticInfo : Array (TacticInfo Html)) : BaseHtmlM Html := do
       <p><a href="#top">return to top</a></p>
       [tacticInfo.map (· |>.navLink)]
     </nav>,
-    Html.element "main" false #[] (
+    .element "main" #[] (
       #[<p>The tactic language is a special-purpose programming language for constructing proofs, indicated using the keyword <code>by</code>.</p>] ++
       sectionsHtml)
   ]
