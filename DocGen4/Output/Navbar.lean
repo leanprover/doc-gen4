@@ -4,19 +4,17 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Henrik Böving
 -/
 import Lean
-import DocGen4.Output.ToHtmlFormat
 import DocGen4.Output.Base
 
 namespace DocGen4
 namespace Output
 
 open Lean
-open scoped DocGen4.Jsx
 
 def moduleListFile (file : Name) : BaseHtmlM Html := do
-  return <div class={if (← getCurrentName) == file then "nav_link visible" else "nav_link"}>
+  return html%{<div class={if (← getCurrentName) == file then "nav_link visible" else "nav_link"}>
     <a href={← moduleNameToLink file}>{file.getString!}</a>
-  </div>
+  </div>}
 
 /--
 Build the HTML tree representing the module hierarchy.
@@ -31,15 +29,17 @@ partial def moduleListDir (h : Hierarchy) : BaseHtmlM Html := do
   let moduleLink ← moduleNameToLink h.getName
   let summary ← do
     if h.isFile then
-      pure <summary>{s!"{h.getName.getString!} ("}<a href={← moduleNameToLink h.getName}>file</a>)</summary>
+      pure html%{<summary>{s!"{h.getName.getString!} ("}<a href={← moduleNameToLink h.getName}>file</a>)</summary>}
     else
-      pure <summary>{h.getName.getString!}</summary>
-  pure
-    <details class="nav_sect" "data-path"={moduleLink} [if (← getCurrentName).any (h.getName.isPrefixOf ·) then #[("open", "")] else #[]]>
+      pure html%{<summary>{h.getName.getString!}</summary>}
+  pure html%{
+    <details class="nav_sect" data-path={moduleLink}
+        {... if (← getCurrentName).any (h.getName.isPrefixOf ·) then #[("open", "")] else #[]}>
       {summary}
-      [dirNodes]
-      [fileNodes]
+      {dirNodes}
+      {fileNodes}
     </details>
+  }
 
 /--
 Return a list of top level modules, linkified and rendered as HTML
@@ -49,7 +49,7 @@ def moduleList : BaseHtmlM Html := do
   let mut list := Array.empty
   for (_, cs) in hierarchy.getChildren do
     list := list.push <| ← moduleListDir cs
-  return <div class="module_list">[list]</div>
+  return html%{<div class="module_list">{list}</div>}
 
 /--
 The main entry point to rendering the navbar on the left hand side.
@@ -63,17 +63,18 @@ def navbar : BaseHtmlM Html := do
   <div class="nav_link"><a href={s!"{← getRoot}notes.html"}>notes</a></div>
   -/
   let mut staticPages : Array Html := #[
-    <div class="nav_link"><a href={s!"{← getRoot}"}>index</a></div>,
-    <div class="nav_link"><a href={s!"{← getRoot}foundational_types.html"}>foundational types</a></div>,
-    <div class="nav_link"><a href={s!"{← getRoot}tactics.html"}>tactics</a></div>,
+    html%{<div class="nav_link"><a href={s!"{← getRoot}"}>index</a></div>},
+    html%{<div class="nav_link"><a href={s!"{← getRoot}foundational_types.html"}>foundational types</a></div>},
+    html%{<div class="nav_link"><a href={s!"{← getRoot}tactics.html"}>tactics</a></div>},
   ]
   let config ← read
   if not config.refs.isEmpty then
-    staticPages := staticPages.push <div class="nav_link"><a href={s!"{← getRoot}references.html"}>references</a></div>
-  pure
+    staticPages := staticPages.push
+      html%{<div class="nav_link"><a href={s!"{← getRoot}references.html"}>references</a></div>}
+  pure html%{
     <html lang="en">
       <head>
-        [← baseHtmlHeadDeclarations]
+        {← baseHtmlHeadDeclarations}
 
         <script type="module" src={s!"{← getRoot}nav.js"}></script>
         <script type="module" src={s!"{← getRoot}color-scheme.js"}></script>
@@ -84,11 +85,11 @@ def navbar : BaseHtmlM Html := do
         <div class="navframe">
         <nav class="nav">
           <h3>General documentation</h3>
-          [staticPages]
+          {staticPages}
           <h3>Library</h3>
           {← moduleList}
           <div id="settings" hidden="hidden">
-            -- `input` is a void tag, but can be self-closed to make parsing easier.
+            <!-- `input` is a void element, so it must be written self-closed. -->
             <h3>Color scheme</h3>
             <form id="color-theme-switcher">
                 <label for="color-theme-dark">
@@ -103,6 +104,7 @@ def navbar : BaseHtmlM Html := do
         </div>
       </body>
     </html>
+  }
 
 end Output
 end DocGen4
