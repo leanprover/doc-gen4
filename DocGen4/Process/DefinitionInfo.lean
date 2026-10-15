@@ -20,33 +20,33 @@ def valueToEq (v : DefinitionVal) : MetaM Expr := withLCtx {} {} do
       let type ← mkForallFVars xs type
       return type
 
-def prettyPrintEquation (expr : Expr) : MetaM RenderedCode :=
-  Meta.forallTelescope expr.consumeMData (fun _ e => prettyPrintTerm e)
+def prettyPrintEquation (scope : Array Name) (expr : Expr) : MetaM RenderedCode :=
+  Meta.forallTelescope expr.consumeMData (fun _ e => prettyPrintTerm scope e)
 
-def processEq (eq : Name) : MetaM RenderedCode := do
+def processEq (scope : Array Name) (eq : Name) : MetaM RenderedCode := do
   let type ← (mkConstWithFreshMVarLevels eq >>= inferType)
-  prettyPrintEquation type
+  prettyPrintEquation scope type
 
-def computeEquations? (v : DefinitionVal) : AnalyzeM (Array RenderedCode) := do
+def computeEquations? (scope : Array Name) (v : DefinitionVal) : AnalyzeM (Array RenderedCode) := do
   unless (← read).genEquations do return #[]
   let eqs? ← getEqnsFor? v.name
   match eqs? with
   | some eqs =>
-    let eqs ← liftM (eqs.mapM processEq)
+    let eqs ← liftM (eqs.mapM (processEq scope))
     return eqs
   | none =>
-    let equations := #[← prettyPrintEquation (← valueToEq v)]
+    let equations := #[← prettyPrintEquation scope (← valueToEq v)]
     return equations
 
-def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : AnalyzeM DefinitionInfo := do
-  let info ← Info.ofConstantVal v.toConstantVal
+def DefinitionInfo.ofDefinitionVal (scope : Array Name) (v : DefinitionVal) : AnalyzeM DefinitionInfo := do
+  let info ← Info.ofConstantVal scope v.toConstantVal
   let isUnsafe := v.safety == DefinitionSafety.unsafe
   let isNonComputable := isNoncomputable (← getEnv) v.name
   let sorried := v.value.hasSorry
 
   let equations ←
     tryCatchRuntimeEx
-      (.some <$> computeEquations? v)
+      (.some <$> computeEquations? scope v)
       (fun err => do
         IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {← err.toMessageData.toString}"
         return none)

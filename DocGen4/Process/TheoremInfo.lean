@@ -12,8 +12,8 @@ namespace DocGen4.Process
 
 open Lean Meta
 
-def TheoremInfo.ofTheoremVal (v : TheoremVal) : MetaM TheoremInfo := do
-  let info ← Info.ofConstantVal v.toConstantVal
+def TheoremInfo.ofTheoremVal (scope : Array Name) (v : TheoremVal) : MetaM TheoremInfo := do
+  let info ← Info.ofConstantVal scope v.toConstantVal
   -- We mark direct uses of sorry:
   return { toInfo := { info with sorried := v.value.hasSorry } }
 
