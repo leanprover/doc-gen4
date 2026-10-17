@@ -123,6 +123,7 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
           moduleNames := linkCtx.moduleNames
           moduleInfo := ({} : Std.HashMap Name Process.Module).insert modName module
           containedNames
+          name2Anchor := linkCtx.name2Anchor
         }
 
         let config : SiteContext := {

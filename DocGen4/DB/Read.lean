@@ -41,7 +41,11 @@ structure ReadDB where
   getModuleNames : IO (Array Lean.Name)
   getModuleSourceUrls : IO (Std.HashMap Lean.Name String)
   getModuleImports : Lean.Name → IO (Array Lean.Name)
-  buildName2ModIdx : Array Lean.Name → IO (Std.HashMap Lean.Name Lean.ModuleIdx)
+  /--
+  Maps every linkable name to the index of its module. The second map sends each internal name
+  (such as a recursor) that has no anchor of its own to the declaration whose anchor it links to.
+  -/
+  buildName2ModIdx : Array Lean.Name → IO (Std.HashMap Lean.Name Lean.ModuleIdx × Std.HashMap Lean.Name Lean.Name)
   loadModule : Lean.Name → IO Process.Module
   loadAllTactics : IO (Array (Process.TacticInfo Process.MarkdownDocstring))
   /--
@@ -160,7 +164,10 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
   let getModuleSourceUrlsStmt ← sqlite.prepare "SELECT name, source_url FROM modules WHERE source_url IS NOT NULL"
   let getModuleImportsStmt ← sqlite.prepare "SELECT imported FROM module_imports WHERE importer = ?"
   let buildNameInfoStmt ← sqlite.prepare "SELECT name, module_name FROM name_info"
-  let buildInternalNamesStmt ← sqlite.prepare "SELECT name, target_module FROM internal_names"
+  let buildInternalNamesStmt ← sqlite.prepare
+    "SELECT i.name, i.target_module, t.name, i.name IN (SELECT proj_name FROM structure_fields) \
+     FROM internal_names i \
+     LEFT JOIN name_info t ON t.module_name = i.target_module AND t.position = i.target_position"
   let loadModuleMembersStmt ← sqlite.prepare
     "SELECT position, kind, name, type, sorried, render, NULL as mod_doc \
      FROM name_info WHERE module_name = ? \
@@ -577,11 +584,13 @@ private def ReadStmts.getModuleImports (s : ReadStmts) (moduleName : Name) : IO 
   return imports
 
 open Lean SQLite.Blob in
-private def ReadStmts.buildName2ModIdx (s : ReadStmts) (moduleNames : Array Name) : IO (Std.HashMap Name ModuleIdx) := do
+private def ReadStmts.buildName2ModIdx (s : ReadStmts) (moduleNames : Array Name) :
+    IO (Std.HashMap Name ModuleIdx × Std.HashMap Name Name) := do
   let modNameToIdx : Std.HashMap Name ModuleIdx :=
     moduleNames.foldl (init := {}) fun acc modName =>
       acc.insert modName acc.size
   let mut result : Std.HashMap Name ModuleIdx := {}
+  let mut anchors : Std.HashMap Name Name := {}
   while (← s.buildNameInfoStmt.step) do
     let name := (← s.buildNameInfoStmt.columnText 0).toName
     let moduleName := (← s.buildNameInfoStmt.columnText 1).toName
@@ -594,8 +603,13 @@ private def ReadStmts.buildName2ModIdx (s : ReadStmts) (moduleNames : Array Name
       let targetModule := (← s.buildInternalNamesStmt.columnText 1).toName
       if let some idx := modNameToIdx[targetModule]? then
         result := result.insert name idx
+        -- Structure fields are rendered with their own anchors, so only the other internal names
+        -- (recursors and the like) link to the anchor of their target.
+        let isField := (← s.buildInternalNamesStmt.columnInt64 3) != 0
+        if !isField && !(← s.buildInternalNamesStmt.columnNull 2) then
+          anchors := anchors.insert name (← s.buildInternalNamesStmt.columnText 2).toName
   done s.buildInternalNamesStmt
-  return result
+  return (result, anchors)
 
 open Lean SQLite.Blob in
 private def ReadStmts.loadModule (s : ReadStmts) (moduleName : Name) : IO Process.Module := do
