@@ -9,7 +9,9 @@
 #   * a rebuild with no change leaves the build up to date;
 #   * a change in one library leaves the docs of the other libraries up to date;
 #   * building the docInfo facet again for unchanged modules leaves the HTML
-#     up to date.
+#     up to date;
+#   * instance metadata whose target is a structure-valued predicate is indexed
+#     by the target's head constant.
 #
 # Usage: run from the doc-gen4 repo root (or pass it as $1).
 #   ./test/test-multi-lib-docs.sh
@@ -66,6 +68,40 @@ cat > "$TEST_DIR/LibC.lean" << 'EOF'
 def libCGreeting := "hello from C"
 EOF
 
+# Current Lean rejects non-class `instance` declarations, but environments produced by older
+# Lean versions or downstream attributes can still contain such instance metadata. Simulate
+# that metadata directly and verify that doc-gen4 indexes it by the target's head constant.
+cat > "$TEST_DIR/TestInstanceInfo.lean" << 'EOF'
+import DocGen4.Process.InstanceInfo
+
+open Lean Meta DocGen4.Process
+
+namespace DocGen4Test
+
+structure Continuous (f : Nat → Nat) : Prop where
+  continuous : True
+
+theorem continuousId : Continuous id := ⟨True.intro⟩
+
+#eval show MetaM Unit from do
+  let env ← getEnv
+  let some constInfo := env.find? ``continuousId
+    | throwError "missing test theorem"
+  let .thmInfo theoremVal := constInfo
+    | throwError "test declaration is not a theorem"
+  let (_, _, target) ← forallMetaTelescopeReducing theoremVal.type
+  let keys ← DiscrTree.mkPath target
+  instanceExtension.add
+    { keys, val := mkConst ``continuousId, priority := 1000,
+      globalName? := some ``continuousId, synthOrder := #[], attrKind := .global }
+    .global
+  let info ← InstanceInfo.ofTheoremVal theoremVal
+  unless info.className == ``DocGen4Test.Continuous do
+    throwError "expected target `DocGen4Test.Continuous`, got `{info.className}`"
+
+end DocGen4Test
+EOF
+
 export LEAN_ABORT_ON_PANIC=1
 export DOCGEN_SRC=file
 DOC_DIR="$TEST_DIR/.lake/build/doc"
@@ -104,6 +140,8 @@ check_up_to_date() {
 echo "=== Building LibA:docs and LibB:docs ==="
 (cd "$TEST_DIR" && lake build LibA:docs LibB:docs)
 check_html LibA LibB
+(cd "$TEST_DIR" && lake env lean TestInstanceInfo.lean)
+echo "OK: instance metadata for a structure predicate uses the target name"
 
 # --- Phase 2: add LibC incrementally, verify A and B survive ---
 

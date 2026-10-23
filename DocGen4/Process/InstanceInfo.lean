@@ -40,6 +40,23 @@ def getInstPriority (name : Name) : MetaM (Option Nat) := do
   else
     return some priority
 
+/--
+Return the head constant of an instance target, if there is one.
+
+`Meta.isClass?` only succeeds for targets registered as classes. Environments can nevertheless
+contain instance metadata whose target is a structure-valued predicate, such as a structure
+`Continuous` in `Prop`; for those, use the target's head constant for indexing instead of
+rejecting the instance.
+-/
+private def getInstanceTargetName? (type : Expr) : MetaM (Option Name) := do
+  try
+    let (_, _, target) ← forallMetaTelescopeReducing type
+    match target.getAppFn with
+    | .const name _ => return some name
+    | _ => return none
+  catch _ =>
+    return none
+
 private def InstanceInfo.ofDefinitionInfo (info : DefinitionInfo) (type : Expr) :
     MetaM InstanceInfo  := do
   let mut info := info
@@ -47,9 +64,16 @@ private def InstanceInfo.ofDefinitionInfo (info : DefinitionInfo) (type : Expr) 
   if let some priority ← getInstPriority info.name then
     info := { info with attrs := info.attrs.push s!"instance {priority}" }
 
-  let some className ← isClass? type | panic! s!"isClass? on {info.name} returned none"
-  if let some instAttr ← getDefaultInstance info.name className then
-    info := { info with attrs := info.attrs.push instAttr }
+  let className? ← isClass? type
+  let className ← match className? with
+    | some className => pure className
+    | none =>
+      let some targetName ← getInstanceTargetName? type
+        | panic! s!"could not determine instance target of {info.name}"
+      pure targetName
+  if let some className := className? then
+    if let some instAttr ← getDefaultInstance info.name className then
+      info := { info with attrs := info.attrs.push instAttr }
 
   let typeNames ← getInstanceTypes type
 
