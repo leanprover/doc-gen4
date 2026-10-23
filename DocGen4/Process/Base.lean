@@ -235,7 +235,7 @@ def DocInfo.toInfo : DocInfo → Info
   | .structureInfo info => info.toInfo
   | .classInfo info => info.toInfo
   | .classInductiveInfo info => info.toInfo
-  | .ctorInfo info => info.toInfo
+  | .ctorInfo info => info
 
 /--
 Turns an `Expr` into a pretty printed `RenderedCode`.
