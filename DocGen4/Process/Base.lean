@@ -139,6 +139,8 @@ structure DefinitionInfo extends Info where
 Information about an `instance` declaration.
 -/
 structure InstanceInfo extends DefinitionInfo where
+  /-- The class name, or the target's head constant for instances of non-class structure
+  predicates. -/
   className : Name
   typeNames : Array Name
   deriving Inhabited
