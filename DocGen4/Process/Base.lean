@@ -139,6 +139,9 @@ structure DefinitionInfo extends Info where
 Information about an `instance` declaration.
 -/
 structure InstanceInfo extends DefinitionInfo where
+  /-- The class the instance is for, or — for instances whose target is not a class,
+  e.g. instances of `Prop`-valued structure predicates like `Continuous` — the head
+  constant of the target type. -/
   className : Name
   typeNames : Array Name
   deriving Inhabited
@@ -232,7 +235,7 @@ def DocInfo.toInfo : DocInfo → Info
   | .structureInfo info => info.toInfo
   | .classInfo info => info.toInfo
   | .classInductiveInfo info => info.toInfo
-  | .ctorInfo info => info
+  | .ctorInfo info => info.toInfo
 
 /--
 Turns an `Expr` into a pretty printed `RenderedCode`.
