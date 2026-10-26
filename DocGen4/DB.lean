@@ -83,6 +83,8 @@ structure WriteDB where
   saveStructureFieldArg (modName : String) (position : Int64) (fieldSeq : Int64) (argSeq : Int64) (binder : RenderedCode) (isImplicit : Bool) : IO Unit
   /-- Save an internal name (like a recursor) that should link to its target declaration -/
   saveInternalName (name : Lean.Name) (targetModule : String) (targetPosition : Int64) : IO Unit
+  /-- Save a Lean `export` alias for inclusion in the search index. -/
+  saveExportAlias (modName : String) (alias : Process.ExportAlias) : IO Unit
   /-- Save a tactic defined in this module -/
   saveTactic (modName : String) (tactic : Process.TacticInfo Process.MarkdownDocstring) : IO Unit
 
@@ -156,6 +158,7 @@ private structure WriteStmts where
   saveStructureFieldArgStmt : SQLite.Stmt
   saveNameOnlyStmt : SQLite.Stmt
   saveInternalNameStmt : SQLite.Stmt
+  saveExportAliasStmt : SQLite.Stmt
   saveTacticStmt : SQLite.Stmt
   saveTacticTagStmt : SQLite.Stmt
 
@@ -190,6 +193,7 @@ private def WriteStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO
     saveStructureFieldArgStmt := ← sqlite.prepare "INSERT INTO structure_field_args (module_name, position, field_sequence, arg_sequence, binder, is_implicit) VALUES (?, ?, ?, ?, ?, ?)"
     saveNameOnlyStmt := ← sqlite.prepare "INSERT INTO name_info (module_name, position, kind, name, type, sorried, render) VALUES (?, ?, ?, ?, ?, 0, 0)"
     saveInternalNameStmt := ← sqlite.prepare "INSERT OR IGNORE INTO internal_names (name, target_module, target_position) VALUES (?, ?, ?)"
+    saveExportAliasStmt := ← sqlite.prepare "INSERT OR REPLACE INTO export_aliases (module_name, name, target_name) VALUES (?, ?, ?)"
     saveTacticStmt := ← sqlite.prepare "INSERT INTO tactics (module_name, internal_name, user_name, doc_string) VALUES (?, ?, ?, ?)"
     saveTacticTagStmt := ← sqlite.prepare "INSERT INTO tactic_tags (module_name, internal_name, tag) VALUES (?, ?, ?)"
   }
@@ -396,6 +400,12 @@ private def WriteStmts.saveInternalName (s : WriteStmts) (name : Lean.Name) (tar
   s.saveInternalNameStmt.bind 3 targetPosition
   run s.saveInternalNameStmt
 
+private def WriteStmts.saveExportAlias (s : WriteStmts) (modName : String) (alias : Process.ExportAlias) : IO Unit := withDbContext "write:insert:export_aliases" do
+  s.saveExportAliasStmt.bind 1 modName
+  s.saveExportAliasStmt.bind 2 alias.aliasName.toString
+  s.saveExportAliasStmt.bind 3 alias.targetName.toString
+  run s.saveExportAliasStmt
+
 private def WriteStmts.saveTactic (s : WriteStmts) (modName : String) (tactic : Process.TacticInfo Process.MarkdownDocstring) : IO Unit := withDbContext "write:insert:tactics" do
   s.saveTacticStmt.bind 1 modName
   s.saveTacticStmt.bind 2 tactic.internalName.toString
@@ -438,6 +448,7 @@ def ensureWriteDb (values : DocstringValues) (dbFile : System.FilePath) : IO Wri
     saveStructureFieldArg modName position fieldSeq argSeq binder isImplicit := writeMutex.atomically do (← get).saveStructureFieldArg modName position fieldSeq argSeq binder isImplicit
     saveNameOnly modName position kind name type declRange := writeMutex.atomically do (← get).saveNameOnly modName position kind name type declRange
     saveInternalName name targetModule targetPosition := writeMutex.atomically do (← get).saveInternalName name targetModule targetPosition
+    saveExportAlias modName alias := writeMutex.atomically do (← get).saveExportAlias modName alias
     saveTactic modName tactic := writeMutex.atomically do (← get).saveTactic modName tactic
   }
 
@@ -485,13 +496,15 @@ structure LinkingContext where
   moduleNames : Array Name
   sourceUrls : Std.HashMap Name String
   name2ModIdx : Std.HashMap Name ModuleIdx
+  exportAliases : Array Process.ExportAlias
 
 /-- Load the linking context from the database. -/
 def ReadDB.loadLinkingContext (db : ReadDB) : IO LinkingContext := do
   let moduleNames ← db.getModuleNames
   let sourceUrls ← db.getModuleSourceUrls
   let name2ModIdx ← db.buildName2ModIdx moduleNames
-  return { moduleNames, sourceUrls, name2ModIdx }
+  let exportAliases ← db.getExportAliases
+  return { moduleNames, sourceUrls, name2ModIdx, exportAliases }
 
 end Reading
 
@@ -504,6 +517,10 @@ def updateModuleDb (values : DocstringValues)
     (doc : Process.AnalyzerResult)
     (buildDir : System.FilePath) (dbFile : String)
     (sourceUrl? : Option String) : IO Unit := do
+  let mut exportAliasesByModule : Std.HashMap Lean.Name (Array Process.ExportAlias) := {}
+  for alias in doc.exportAliases do
+    exportAliasesByModule := exportAliasesByModule.insert alias.moduleName
+      ((exportAliasesByModule[alias.moduleName]?.getD #[]).push alias)
   let dbFile := buildDir / dbFile
   DBM.run values dbFile <| withDB fun db => do
     for batch in chunked doc.moduleInfo.toArray 100 do
@@ -522,6 +539,8 @@ def updateModuleDb (values : DocstringValues)
           db.saveModule modNameStr sourceUrl?
           for imported in modInfo.imports do
             db.saveImport modNameStr imported
+          for alias in exportAliasesByModule[modName]?.getD #[] do
+            db.saveExportAlias modNameStr alias
           -- Position counter: each item gets a unique sequential position within the module.
           -- Constructors and structure metadata consume positions between their parent and the
           -- next top-level member. See “Module Item Positions” in the module docstring.
