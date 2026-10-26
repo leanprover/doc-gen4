@@ -122,6 +122,7 @@ def htmlOutputResultsParallel (baseConfig : SiteBaseContext) (dbPath : System.Fi
           name2ModIdx := linkCtx.name2ModIdx
           moduleNames := linkCtx.moduleNames
           moduleInfo := ({} : Std.HashMap Name Process.Module).insert modName module
+          exportAliases := linkCtx.exportAliases
           containedNames
         }
 
