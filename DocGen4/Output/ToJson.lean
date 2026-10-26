@@ -142,6 +142,16 @@ def moduleToJsonModule (module : Process.Module) : HtmlM JsonModule := do
           className := i.className.toString
           typeNames := i.typeNames.map Name.toString
         }
+    -- Add Lean `export` aliases as search entries that resolve to the canonical declaration.
+    -- Aliases are attached to the target's module, not the module containing the `export` command.
+    let result ← getResult
+    for alias in result.exportAliases do
+      let some targetModuleIdx := result.name2ModIdx[alias.targetName]? | continue
+      if result.moduleNames[targetModuleIdx]! != module.name then continue
+      let aliasName := alias.aliasName.toString
+      if jsonDecls.any (fun d => d.info.name == aliasName) then continue
+      if let some targetDecl := jsonDecls.find? (fun d => d.info.name == alias.targetName.toString) then
+        jsonDecls := { targetDecl with info := { targetDecl.info with name := aliasName } } :: jsonDecls
     return {
       name := module.name.toString,
       declarations := jsonDecls,
