@@ -80,9 +80,11 @@ Turns a git remote URL into an HTTPS base URL for source linking.
 Supported link types:
 - https://github.com/org/repo
 - https://github.com/org/repo.git
+- git@github.com:org/repo
 - git@github.com:org/repo.git
 - https://github.example.com/org/repo (GitHub Enterprise)
 - https://codeberg.org/org/repo.git (Codeberg/Forgejo/Gitea)
+- git@host:org/repo (any SSH remote)
 - git@host:org/repo.git (any SSH remote)
 
 Note: Source links use GitHub's `/blob/COMMIT/path` convention.
@@ -91,9 +93,10 @@ This is correct for GitHub and GitHub Enterprise. For Codeberg/Forgejo/Gitea
 Use `DOCGEN_SRC=file` as a workaround for non-GitHub hosts.
 -/
 def getGithubBaseUrl (url : String) : Option String :=
-  -- git@host:org/repo.git → https://host/org/repo
-  if url.startsWith "git@" && url.endsWith ".git" then
-    let rest := url.drop "git@".length |>.dropEnd ".git".length |>.toString
+  -- git@host:org/repo[.git] → https://host/org/repo
+  if url.startsWith "git@" then
+    let rest := url.drop "git@".length |>.toString
+    let rest := if rest.endsWith ".git" then rest.dropEnd ".git".length |>.toString else rest
     match rest.splitOn ":" with
     | [host, path] => some s!"https://{host}/{path}"
     | _ => none
