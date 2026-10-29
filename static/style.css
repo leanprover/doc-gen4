@@ -834,3 +834,9 @@ a:hover {
     margin-top: 2em;
     margin-bottom: 2em;
 }
+
+/* Verso generates list items as `<li><p>...</p></li>`; decrease the spacing between them to match `<li>...</li>`. */
+li > p {
+  margin-top: 2.55px;
+  margin-bottom: 2.55px;
+}
