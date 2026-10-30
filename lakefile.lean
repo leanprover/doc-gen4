@@ -287,17 +287,17 @@ module_facet docInfo (mod) : FilePath := do
     depDocJobs.bindM fun _ => do
       bibPrepassJob.bindM fun _ => do
         exeJob.bindM fun exeFile => do
-          modJob.mapM fun _ => do
-            buildFileUnlessUpToDate' markerFile do
-              let uriJob ← fetch <| mod.facet `srcUri
-              let srcUri ← uriJob.await
-              proc {
-                cmd := exeFile.toString
-                args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
-                env := ← getAugmentedEnv
-              }
-              writeMarker markerFile
-            return markerFile
+          modJob.bindM fun _ => do
+            let uriJob ← fetch <| mod.facet `srcUri
+            uriJob.mapM fun srcUri => do
+              buildFileUnlessUpToDate' markerFile do
+                proc {
+                  cmd := exeFile.toString
+                  args := #["single", "--build", buildDir.toString, mod.name.toString, "api-docs.db", srcUri]
+                  env := ← getAugmentedEnv
+                }
+                writeMarker markerFile
+              return markerFile
 
 /--
 Populates the database with information for all modules in a library.
