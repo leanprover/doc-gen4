@@ -7,3 +7,4 @@ import DocGen4.Process
 import DocGen4.Load
 import DocGen4.Output
 import DocGen4.DB
+import DocGen4.External
