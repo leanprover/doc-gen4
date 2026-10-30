@@ -110,7 +110,12 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
     Std.HashMap.emptyWithCapacity baseConfig.refs.size |>.insertMany
       (baseConfig.refs.iter.map fun x => (x.citekey, x))
   let minimalSiteCtx : SiteContext := {
-    result := { name2ModIdx := linkCtx.name2ModIdx, moduleNames := linkCtx.moduleNames, moduleInfo := {} }
+    result := {
+      name2ModIdx := linkCtx.name2ModIdx,
+      moduleNames := linkCtx.moduleNames,
+      moduleInfo := {},
+      exportAliases := linkCtx.exportAliases,
+    }
     sourceLinker := fun _ _ => "#"
     refsMap := refsMap
   }
