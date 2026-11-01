@@ -48,7 +48,7 @@ def DefinitionInfo.ofDefinitionVal (v : DefinitionVal) : AnalyzeM DefinitionInfo
     tryCatchRuntimeEx
       (.some <$> computeEquations? v)
       (fun err => do
-        IO.println s!"WARNING: Failed to calculate equational lemmata for {v.name}: {← err.toMessageData.toString}"
+        IO.println s!"WARNING: Failed to calculate equational lemmas for {v.name}: {← err.toMessageData.toString}"
         return none)
 
   return {
