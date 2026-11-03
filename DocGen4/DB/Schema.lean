@@ -66,6 +66,30 @@ def serializedCodeTypeDefs : String :=
     TaggedText
   ]
 
+/--
+Switches `db` to write-ahead logging. Switching a new database file takes a lock that SQLite does not
+wait for with the busy timeout: when several processes open the same new database at once, all but
+one may fail with `SQLITE_BUSY` or leave the journal mode unchanged. So retry, for up to a minute,
+until the database reports that it uses WAL.
+-/
+private partial def enableWal (db : SQLite) (attempts : Nat := 6000) : IO Unit := do
+  let isWal ← try
+      let stmt ← db.prepare "PRAGMA journal_mode = WAL"
+      let mode ← if ← stmt.step then stmt.columnText 0 else pure ""
+      stmt.reset
+      pure (mode.toLower == "wal")
+    catch
+    | .otherError code msg =>
+      -- The primary result code is the low byte of an extended one.
+      if code &&& 0xff == 5 then pure false  -- SQLITE_BUSY
+      else throw (.otherError code msg)
+    | e => throw e
+  unless isWal do
+    if attempts == 0 then
+      throw <| .userError "Could not switch the database to WAL mode: it remained locked"
+    IO.sleep 10
+    enableWal db (attempts - 1)
+
 def getDb (dbFile : System.FilePath) : IO SQLite := do
   -- SQLite atomically creates the DB file, and the schema and journal settings here are applied
   -- idempotently. This avoids DB creation race conditions. A very long busy timeout is used because
@@ -73,41 +97,46 @@ def getDb (dbFile : System.FilePath) : IO SQLite := do
   -- practice, timeouts of up to a minute caused intermittent problems when building Mathlib docs on
   -- a fast multicore machine, so 30 is very conservative.
   let db ← SQLite.openWith dbFile .readWriteCreate (busyTimeoutMs := 1800000)  -- 30 minutes
-  db.exec "PRAGMA journal_mode = WAL"
+  enableWal db
   db.exec "PRAGMA foreign_keys = ON"
-  try
-    db.transaction (db.exec ddl)
-  catch
-  | e =>
-    throw <| .userError s!"Exception while creating schema: {e}"
-  -- Check schema version via DDL hash and type definition hash
-  let ddlHash := toString ddl.hash
-  let typeHash := toString serializedCodeTypeDefs.hash
-  let stmt ← db.prepare "SELECT key, value FROM schema_meta"
-  let mut storedDdlHash : Option String := none
-  let mut storedTypeHash : Option String := none
-  while ← stmt.step do
-    let key ← stmt.columnText 0
-    let value ← stmt.columnText 1
-    if key == "ddl_hash" then storedDdlHash := some value
-    if key == "type_hash" then storedTypeHash := some value
-  match storedDdlHash, storedTypeHash with
-  | none, none =>
-    -- New database, store the hashes
-    db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('ddl_hash', '{ddlHash}')"
-    db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('type_hash', '{typeHash}')"
-  | some stored, _ =>
-    if stored != ddlHash then
-      throw <| .userError s!"Database schema is outdated (DDL hash mismatch). Run `lake clean` or delete '{dbFile}' and rebuild."
-    match storedTypeHash with
-    | none =>
-      -- Older DB without type hash, add it
+  -- One immediate transaction creates the schema and checks or records its hashes, so that
+  -- processes creating the same database at once neither fail to upgrade a read transaction nor
+  -- both record the hashes.
+  db.transaction (mode := .immediate) do
+    try
+      db.exec ddl
+    catch
+    | e =>
+      throw <| .userError s!"Exception while creating schema: {e}"
+    -- Check schema version via DDL hash and type definition hash
+    let ddlHash := toString ddl.hash
+    let typeHash := toString serializedCodeTypeDefs.hash
+    let stmt ← db.prepare "SELECT key, value FROM schema_meta"
+    let mut storedDdlHash : Option String := none
+    let mut storedTypeHash : Option String := none
+    while ← stmt.step do
+      let key ← stmt.columnText 0
+      let value ← stmt.columnText 1
+      if key == "ddl_hash" then storedDdlHash := some value
+      if key == "type_hash" then storedTypeHash := some value
+    stmt.reset
+    match storedDdlHash, storedTypeHash with
+    | none, none =>
+      -- New database, store the hashes
+      db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('ddl_hash', '{ddlHash}')"
       db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('type_hash', '{typeHash}')"
-    | some storedType =>
-      if storedType != typeHash then
-        throw <| .userError s!"Database schema is outdated (serialized type definitions changed). Run `lake clean` or delete '{dbFile}' and rebuild."
-  | none, some _ => -- Shouldn't happen, but handle gracefully
-    db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('ddl_hash', '{ddlHash}')"
+    | some stored, _ =>
+      if stored != ddlHash then
+        throw <| .userError s!"Database schema is outdated (DDL hash mismatch). Run `lake clean` or delete '{dbFile}' and rebuild."
+      match storedTypeHash with
+      | none =>
+        -- Older DB without type hash, add it
+        db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('type_hash', '{typeHash}')"
+      | some storedType =>
+        if storedType != typeHash then
+          throw <| .userError s!"Database schema is outdated (serialized type definitions changed). Run `lake clean` or delete '{dbFile}' and rebuild."
+    | none, some _ => -- Shouldn't happen, but handle gracefully
+      db.exec s!"INSERT INTO schema_meta (key, value) VALUES ('ddl_hash', '{ddlHash}')"
   return db
 where
   ddl :=
