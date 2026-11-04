@@ -207,6 +207,19 @@ CREATE TABLE IF NOT EXISTS internal_names (
 -- Index for CASCADE deletes: when name_info rows are deleted, find matching internal_names
 CREATE INDEX IF NOT EXISTS idx_internal_names_target ON internal_names(target_module, target_position);
 
+-- Lean `export` aliases. These are not declarations of their own, but should be searchable and
+-- resolve to the target declaration's documentation. The declaring module owns the alias for
+-- incremental cleanup, even when the target declaration lives in another module.
+CREATE TABLE IF NOT EXISTS export_aliases (
+  module_name TEXT NOT NULL,
+  name TEXT NOT NULL,
+  target_name TEXT NOT NULL,
+  PRIMARY KEY (module_name, name),
+  FOREIGN KEY (module_name) REFERENCES modules(name) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_export_aliases_target ON export_aliases(target_name);
+
 CREATE TABLE IF NOT EXISTS constructors (
   module_name TEXT NOT NULL,
   position INTEGER NOT NULL,

@@ -68,6 +68,14 @@ structure Module where
   tactics : Array (TacticInfo MarkdownDocstring)
   deriving Inhabited
 
+/-- A Lean `export` alias and the declaration it should resolve to. -/
+structure ExportAlias where
+  /-- The module in which the `export` command introduced the alias. -/
+  moduleName : Name
+  aliasName : Name
+  targetName : Name
+  deriving Inhabited
+
 /--
 The result of running a full doc-gen analysis on a project.
 -/
@@ -84,6 +92,8 @@ structure AnalyzerResult where
   A map from module names to information about these modules.
   -/
   moduleInfo : Std.HashMap Name Module
+  /-- Lean `export` aliases, used to make exported names discoverable in search. -/
+  exportAliases : Array ExportAlias := #[]
   /--
   For each rendered declaration, the set of names whose declaration ranges are contained within it.
   Used to determine whether auto-generated projections should receive anchor IDs in the HTML output.
@@ -183,6 +193,15 @@ def mkOptions : IO DocGenOptions := do
   | some "1" => return ⟨false⟩
   | _ => return {}
 
+/-- Collect Lean `export` aliases together with their defining modules. -/
+def getExportAliases (env : Environment) : Array ExportAlias := Id.run do
+  let mut aliases := #[]
+  for _h : i in 0...env.header.moduleNames.size do
+    let moduleName := env.header.moduleNames[i]!
+    for (aliasName, targetName) in aliasExtension.getModuleEntries env i do
+      aliases := aliases.push { moduleName, aliasName, targetName }
+  return aliases
+
 /--
 Run the doc-gen analysis on all modules that are loaded into the `Environment`
 of this `MetaM` run and mentioned by the `AnalyzeTask`.
@@ -241,6 +260,7 @@ def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
     name2ModIdx := env.const2ModIdx,
     moduleNames := allModules,
     moduleInfo := res,
+    exportAliases := getExportAliases env,
   }
 
 open Std (Iterator Iter)

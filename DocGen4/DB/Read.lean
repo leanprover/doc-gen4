@@ -42,6 +42,7 @@ structure ReadDB where
   getModuleSourceUrls : IO (Std.HashMap Lean.Name String)
   getModuleImports : Lean.Name → IO (Array Lean.Name)
   buildName2ModIdx : Array Lean.Name → IO (Std.HashMap Lean.Name Lean.ModuleIdx)
+  getExportAliases : IO (Array Process.ExportAlias)
   loadModule : Lean.Name → IO Process.Module
   loadAllTactics : IO (Array (Process.TacticInfo Process.MarkdownDocstring))
   /--
@@ -103,6 +104,7 @@ private structure ReadStmts where
   getModuleImportsStmt : SQLite.Stmt
   buildNameInfoStmt : SQLite.Stmt
   buildInternalNamesStmt : SQLite.Stmt
+  loadExportAliasesStmt : SQLite.Stmt
   loadModuleMembersStmt : SQLite.Stmt
   loadTacticsStmt : SQLite.Stmt
   loadTacticTagsStmt : SQLite.Stmt
@@ -161,6 +163,7 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
   let getModuleImportsStmt ← sqlite.prepare "SELECT imported FROM module_imports WHERE importer = ?"
   let buildNameInfoStmt ← sqlite.prepare "SELECT name, module_name FROM name_info"
   let buildInternalNamesStmt ← sqlite.prepare "SELECT name, target_module FROM internal_names"
+  let loadExportAliasesStmt ← sqlite.prepare "SELECT module_name, name, target_name FROM export_aliases"
   let loadModuleMembersStmt ← sqlite.prepare
     "SELECT position, kind, name, type, sorried, render, NULL as mod_doc \
      FROM name_info WHERE module_name = ? \
@@ -191,7 +194,7 @@ private def ReadStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO 
     readAxiomStmt, readOpaqueStmt, readDefinitionStmt, readInstanceStmt,
     readInductiveStmt, readStructureStmt, readClassInductiveStmt,
     getModuleNamesStmt, getModuleSourceUrlsStmt, getModuleImportsStmt,
-    buildNameInfoStmt, buildInternalNamesStmt,
+    buildNameInfoStmt, buildInternalNamesStmt, loadExportAliasesStmt,
     loadModuleMembersStmt, loadTacticsStmt, loadTacticTagsStmt,
     loadAllTacticsStmt, loadAllTacticTagsStmt, getContainedNamesStmt
   }
@@ -577,6 +580,17 @@ private def ReadStmts.getModuleImports (s : ReadStmts) (moduleName : Name) : IO 
   return imports
 
 open Lean SQLite.Blob in
+private def ReadStmts.getExportAliases (s : ReadStmts) : IO (Array Process.ExportAlias) := withDbContext "read:export_aliases" do
+  let mut aliases := #[]
+  while (← s.loadExportAliasesStmt.step) do
+    let moduleName := (← s.loadExportAliasesStmt.columnText 0).toName
+    let aliasName := (← s.loadExportAliasesStmt.columnText 1).toName
+    let targetName := (← s.loadExportAliasesStmt.columnText 2).toName
+    aliases := aliases.push { moduleName, aliasName, targetName }
+  done s.loadExportAliasesStmt
+  return aliases
+
+open Lean SQLite.Blob in
 private def ReadStmts.buildName2ModIdx (s : ReadStmts) (moduleNames : Array Name) : IO (Std.HashMap Name ModuleIdx) := do
   let modNameToIdx : Std.HashMap Name ModuleIdx :=
     moduleNames.foldl (init := {}) fun acc modName =>
@@ -679,6 +693,7 @@ def mkReadDB (sqlite : SQLite) (values : DocstringValues) : IO ReadDB := do
     getModuleSourceUrls := mutex.atomically do (← get).getModuleSourceUrls
     getModuleImports name := mutex.atomically do (← get).getModuleImports name
     buildName2ModIdx names := mutex.atomically do (← get).buildName2ModIdx names
+    getExportAliases := mutex.atomically do (← get).getExportAliases
     loadModule name := mutex.atomically do (← get).loadModule name
     loadAllTactics := mutex.atomically do (← get).loadAllTactics
     getContainedNames name := mutex.atomically do (← get).getContainedNames name

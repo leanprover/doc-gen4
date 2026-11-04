@@ -9,7 +9,8 @@
 #   * a rebuild with no change leaves the build up to date;
 #   * a change in one library leaves the docs of the other libraries up to date;
 #   * building the docInfo facet again for unchanged modules leaves the HTML
-#     up to date.
+#     up to date;
+#   * a Lean `export` alias is present in the search index and resolves to its target.
 #
 # Usage: run from the doc-gen4 repo root (or pass it as $1).
 #   ./test/test-multi-lib-docs.sh
@@ -49,6 +50,15 @@ import LibA.Basic
 
 /-- A greeting from LibA -/
 def libAGreeting := "hello from A"
+
+namespace ExportSource
+
+/-- A theorem that should also be found through its exported name. -/
+theorem hidden : True := True.intro
+
+end ExportSource
+
+export ExportSource (hidden)
 EOF
 
 cat > "$TEST_DIR/LibA/Basic.lean" << 'EOF'
@@ -104,6 +114,13 @@ check_up_to_date() {
 echo "=== Building LibA:docs and LibB:docs ==="
 (cd "$TEST_DIR" && lake build LibA:docs LibB:docs)
 check_html LibA LibB
+if grep -Eq '"hidden":\{[^}]*"docLink":"[^"]*#ExportSource\.hidden"' "$DOC_DIR/declarations/declaration-data.bmp" \
+  && grep -Eq '"hidden":\{[^}]*"kind":"theorem"' "$DOC_DIR/declarations/declaration-data.bmp"; then
+  echo "OK: an exported name resolves to its target in the search index"
+else
+  echo "FAIL: the search index does not resolve exported name hidden to ExportSource.hidden"
+  exit 1
+fi
 
 # --- Phase 2: add LibC incrementally, verify A and B survive ---
 
