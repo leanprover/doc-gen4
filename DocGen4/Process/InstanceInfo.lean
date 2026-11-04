@@ -59,12 +59,12 @@ private def InstanceInfo.ofDefinitionInfo (info : DefinitionInfo) (type : Expr) 
     typeNames,
   }
 
-def InstanceInfo.ofDefinitionVal (v : DefinitionVal) : AnalyzeM InstanceInfo := do
-  let info ← DefinitionInfo.ofDefinitionVal v
+def InstanceInfo.ofDefinitionVal (scope : Array Name) (v : DefinitionVal) : AnalyzeM InstanceInfo := do
+  let info ← DefinitionInfo.ofDefinitionVal scope v
   InstanceInfo.ofDefinitionInfo info v.type
 
-def InstanceInfo.ofTheoremVal (v : TheoremVal) : MetaM InstanceInfo := do
-  let info ← Info.ofConstantVal v.toConstantVal
+def InstanceInfo.ofTheoremVal (scope : Array Name) (v : TheoremVal) : MetaM InstanceInfo := do
+  let info ← Info.ofConstantVal scope v.toConstantVal
   /-
   This is a bit of a shortcut but it avoids having to duplicate the instance infrastructure for
   `Prop` and non-`Prop` valued instances for now. If we run into issues with this later on we

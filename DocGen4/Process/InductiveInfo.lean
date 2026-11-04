@@ -10,11 +10,11 @@ import DocGen4.Process.NameInfo
 
 namespace DocGen4.Process
 
-open Lean Meta 
+open Lean Meta
 
-def InductiveInfo.ofInductiveVal (v : InductiveVal) : MetaM InductiveInfo := do
-  let info ← Info.ofConstantVal v.toConstantVal
-  let ctors ← v.ctors.mapM (fun name => do Info.ofConstantVal (← getConstInfoCtor name).toConstantVal)
+def InductiveInfo.ofInductiveVal (scope : Array Name) (v : InductiveVal) : MetaM InductiveInfo := do
+  let info ← Info.ofConstantVal scope v.toConstantVal
+  let ctors ← v.ctors.mapM (fun name => do Info.ofConstantVal scope (← getConstInfoCtor name).toConstantVal)
   return {
     toInfo := info,
     ctors,
