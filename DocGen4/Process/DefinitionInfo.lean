@@ -27,8 +27,19 @@ def processEq (eq : Name) : MetaM RenderedCode := do
   let type ← (mkConstWithFreshMVarLevels eq >>= inferType)
   prettyPrintEquation type
 
+/--
+Whether `name` is a definition from a module system module whose body that module does not expose
+to importers.
+-/
+def hasSealedBody (name : Name) : AnalyzeM Bool := do
+  let env ← getEnv
+  let some modIdx := env.getModuleIdxFor? name | return false
+  let some data := env.header.moduleData[modIdx]? | return false
+  return data.isModule && !(← read).exposedBodies.contains name
+
 def computeEquations? (v : DefinitionVal) : AnalyzeM (Array RenderedCode) := do
   unless (← read).genEquations do return #[]
+  if ← hasSealedBody v.name then return #[]
   let eqs? ← getEqnsFor? v.name
   match eqs? with
   | some eqs =>

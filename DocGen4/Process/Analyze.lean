@@ -178,10 +178,30 @@ def getAllModuleDocs (relevantModules : Array Name) : MetaM (Std.HashMap Name Mo
     res := res.insert module <| Module.mk module modDocs imports tactics
   return res
 
-def mkOptions : IO DocGenOptions := do
+/--
+Collects the definitions of the given modules whose bodies are exposed to importers. doc-gen4 imports
+every module with its private data, where all definitions have bodies, so this reads each module
+system module's exported `.olean`, in which a definition keeps its value only if it is exposed.
+-/
+def getExposedBodies (env : Environment) (modules : Array Name) : IO NameSet := do
+  let mut exposed : NameSet := {}
+  for module in modules do
+    let some modIdx := env.getModuleIdx? module | continue
+    let some data := env.header.moduleData[modIdx]? | continue
+    unless data.isModule do continue
+    let (exported, region) ← readModuleData (← findOLean module)
+    for c in exported.constants do
+      if c.hasValue then
+        -- Store the environment's copy of the name, which outlives `region`.
+        if let some ci := env.find? c.name then
+          exposed := exposed.insert ci.name
+    unsafe region.free
+  return exposed
+
+def mkOptions (env : Environment) (modules : Array Name) : IO DocGenOptions := do
   match ← IO.getEnv "DISABLE_EQUATIONS" with
-  | some "1" => return ⟨false⟩
-  | _ => return {}
+  | some "1" => return { genEquations := false }
+  | _ => return { exposedBodies := ← getExposedBodies env modules }
 
 /--
 Run the doc-gen analysis on all modules that are loaded into the `Environment`
@@ -200,7 +220,7 @@ def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
 
   let mut res ← getAllModuleDocs relevantModules.toArray
 
-  let options ← liftM mkOptions
+  let options ← mkOptions env relevantModules.toArray
 
   for (name, cinfo) in env.constants do
     let some modidx := env.getModuleIdxFor? name | unreachable!
