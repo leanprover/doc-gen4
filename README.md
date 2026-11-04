@@ -91,6 +91,10 @@ The different options are:
 ## Disabling equations
 Generation of equations for definitions is enabled by default, but can be disabled by setting the `DISABLE_EQUATIONS` environment variable to `1`.
 
+In modules that use the module system, equations are only generated for definitions whose bodies
+are exposed to importers (for example with `@[expose]`). The body of any other definition is not
+part of its public API.
+
 ## How does `docs#Nat.add` from the Lean Zulip work?
 If someone sends a message that contains `docs#Nat.add` on the Lean Zulip this will
 automatically link to `Nat.add` from the `mathlib4` documentation. The way that this
