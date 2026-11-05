@@ -485,13 +485,14 @@ structure LinkingContext where
   moduleNames : Array Name
   sourceUrls : Std.HashMap Name String
   name2ModIdx : Std.HashMap Name ModuleIdx
+  name2Anchor : Std.HashMap Name Name
 
 /-- Load the linking context from the database. -/
 def ReadDB.loadLinkingContext (db : ReadDB) : IO LinkingContext := do
   let moduleNames ← db.getModuleNames
   let sourceUrls ← db.getModuleSourceUrls
-  let name2ModIdx ← db.buildName2ModIdx moduleNames
-  return { moduleNames, sourceUrls, name2ModIdx }
+  let (name2ModIdx, name2Anchor) ← db.buildName2ModIdx moduleNames
+  return { moduleNames, sourceUrls, name2ModIdx, name2Anchor }
 
 end Reading
 
