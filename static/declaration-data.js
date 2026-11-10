@@ -170,8 +170,13 @@ function matchCaseSensitive(declName, lowerDeclName, pattern) {
 }
 
 function getMatches(declarations, pattern, allowedKinds = undefined, maxResults = undefined) {
-  const lowerPats = pattern.toLowerCase().split(/\s/g);
+  const lowerWords = pattern.toLowerCase().split(/\s+/).filter((word) => word.length > 0);
   const patNoSpaces = pattern.replace(/\s/g, "");
+  // For multi-word patterns, results that contain every word as an exact
+  // substring are reported ahead of purely fuzzy matches: tier 0 contains the
+  // words in the pattern's order, tier 1 in any other order, and tier 2 holds
+  // the remaining fuzzy matches of the concatenated pattern.
+  const multiWord = lowerWords.length > 1;
   const results = [];
   for (const [name, {
     kind,
@@ -184,18 +189,58 @@ function getMatches(declarations, pattern, allowedKinds = undefined, maxResults 
       }
     }
     const lowerName = name.toLowerCase();
-    let err = matchCaseSensitive(name, lowerName, patNoSpaces);
+    let tier = 2;
+    let err;
+    if (multiWord) {
+      let pos = 0;
+      let inOrder = true;
+      for (const word of lowerWords) {
+        const at = lowerName.indexOf(word, pos);
+        if (at === -1) {
+          inOrder = false;
+          break;
+        }
+        pos = at + word.length;
+      }
+      if (inOrder) {
+        tier = 0;
+      } else {
+        let allPresent = true;
+        for (const word of lowerWords) {
+          if (!lowerName.includes(word)) {
+            allPresent = false;
+            break;
+          }
+        }
+        if (allPresent) {
+          tier = 1;
+        }
+      }
+      if (tier < 2) {
+        // Rank exact matches by the summed per-word fuzzy error. Containment
+        // implies each word fuzzy-matches, so this is always defined.
+        err = 0;
+        for (const word of lowerWords) {
+          err += matchCaseSensitive(name, lowerName, word);
+        }
+      } else {
+        err = matchCaseSensitive(name, lowerName, patNoSpaces);
+      }
+    } else {
+      err = matchCaseSensitive(name, lowerName, patNoSpaces);
+    }
     if (err !== undefined) {
       results.push({
         name,
         kind,
+        tier,
         err,
         lowerName,
         docLink,
       });
     }
   }
-  return results.sort(({ err: a }, { err: b }) => a - b).slice(0, maxResults);
+  return results.sort((a, b) => a.tier - b.tier || a.err - b.err).slice(0, maxResults);
 }
 
 // TODO: refactor the indexedDB part to be more robust
