@@ -311,7 +311,7 @@ async function fetchCachedDeclarationData() {
       resolve(event.target.result);
     };
     transactionRequest.onerror = function (event) {
-      reject(new Error("fail to clear object store"));
+      reject(new Error(`fail to store declaration data`));
     };
   });
 }
