@@ -32,6 +32,19 @@ def runGenCoreCmd (p : Parsed) : IO UInt32 := do
   updateModuleDb builtinDocstringValues doc buildDir dbFile none
   return 0
 
+def runExternalsCmd (p : Parsed) : IO UInt32 := do
+  let buildDir := match p.flag? "build" with
+    | some dir => dir.as! String
+    | none => ".lake/build"
+  let dbFile := p.positionalArg! "db" |>.as! String
+  let roots := (p.variableArgsAs! String).map String.toName
+  let localRoots ← getLocalModuleRoots
+  if localRoots.isEmpty then
+    throw <| IO.userError "externals requires DOCGEN_LOCAL_MODULE_ROOTS to be set"
+  let srcDirs? := (p.flag? "srcDirs").map fun dirs => (dirs.as! (Array String)).map System.FilePath.mk
+  recordExternals builtinDocstringValues roots localRoots srcDirs? buildDir dbFile
+  return 0
+
 def runDocGenCmd (_p : Parsed) : IO UInt32 := do
   IO.println "You most likely want to use me via Lake now, check my README on Github on how to:"
   IO.println "https://github.com/leanprover/doc-gen4"
@@ -89,13 +102,35 @@ def runFromDbCmd (p : Parsed) : IO UInt32 := do
   let linkCtx ← db.loadLinkingContext
 
   -- Determine which modules to generate HTML for
-  let targetModules ←
+  let targetModulesAll ←
     if moduleRoots.isEmpty then
       pure linkCtx.moduleNames
     else
       db.getTransitiveImports moduleRoots
 
-  let baseConfig ← getSimpleBaseContext buildDir (Hierarchy.fromArray targetModules)
+  let baseConfig ← getSimpleBaseContext buildDir (Hierarchy.fromArray targetModulesAll)
+
+  -- Interproject linking: when `localModuleRoots` is configured (via `DOCGEN_LOCAL_MODULE_ROOTS`),
+  -- only generate pages for the project's own modules. The excluded (external, e.g. Mathlib)
+  -- modules stay in the linking context so references to them still resolve, but their links
+  -- point at the dependency documentation site instead of local pages (see `moduleIsExternal`).
+  let missingDocsRoots := targetModulesAll.foldl (init := #[]) fun roots mod =>
+    let root := mod.getRoot
+    if !baseConfig.localModuleRoots.isEmpty &&
+        !baseConfig.localModuleRoots.contains root &&
+        (baseConfig.depsDocsUrlFor? mod).isNone &&
+        !roots.contains root then
+      roots.push root
+    else
+      roots
+  if !missingDocsRoots.isEmpty then
+    let roots := ", ".intercalate <| missingDocsRoots.toList.map Name.toString
+    throw <| IO.userError s!"No dependency documentation URL configured for external module roots: {roots}. Set DOCGEN_DEPS_DOCS_URLS or DOCGEN_DEPS_DOCS_URL."
+
+  let targetModules :=
+    if baseConfig.localModuleRoots.isEmpty then targetModulesAll
+    else targetModulesAll.filter (fun m => baseConfig.localModuleRoots.contains m.getRoot)
+
   -- Add `references` pseudo-module to hierarchy only when bibliography data exists
   let hierarchy := Hierarchy.fromArray
     (if baseConfig.refs.isEmpty then targetModules else targetModules.push `references)
@@ -169,6 +204,19 @@ def genCoreCmd := `[Cli|
     db : String; "Path to the SQLite database (relative to build dir)"
 ]
 
+def externalsCmd := `[Cli|
+  externals VIA runExternalsCmd;
+  "Record the modules outside DOCGEN_LOCAL_MODULE_ROOTS, and the names they declare, in the database, so that references to them can be linked."
+
+  FLAGS:
+    b, build : String; "Build directory."
+    s, srcDirs : Array String; "The source directories of the local libraries (comma-separated). Local modules in the database whose source file is in none of them are deleted."
+
+  ARGS:
+    db : String; "Path to the SQLite database (relative to build dir)"
+    ...roots : String; "The root modules whose environment is loaded."
+]
+
 def bibPrepassCmd := `[Cli|
   bibPrepass VIA runBibPrepassCmd;
   "Run the bibliography prepass: copy the bibliography file to output directory. By default it assumes the input is '.bib'."
@@ -213,6 +261,7 @@ def docGenCmd : Cmd := `[Cli|
   SUBCOMMANDS:
     singleCmd;
     genCoreCmd;
+    externalsCmd;
     bibPrepassCmd;
     headerDataCmd;
     fromDbCmd

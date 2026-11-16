@@ -184,12 +184,53 @@ def getSimpleBaseContext (buildDir : System.FilePath) (hierarchy : Hierarchy) :
     | .error err =>
       throw <| IO.userError s!"Failed to parse 'references.json': {err}"
     | .ok (refs : Array BibItem) =>
+      -- Optional interproject linking: documentation sites for this project's dependencies plus
+      -- the set of module namespaces that are local to this project. Modules outside
+      -- `localModuleRoots` are treated as external — their pages are not generated and references
+      -- to them use a per-root URL from `depsDocsUrls`, falling back to `depsDocsUrl?`.
+      let depsDocsUrl? ← do
+        match ← IO.getEnv "DOCGEN_DEPS_DOCS_URL" with
+        | some url =>
+          let u := url.trimAscii.copy
+          if u.isEmpty then pure none else pure (some u)
+        | none => pure none
+      let depsDocsUrls ← do
+        match ← IO.getEnv "DOCGEN_DEPS_DOCS_URLS" with
+        | none => pure #[]
+        | some value =>
+          let mut mappings : Array (Name × String) := #[]
+          for rawEntry in value.splitOn "," do
+            let entry := rawEntry.trimAscii.copy
+            if entry.isEmpty then continue
+            match entry.splitOn "=" with
+            | rootString :: urlParts =>
+              let rootString := rootString.trimAscii.copy
+              let url := "=".intercalate urlParts |>.trimAscii.copy
+              let root := rootString.toName
+              if rootString.isEmpty || root.isAnonymous || root != root.getRoot then
+                throw <| IO.userError s!"Invalid module root '{rootString}' in DOCGEN_DEPS_DOCS_URLS"
+              if url.isEmpty then
+                throw <| IO.userError s!"Missing documentation URL for module root '{rootString}' in DOCGEN_DEPS_DOCS_URLS"
+              if mappings.any (fun (existingRoot, _) => existingRoot == root) then
+                throw <| IO.userError s!"Duplicate module root '{rootString}' in DOCGEN_DEPS_DOCS_URLS"
+              mappings := mappings.push (root, url)
+            | [] =>
+              throw <| IO.userError s!"Invalid entry '{entry}' in DOCGEN_DEPS_DOCS_URLS; expected ROOT=URL"
+          pure mappings
+      let localModuleRoots ← do
+        match ← IO.getEnv "DOCGEN_LOCAL_MODULE_ROOTS" with
+        | some s =>
+          pure <| s.splitOn "," |>.map (·.trimAscii.copy) |>.filter (! ·.isEmpty) |>.map String.toName |>.toArray
+        | none => pure #[]
       return {
         buildDir := buildDir
         depthToRoot := 0
         currentName := none
         hierarchy := hierarchy
         refs := refs
+        depsDocsUrl?
+        depsDocsUrls
+        localModuleRoots
       }
 
 def htmlOutputIndex (baseConfig : SiteBaseContext) (modules : Array JsonModule) (tacticInfo : Array (Process.TacticInfo Html)) : IO Unit := do
