@@ -47,7 +47,20 @@ private def InstanceInfo.ofDefinitionInfo (info : DefinitionInfo) (type : Expr) 
   if let some priority ← getInstPriority info.name then
     info := { info with attrs := info.attrs.push s!"instance {priority}" }
 
-  let some className ← isClass? type | panic! s!"isClass? on {info.name} returned none"
+  /-
+  `isClass?` returns `none` for instances whose target is not a class, e.g. instances proving
+  structure predicates such as `Continuous` (a `structure ... : Prop`, not a `class`), which
+  occur in the wild as e.g. `@[fun_prop] instance`s (see issue #348). Instead of panicking,
+  fall back to the head constant of the target type, so that such instances are still
+  documented and indexed under the name of the predicate they prove.
+  -/
+  let className ← match ← isClass? type with
+    | some className => pure className
+    | none =>
+      let (_, _, target) ← forallMetaTelescopeReducing type
+      match target.getAppFn with
+      | .const name _ => pure name
+      | _ => panic! s!"cannot determine the target of instance {info.name}"
   if let some instAttr ← getDefaultInstance info.name className then
     info := { info with attrs := info.attrs.push instAttr }
 
