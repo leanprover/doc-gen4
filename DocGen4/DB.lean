@@ -603,7 +603,7 @@ def updateModuleDb (values : DocstringValues)
 
 where
   -- Save all recursors (main + aux) for an inductive type
-  -- Uses name2ModIdx (from env.const2ModIdx) to check if names exist
+  -- Uses name2ModIdx (built from the imported module data) to check if names exist
   saveRecursors (name2ModIdx : Std.HashMap Lean.Name Lean.ModuleIdx) (db : WriteDB) (modName : String) (pos : Int64) (indName : Lean.Name) : IO Unit := do
     -- Save the main recursor
     db.saveInternalName (Lean.mkRecName indName) modName pos

@@ -183,6 +183,14 @@ def mkOptions : IO DocGenOptions := do
   | some "1" => return ⟨false⟩
   | _ => return {}
 
+/-- Maps each imported constant to the index of the first module declaring it. -/
+private def mkName2ModIdx (env : Environment) : Std.HashMap Name ModuleIdx := Id.run do
+  let mut m := {}
+  for h : idx in [:env.header.moduleData.size] do
+    for n in env.header.moduleData[idx].constNames do
+      m := m.insertIfNew n idx
+  return m
+
 /--
 Run the doc-gen analysis on all modules that are loaded into the `Environment`
 of this `MetaM` run and mentioned by the `AnalyzeTask`.
@@ -238,7 +246,7 @@ def process (task : AnalyzeTask) : MetaM AnalyzerResult := do
     res := res.insert moduleName {module with members := module.members.qsort ModuleMember.order}
 
   return {
-    name2ModIdx := env.const2ModIdx,
+    name2ModIdx := mkName2ModIdx env,
     moduleNames := allModules,
     moduleInfo := res,
   }
