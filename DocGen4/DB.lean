@@ -486,9 +486,18 @@ structure LinkingContext where
   sourceUrls : Std.HashMap Name String
   name2ModIdx : Std.HashMap Name ModuleIdx
 
-/-- Load the linking context from the database. -/
-def ReadDB.loadLinkingContext (db : ReadDB) : IO LinkingContext := do
-  let moduleNames ← db.getModuleNames
+/--
+Loads what HTML generation needs to resolve links: the module names, their source URLs, and the
+index from declaration names to modules.
+
+`modules?` restricts the module names, and therefore the index, to the given modules. Without it,
+the context covers every module in the database.
+-/
+def ReadDB.loadLinkingContext (db : ReadDB) (modules? : Option (Array Name) := none) :
+    IO LinkingContext := do
+  let moduleNames ← match modules? with
+    | some modules => pure modules
+    | none => db.getModuleNames
   let sourceUrls ← db.getModuleSourceUrls
   let name2ModIdx ← db.buildName2ModIdx moduleNames
   return { moduleNames, sourceUrls, name2ModIdx }
