@@ -5,7 +5,12 @@
 #   * an incremental build of a third library keeps the pages of the first two;
 #   * a change in a module reaches the HTML, whether the module is a library
 #     root or an import of one;
-#   * a rebuild with no change leaves the build up to date.
+#   * a removed declaration and a changed docstring reach the HTML;
+#   * a rebuild with no change leaves the build up to date;
+#   * a change in one library leaves the docs of the other libraries up to date;
+#   * building the docInfo facet again for unchanged modules leaves the HTML
+#     up to date;
+#   * a module that leaves a library takes its documentation with it.
 #
 # Usage: run from the doc-gen4 repo root (or pass it as $1).
 #   ./test/test-multi-lib-docs.sh
@@ -65,6 +70,7 @@ EOF
 export LEAN_ABORT_ON_PANIC=1
 export DOCGEN_SRC=file
 DOC_DIR="$TEST_DIR/.lake/build/doc"
+DOC_DATA_DIR="$TEST_DIR/.lake/build/doc-data"
 
 check_html() {
   local fail=0
@@ -83,6 +89,17 @@ check_html() {
   fi
 }
 
+check_up_to_date() {
+  for lib in "$@"; do
+    if (cd "$TEST_DIR" && lake build "$lib:docs" --no-build); then
+      echo "OK: $lib:docs is up to date"
+    else
+      echo "FAIL: $lib:docs is out of date"
+      exit 1
+    fi
+  done
+}
+
 # --- Phase 1: build LibA and LibB concurrently ---
 
 echo "=== Building LibA:docs and LibB:docs ==="
@@ -95,7 +112,7 @@ echo "=== Building LibC:docs incrementally ==="
 (cd "$TEST_DIR" && lake build LibC:docs)
 check_html LibA LibB LibC
 
-# --- Phase 3: a change in a module reaches its page ---
+# --- Phase 3: modify LibA, ensure that the change shows up in the HTML ---
 
 echo "=== Adding a declaration to LibA and building LibA:docs again ==="
 cat >> "$TEST_DIR/LibA.lean" << 'EOF'
@@ -111,17 +128,12 @@ else
   exit 1
 fi
 
-# --- Phase 4: the build stays up to date when nothing changes ---
+# --- Phase 4: ensure that all three libraries are up to date now that LibA:docs is rebuilt ---
 
-echo "=== Checking that LibA:docs needs no rebuild ==="
-if (cd "$TEST_DIR" && lake build LibA:docs --no-build); then
-  echo "OK: nothing is out of date after the build"
-else
-  echo "FAIL: LibA:docs is out of date right after it was built"
-  exit 1
-fi
+echo "=== Checking that no library needs a rebuild ==="
+check_up_to_date LibA LibB LibC
 
-# --- Phase 5: a change in an imported module reaches its page ---
+# --- Phase 5: ensure that changes in non-root modules are reflected in HTML ---
 
 echo "=== Adding a declaration to LibA/Basic.lean and building LibA:docs again ==="
 cat >> "$TEST_DIR/LibA/Basic.lean" << 'EOF'
@@ -138,10 +150,51 @@ else
 fi
 check_html LibA LibB LibC
 
-# --- Phase 6: a module leaves the library, and its documentation goes with it ---
+# --- Phase 6: remove a declaration and change a docstring, ensure that the HTML is updated ---
+
+echo "=== Removing a declaration from LibA, changing a docstring, and building LibA:docs again ==="
+cat > "$TEST_DIR/LibA.lean" << 'EOF'
+import LibA.Basic
+
+/-- A revised greeting from LibA -/
+def libAGreeting := "hello from A"
+EOF
+(cd "$TEST_DIR" && lake build LibA:docs)
+if grep -q 'libAGreetingAgain' "$DOC_DIR/LibA.html"; then
+  echo "FAIL: the page of LibA still shows the removed libAGreetingAgain"
+  exit 1
+else
+  echo "OK: the page of LibA omits the removed declaration"
+fi
+if grep -q 'A revised greeting from LibA' "$DOC_DIR/LibA.html"; then
+  echo "OK: the page of LibA shows the new docstring"
+else
+  echo "FAIL: the page of LibA does not show the new docstring"
+  exit 1
+fi
+if grep -q 'A greeting from LibA' "$DOC_DIR/LibA.html"; then
+  echo "FAIL: the page of LibA still shows the old docstring"
+  exit 1
+else
+  echo "OK: the page of LibA omits the old docstring"
+fi
+
+# --- Phase 7: build the docInfo facet again for unchanged modules, ensure that the HTML stays up to date ---
+
+echo "=== Removing the docInfo markers of LibA and building LibA:docInfo again ==="
+rm "$DOC_DATA_DIR/LibA.doc" "$DOC_DATA_DIR/LibA.Basic.doc"
+(cd "$TEST_DIR" && lake build LibA:docInfo)
+for marker in LibA.doc LibA.Basic.doc; do
+  if [ ! -f "$DOC_DATA_DIR/$marker" ]; then
+    echo "FAIL: $marker was not written again"
+    exit 1
+  fi
+done
+check_up_to_date LibA
+
+# --- Phase 8: a module leaves the library, and its documentation goes with it ---
 
 echo "=== Replacing LibA.Basic with LibA.Core and building LibA:docs again ==="
-DOC_DATA="$TEST_DIR/.lake/build/doc-data"
 SEARCH_INDEX="$DOC_DIR/declarations/declaration-data.bmp"
 
 grep -aq 'libABasicGreeting' "$SEARCH_INDEX" \
@@ -162,8 +215,8 @@ EOF
 
 # Nothing deletes the state of LibA.Basic by hand: Lake no longer lists the module, the database
 # records that LibA owned it, and the library prune takes it from there.
-for leftover in "$DOC_DATA/LibA.Basic.doc" "$DOC_DATA/LibA.Basic.doc.trace" \
-    "$DOC_DATA/LibA.Basic.doc.hash" "$DOC_DATA/declaration-data-LibA.Basic.bmp" \
+for leftover in "$DOC_DATA_DIR/LibA.Basic.doc" "$DOC_DATA_DIR/LibA.Basic.doc.trace" \
+    "$DOC_DATA_DIR/LibA.Basic.doc.hash" "$DOC_DATA_DIR/declaration-data-LibA.Basic.bmp" \
     "$DOC_DIR/LibA/Basic.html"; do
   if [ -e "$leftover" ]; then echo "FAIL: $leftover survived the rename"; exit 1; fi
 done
@@ -184,14 +237,9 @@ grep -aq 'libCGreeting' "$SEARCH_INDEX" \
   || { echo "FAIL: the prune of LibA reached the declarations of LibC"; exit 1; }
 echo "OK: the documentation of LibA.Basic went with the module, and the other libraries kept theirs"
 
-# --- Phase 7: the prune leaves the build up to date ---
+# --- Phase 9: the prune leaves the build up to date ---
 
 echo "=== Checking that LibA:docs needs no rebuild after the rename ==="
-if (cd "$TEST_DIR" && lake build LibA:docs --no-build); then
-  echo "OK: nothing is out of date after the prune"
-else
-  echo "FAIL: LibA:docs is out of date right after the prune"
-  exit 1
-fi
+check_up_to_date LibA
 
 echo "SUCCESS: All three libraries have HTML documentation"

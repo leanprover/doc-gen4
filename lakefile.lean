@@ -80,9 +80,11 @@ Turns a git remote URL into an HTTPS base URL for source linking.
 Supported link types:
 - https://github.com/org/repo
 - https://github.com/org/repo.git
+- git@github.com:org/repo
 - git@github.com:org/repo.git
 - https://github.example.com/org/repo (GitHub Enterprise)
 - https://codeberg.org/org/repo.git (Codeberg/Forgejo/Gitea)
+- git@host:org/repo (any SSH remote)
 - git@host:org/repo.git (any SSH remote)
 
 Note: Source links use GitHub's `/blob/COMMIT/path` convention.
@@ -91,9 +93,10 @@ This is correct for GitHub and GitHub Enterprise. For Codeberg/Forgejo/Gitea
 Use `DOCGEN_SRC=file` as a workaround for non-GitHub hosts.
 -/
 def getGithubBaseUrl (url : String) : Option String :=
-  -- git@host:org/repo.git → https://host/org/repo
-  if url.startsWith "git@" && url.endsWith ".git" then
-    let rest := url.drop "git@".length |>.dropEnd ".git".length |>.toString
+  -- git@host:org/repo[.git] → https://host/org/repo
+  if url.startsWith "git@" then
+    let rest := url.drop "git@".length |>.toString
+    let rest := if rest.endsWith ".git" then rest.dropEnd ".git".length |>.toString else rest
     match rest.splitOn ":" with
     | [host, path] => some s!"https://{host}/{path}"
     | _ => none
@@ -185,10 +188,15 @@ module_facet srcUri.file (mod) : String := makeModuleSrcUriFacet mod `srcUri.fil
 module_facet srcUri (mod) : String := makeModuleSrcUriFacet mod `srcUri
 
 /--
-Writes the marker file of a build step. The content is the hash of the dependency trace of the
-step. Lake gives a built file the trace of its content (see `buildFileUnlessUpToDate'`), so the
-trace of the marker changes exactly when the inputs of the step change, and the steps that depend
-on the marker run again.
+Writes the marker file of a build step. The file contains the running hash computed as part of the
+current trace.
+
+When Lake builds a file with `buildFileUnlessUpToDate'`, it replaces the current trace with one that
+contains only the file. This means that downstream dependents of the file are not rebuilt if the
+file's dependencies change without the file itself changing (e.g., the private part of a module
+changes but the public interface is untouched). Marker files are proxies for a build having taken
+place, so they need to include data that changes whenever that build needs repeating, which is
+efficiently represented by the hash of the trace.
 -/
 def writeMarker (markerFile : FilePath) : JobM Unit := do
   createParentDirs markerFile
@@ -279,18 +287,18 @@ module_facet docInfo (mod) : FilePath := do
     depDocJobs.bindM fun _ => do
       bibPrepassJob.bindM fun _ => do
         exeJob.bindM fun exeFile => do
-          modJob.mapM fun _ => do
-            buildFileUnlessUpToDate' markerFile do
-              let uriJob ← fetch <| mod.facet `srcUri
-              let srcUri ← uriJob.await
-              proc {
-                cmd := exeFile.toString
-                args := #["single", "--build", buildDir.toString, "--lib", mod.lib.name.toString,
-                  mod.name.toString, "api-docs.db", srcUri]
-                env := ← getAugmentedEnv
-              }
-              writeMarker markerFile
-            return markerFile
+          modJob.bindM fun _ => do
+            let uriJob ← fetch <| mod.facet `srcUri
+            uriJob.mapM fun srcUri => do
+              buildFileUnlessUpToDate' markerFile do
+                proc {
+                  cmd := exeFile.toString
+                  args := #["single", "--build", buildDir.toString, "--lib", mod.lib.name.toString,
+                    mod.name.toString, "api-docs.db", srcUri]
+                  env := ← getAugmentedEnv
+                }
+                writeMarker markerFile
+              return markerFile
 
 /--
 Writes the current module names of `lib` to a file, and deletes the documentation of the modules
