@@ -1,0 +1,23 @@
+name: Module system equations regression test
+
+on:
+  push:
+    branches:
+      - "main"
+  pull_request:
+
+jobs:
+  test-module-equations:
+    name: Test equations for exposed and sealed definitions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install elan and build doc-gen4
+        uses: leanprover/lean-action@v1
+        with:
+          build-args: "--wfail"
+
+      - name: Run module system equations test
+        run: ./test/test-module-equations.sh

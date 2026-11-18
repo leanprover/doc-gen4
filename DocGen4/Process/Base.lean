@@ -12,6 +12,14 @@ open Lean Widget Meta
 
 structure DocGenOptions where
   genEquations : Bool := true
+  /--
+  The definitions from module system modules whose bodies importers can see, that is, those whose
+  value is present in the module's exported `.olean`. Equations are only generated for these and for
+  definitions from modules outside the module system. A definition whose body is not exposed is
+  opaque to every importer, so its equations are not part of its API, and computing them can be
+  arbitrarily expensive because the module never had to make its body check in the public scope.
+  -/
+  exposedBodies : NameSet := {}
 
 abbrev AnalyzeM : Type → Type := ReaderT DocGenOptions MetaM
 
