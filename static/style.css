@@ -834,3 +834,8 @@ a:hover {
     margin-top: 2em;
     margin-bottom: 2em;
 }
+
+/* Verso generates list items as `<li><p>...</p></li>` (a loose list); make the first paragraph inline so it lays out like the text in `<li>...</li>`. */
+li > p:first-child {
+  display: inline;
+}

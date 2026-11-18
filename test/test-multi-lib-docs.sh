@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 #
-# Regression test: verify that building docs for multiple libraries in one
-# `lake build` produces HTML for all of them, that an incremental build of a
-# third library doesn't remove the first two, and that a link resolves only to
-# a page that exists after the run.
+# Regression test for the `docs` facet. It verifies that:
+#   * one `lake build` of several libraries produces HTML for all of them;
+#   * an incremental build of a third library keeps the pages of the first two;
+#   * a change in a module reaches the HTML, whether the module is a library
+#     root or an import of one;
+#   * a removed declaration and a changed docstring reach the HTML;
+#   * a rebuild with no change leaves the build up to date;
+#   * a change in one library leaves the docs of the other libraries up to date;
+#   * building the docInfo facet again for unchanged modules leaves the HTML
+#     up to date;
+#   * a link resolves only to a page that exists after the run.
 #
 # Usage: run from the doc-gen4 repo root (or pass it as $1).
 #   ./test/test-multi-lib-docs.sh
@@ -38,9 +45,17 @@ lean_lib LibC
 lean_lib LibD
 EOF
 
+mkdir -p "$TEST_DIR/LibA"
 cat > "$TEST_DIR/LibA.lean" << 'EOF'
+import LibA.Basic
+
 /-- A greeting from LibA -/
 def libAGreeting := "hello from A"
+EOF
+
+cat > "$TEST_DIR/LibA/Basic.lean" << 'EOF'
+/-- A greeting from LibA.Basic -/
+def libABasicGreeting := "hello from A.Basic"
 EOF
 
 cat > "$TEST_DIR/LibB.lean" << 'EOF'
@@ -57,10 +72,10 @@ EOF
 
 mkdir -p "$TEST_DIR/LibD"
 cat > "$TEST_DIR/LibD/Old.lean" << 'EOF'
-/-- A theorem of LibD. Phase 3 moves it to `LibD.New`. -/
+/-- A theorem of LibD. Phase 8 moves it to `LibD.New`. -/
 def libDThm := "theorem of D"
 
-/-- A declaration of LibD. Phase 3 removes it. -/
+/-- A declaration of LibD. Phase 8 removes it. -/
 def libDGone := "gone from D"
 EOF
 
@@ -71,6 +86,7 @@ EOF
 export LEAN_ABORT_ON_PANIC=1
 export DOCGEN_SRC=file
 DOC_DIR="$TEST_DIR/.lake/build/doc"
+DOC_DATA_DIR="$TEST_DIR/.lake/build/doc-data"
 
 check_html() {
   local fail=0
@@ -87,6 +103,17 @@ check_html() {
     find "$DOC_DIR" -name '*.html' | sort
     exit 1
   fi
+}
+
+check_up_to_date() {
+  for lib in "$@"; do
+    if (cd "$TEST_DIR" && lake build "$lib:docs" --no-build); then
+      echo "OK: $lib:docs is up to date"
+    else
+      echo "FAIL: $lib:docs is out of date"
+      exit 1
+    fi
+  done
 }
 
 # --- Phase 1: build LibA and LibB concurrently ---
@@ -116,7 +143,87 @@ else
   exit 1
 fi
 
-# --- Phase 3: a declaration moves to another module, and its old module disappears ---
+# --- Phase 3: modify LibA, ensure that the change shows up in the HTML ---
+
+echo "=== Adding a declaration to LibA and building LibA:docs again ==="
+cat >> "$TEST_DIR/LibA.lean" << 'EOF'
+
+/-- A second greeting from LibA -/
+def libAGreetingAgain := "hello again from A"
+EOF
+(cd "$TEST_DIR" && lake build LibA:docs)
+if grep -q 'libAGreetingAgain' "$DOC_DIR/LibA.html"; then
+  echo "OK: the page of LibA shows the new declaration"
+else
+  echo "FAIL: the page of LibA does not show libAGreetingAgain"
+  exit 1
+fi
+
+# --- Phase 4: ensure that all three libraries are up to date now that LibA:docs is rebuilt ---
+
+echo "=== Checking that no library needs a rebuild ==="
+check_up_to_date LibA LibB LibC
+
+# --- Phase 5: ensure that changes in non-root modules are reflected in HTML ---
+
+echo "=== Adding a declaration to LibA/Basic.lean and building LibA:docs again ==="
+cat >> "$TEST_DIR/LibA/Basic.lean" << 'EOF'
+
+/-- A second greeting from LibA.Basic -/
+def libABasicGreetingAgain := "hello again from A.Basic"
+EOF
+(cd "$TEST_DIR" && lake build LibA:docs)
+if grep -q 'libABasicGreetingAgain' "$DOC_DIR/LibA/Basic.html"; then
+  echo "OK: the page of LibA.Basic shows the new declaration"
+else
+  echo "FAIL: the page of LibA.Basic does not show libABasicGreetingAgain"
+  exit 1
+fi
+check_html LibA LibB LibC
+
+# --- Phase 6: remove a declaration and change a docstring, ensure that the HTML is updated ---
+
+echo "=== Removing a declaration from LibA, changing a docstring, and building LibA:docs again ==="
+cat > "$TEST_DIR/LibA.lean" << 'EOF'
+import LibA.Basic
+
+/-- A revised greeting from LibA -/
+def libAGreeting := "hello from A"
+EOF
+(cd "$TEST_DIR" && lake build LibA:docs)
+if grep -q 'libAGreetingAgain' "$DOC_DIR/LibA.html"; then
+  echo "FAIL: the page of LibA still shows the removed libAGreetingAgain"
+  exit 1
+else
+  echo "OK: the page of LibA omits the removed declaration"
+fi
+if grep -q 'A revised greeting from LibA' "$DOC_DIR/LibA.html"; then
+  echo "OK: the page of LibA shows the new docstring"
+else
+  echo "FAIL: the page of LibA does not show the new docstring"
+  exit 1
+fi
+if grep -q 'A greeting from LibA' "$DOC_DIR/LibA.html"; then
+  echo "FAIL: the page of LibA still shows the old docstring"
+  exit 1
+else
+  echo "OK: the page of LibA omits the old docstring"
+fi
+
+# --- Phase 7: build the docInfo facet again for unchanged modules, ensure that the HTML stays up to date ---
+
+echo "=== Removing the docInfo markers of LibA and building LibA:docInfo again ==="
+rm "$DOC_DATA_DIR/LibA.doc" "$DOC_DATA_DIR/LibA.Basic.doc"
+(cd "$TEST_DIR" && lake build LibA:docInfo)
+for marker in LibA.doc LibA.Basic.doc; do
+  if [ ! -f "$DOC_DATA_DIR/$marker" ]; then
+    echo "FAIL: $marker was not written again"
+    exit 1
+  fi
+done
+check_up_to_date LibA
+
+# --- Phase 8: a declaration moves to another module, and its old module disappears ---
 
 echo "=== LibD moves libDThm to LibD.New and deletes LibD.Old ==="
 cat > "$TEST_DIR/LibD/New.lean" << 'EOF'

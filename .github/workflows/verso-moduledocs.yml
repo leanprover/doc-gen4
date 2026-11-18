@@ -1,0 +1,23 @@
+name: Verso module docstrings regression test
+
+on:
+  push:
+    branches:
+      - "main"
+  pull_request:
+
+jobs:
+  test-verso-moduledocs:
+    name: Test Verso module docstring rendering
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install elan and build doc-gen4
+        uses: leanprover/lean-action@v1
+        with:
+          build-args: "--wfail"
+
+      - name: Run Verso module docstrings test
+        run: ./test/test-verso-moduledocs.sh
