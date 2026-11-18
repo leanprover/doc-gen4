@@ -58,7 +58,7 @@ namespace DocGen4.DB
 structure WriteDB where
   sqlite : SQLite
   deleteModule (modName : String) : IO Unit
-  saveModule (modName : String) (sourceUrl? : Option String) : IO Unit
+  saveModule (modName : String) (sourceUrl? : Option String) (library? : Option String) : IO Unit
   saveImport (modName : String) (imported : Lean.Name) : IO Unit
   saveMarkdownDocstring (modName : String) (position : Int64) (text : String) : IO Unit
   saveModuleDoc (modName : String) (position : Int64) (text : String) : IO Unit
@@ -163,7 +163,7 @@ private def WriteStmts.prepare (sqlite : SQLite) (values : DocstringValues) : IO
   pure {
     values
     deleteModuleStmt := ← sqlite.prepare "DELETE FROM modules WHERE name = ?"
-    saveModuleStmt := ← sqlite.prepare "INSERT INTO modules (name, source_url) VALUES (?, ?)"
+    saveModuleStmt := ← sqlite.prepare "INSERT INTO modules (name, source_url, library) VALUES (?, ?, ?)"
     -- INSERT OR IGNORE because the module system often results in multiple imports of the same module
     saveImportStmt := ← sqlite.prepare "INSERT OR IGNORE INTO module_imports (importer, imported) VALUES (?, ?)"
     saveMarkdownDocstringStmt := ← sqlite.prepare "INSERT INTO declaration_markdown_docstrings (module_name, position, text) VALUES (?, ?, ?)"
@@ -198,9 +198,11 @@ private def WriteStmts.deleteModule (s : WriteStmts) (modName : String) : IO Uni
   s.deleteModuleStmt.bind 1 modName
   run s.deleteModuleStmt
 
-private def WriteStmts.saveModule (s : WriteStmts) (modName : String) (sourceUrl? : Option String) : IO Unit := withDbContext "write:insert:modules" do
+private def WriteStmts.saveModule (s : WriteStmts) (modName : String) (sourceUrl? : Option String)
+    (library? : Option String) : IO Unit := withDbContext "write:insert:modules" do
   s.saveModuleStmt.bind 1 modName
   s.saveModuleStmt.bind 2 sourceUrl?
+  s.saveModuleStmt.bind 3 library?
   run s.saveModuleStmt
 
 private def WriteStmts.saveImport (s : WriteStmts) (modName : String) (imported : Lean.Name) : IO Unit := withDbContext "write:insert:module_imports" do
@@ -415,7 +417,7 @@ def ensureWriteDb (values : DocstringValues) (dbFile : System.FilePath) : IO Wri
   pure {
     sqlite,
     deleteModule modName := writeMutex.atomically do (← get).deleteModule modName
-    saveModule modName sourceUrl? := writeMutex.atomically do (← get).saveModule modName sourceUrl?
+    saveModule modName sourceUrl? library? := writeMutex.atomically do (← get).saveModule modName sourceUrl? library?
     saveImport modName imported := writeMutex.atomically do (← get).saveImport modName imported
     saveMarkdownDocstring modName position text := writeMutex.atomically do (← get).saveMarkdownDocstring modName position text
     saveModuleDoc modName position text := writeMutex.atomically do (← get).saveModuleDoc modName position text
@@ -503,7 +505,7 @@ open DB
 def updateModuleDb (values : DocstringValues)
     (doc : Process.AnalyzerResult)
     (buildDir : System.FilePath) (dbFile : String)
-    (sourceUrl? : Option String) : IO Unit := do
+    (sourceUrl? : Option String) (library? : Option String) : IO Unit := do
   let dbFile := buildDir / dbFile
   DBM.run values dbFile <| withDB fun db => do
     for batch in chunked doc.moduleInfo.toArray 100 do
@@ -519,7 +521,7 @@ def updateModuleDb (values : DocstringValues)
           -- Collect structure field info to save in second pass (after all declarations are in name_info)
           let mut pendingStructureFields : Array (Int64 × Process.StructureInfo) := #[]
           db.deleteModule modNameStr
-          db.saveModule modNameStr sourceUrl?
+          db.saveModule modNameStr sourceUrl? library?
           for imported in modInfo.imports do
             db.saveImport modNameStr imported
           -- Position counter: each item gets a unique sequential position within the module.
@@ -669,3 +671,45 @@ where
     | .classInfo _ => "class"
     | .classInductiveInfo _ => "class inductive"
     | .ctorInfo _ => "constructor"
+
+/--
+The modules that the database records for `library` and that are not in `keep`.
+
+Lake knows the modules of a library, and the database records the library of every module, so the
+difference is the documentation state that a rename or a deletion left behind. The modules of core
+Lean have no library, so they stay whatever `keep` holds.
+-/
+private def staleLibraryModules (sqlite : SQLite) (library : String) (keep : Array Lean.Name) :
+    IO (Array Lean.Name) := do
+  let keepSet : Std.HashSet Lean.Name := (Std.HashSet.emptyWithCapacity keep.size).insertMany keep
+  let stmt ← sqlite.prepare "SELECT name FROM modules WHERE library = ?"
+  stmt.bind 1 library
+  let mut stale := #[]
+  while (← stmt.step) do
+    let name := (← stmt.columnText 0).toName
+    if !keepSet.contains name then
+      stale := stale.push name
+  return stale
+
+/--
+Deletes the modules that the database records for `library` and that are not in `keep`. Returns the
+deleted modules.
+
+One immediate transaction covers the query and the deletion, so a concurrent analysis either
+finishes before the transaction or waits for it. `beforeDelete` receives the modules that go, inside
+the transaction and before the deletion, so a failure in it leaves the database unchanged.
+
+The rows of a library are disjoint from the rows of every other library, so two libraries can prune
+at the same time.
+-/
+def pruneLibrary (values : DocstringValues) (dbFile : System.FilePath) (library : String)
+    (keep : Array Lean.Name) (beforeDelete : Array Lean.Name → IO Unit) : IO (Array Lean.Name) :=
+  DBM.run values dbFile <| withDB fun db => do
+    db.sqlite.transaction (mode := .immediate) do
+      let stale ← staleLibraryModules db.sqlite library keep
+      if stale.isEmpty then
+        return stale
+      beforeDelete stale
+      for m in stale do
+        db.deleteModule m.toString
+      return stale

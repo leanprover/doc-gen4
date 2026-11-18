@@ -114,11 +114,16 @@ where
     r#"
 PRAGMA journal_mode = WAL;
 
--- Modules table
+-- Modules table. `library` is the Lake library that the module belongs to, and is NULL for the
+-- modules of core Lean, which come from `genCore` rather than from a library of the workspace.
 CREATE TABLE IF NOT EXISTS modules (
   name TEXT PRIMARY KEY,
-  source_url TEXT
+  source_url TEXT,
+  library TEXT
 );
+
+-- Index for "which modules does this library own?", which the library prune asks on every build.
+CREATE INDEX IF NOT EXISTS idx_modules_library ON modules(library);
 
 -- Direct imports
 CREATE TABLE IF NOT EXISTS module_imports (
